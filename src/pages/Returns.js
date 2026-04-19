@@ -7,6 +7,7 @@ const Returns = () => {
   const [filteredReturns, setFilteredReturns] = useState([]);
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState({ message: '', type: '', visible: false });
 
@@ -15,7 +16,9 @@ const Returns = () => {
     setTimeout(() => setNotification({ message: '', type: '', visible: false }), 4000);
   };
   const [showForm, setShowForm] = useState(false);
+  const [formCategory, setFormCategory] = useState('');
   const [filters, setFilters] = useState({
+    category: '',
     brand: '',
     model: '',
     size: '',
@@ -27,15 +30,17 @@ const Returns = () => {
   const [formData, setFormData] = useState({
     product: '',
     sale: '',
+    customer: '',
     quantity: '',
     reason: 'customer_request',
     notes: '',
   });
   const [refundFormData, setRefundFormData] = useState({
     returnId: null,
-    refund_amount: '',
-    refund_currency: 'USD',
-    refund_payment_type: 'cash',
+    uzs_cash: '',
+    uzs_card: '',
+    usd_cash: '',
+    usd_card: '',
   });
   const [showRefundForm, setShowRefundForm] = useState(false);
 
@@ -43,6 +48,7 @@ const Returns = () => {
     fetchReturns();
     fetchProducts();
     fetchSales();
+    fetchCustomers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -70,6 +76,11 @@ const Returns = () => {
   const applyFilters = (returnsList) => {
     let filtered = returnsList;
     
+    if (filters.category) {
+      filtered = filtered.filter(returnItem =>
+        returnItem.product_detail?.category === filters.category
+      );
+    }
     if (filters.brand) {
       filtered = filtered.filter(returnItem => 
         returnItem.product_detail?.brand === filters.brand
@@ -134,6 +145,15 @@ const Returns = () => {
     }
   };
 
+  const fetchCustomers = async () => {
+    try {
+      const response = await api.get('/customers/');
+      setCustomers(response.data.results || response.data);
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (formData.sale) {
@@ -147,9 +167,11 @@ const Returns = () => {
       await api.post('/returns/', formData);
       showNotification('Return created successfully!', 'success');
       setShowForm(false);
+      setFormCategory('');
       setFormData({
         product: '',
         sale: '',
+        customer: '',
         quantity: '',
         reason: 'customer_request',
         notes: '',
@@ -165,9 +187,10 @@ const Returns = () => {
     const returnItem = returns.find(r => r.id === returnId);
     setRefundFormData({
       returnId: returnId,
-      refund_amount: returnItem?.sale_detail?.total_amount || '',
-      refund_currency: returnItem?.sale_detail?.sale_currency || 'USD',
-      refund_payment_type: 'cash',
+      uzs_cash: '',
+      uzs_card: '',
+      usd_cash: returnItem?.sale_detail?.total_amount || '',
+      usd_card: '',
     });
     setShowRefundForm(true);
   };
@@ -175,18 +198,19 @@ const Returns = () => {
   const handleRefundSubmit = async (e) => {
     e.preventDefault();
     try {
+      const uzs_cash = parseFloat(refundFormData.uzs_cash) || 0;
+      const uzs_card = parseFloat(refundFormData.uzs_card) || 0;
+      const usd_cash = parseFloat(refundFormData.usd_cash) || 0;
+      const usd_card = parseFloat(refundFormData.usd_card) || 0;
+      if (uzs_cash + uzs_card + usd_cash + usd_card === 0) {
+        showNotification('Please enter at least one refund amount.', 'error');
+        return;
+      }
       await api.post(`/returns/${refundFormData.returnId}/mark_refunded/`, {
-        refund_amount: refundFormData.refund_amount,
-        refund_currency: refundFormData.refund_currency,
-        refund_payment_type: refundFormData.refund_payment_type,
+        uzs_cash, uzs_card, usd_cash, usd_card,
       });
       setShowRefundForm(false);
-      setRefundFormData({
-        returnId: null,
-        refund_amount: '',
-        refund_currency: 'USD',
-        refund_payment_type: 'cash',
-      });
+      setRefundFormData({ returnId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' });
       fetchReturns();
     } catch (error) {
       console.error('Error marking return as refunded:', error);
@@ -222,21 +246,79 @@ const Returns = () => {
           <h2>New Return</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
-              <div className="form-group">
-                <label>Product</label>
-                <select
-                  value={formData.product}
-                  onChange={(e) => setFormData({ ...formData, product: e.target.value })}
-                  required
-                >
-                  <option value="">Select a product</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.brand} {product.model} - Size {product.size} ({product.color})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {(() => {
+                const customerSales = formData.customer
+                  ? sales.filter(s => s.customer === parseInt(formData.customer))
+                  : sales;
+                const customerProductIds = new Set(customerSales.map(s => s.product).filter(Boolean));
+                const availableProducts = formData.customer
+                  ? products.filter(p => customerProductIds.has(p.id))
+                  : products;
+                const availableCategories = [...new Set(availableProducts.map(p => p.category).filter(Boolean))].sort();
+
+                return (<>
+                  <div className="form-group">
+                    <label>Customer (Optional)</label>
+                    <select
+                      value={formData.customer}
+                      onChange={(e) => {
+                        setFormCategory('');
+                        setFormData({ ...formData, customer: e.target.value, sale: '', product: '' });
+                      }}
+                    >
+                      <option value="">All customers</option>
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}{c.telephone ? ` — ${c.telephone}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
+                    <select
+                      value={formCategory}
+                      onChange={(e) => { setFormCategory(e.target.value); setFormData({ ...formData, product: '', sale: '' }); }}
+                    >
+                      <option value="">All Categories</option>
+                      {availableCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Product</label>
+                    <select
+                      value={formData.product}
+                      onChange={(e) => setFormData({ ...formData, product: e.target.value, sale: '' })}
+                      required
+                    >
+                      <option value="">Select a product</option>
+                      {availableProducts
+                        .filter(p => !formCategory || p.category === formCategory)
+                        .map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.brand} {product.model} - Size {product.size} ({product.color})
+                          </option>
+                        ))}
+                    </select>
+                    {formData.customer && (
+                      <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
+                        Showing only products purchased by <strong>{customers.find(c => c.id === parseInt(formData.customer))?.name}</strong>
+                      </small>
+                    )}
+                  </div>
+                </>);
+              })()}
+              {formData.product && (() => {
+                const cat = products.find(p => p.id === parseInt(formData.product))?.category;
+                return cat ? (
+                  <div className="form-group">
+                    <label>Category</label>
+                    <input type="text" value={cat} readOnly style={{ background: '#f5f5f5', color: '#666', cursor: 'default' }} />
+                  </div>
+                ) : null;
+              })()}
               <div className="form-group">
                 <label>Sale (Optional)</label>
                 <select
@@ -244,12 +326,28 @@ const Returns = () => {
                   onChange={(e) => setFormData({ ...formData, sale: e.target.value })}
                 >
                   <option value="">None</option>
-                  {sales.map((sale) => (
-                    <option key={sale.id} value={sale.id}>
-                      Sale #{sale.id} - {sale.product_detail?.brand} {sale.product_detail?.model}
-                    </option>
-                  ))}
+                  {sales
+                    .filter(s => {
+                      if (formData.customer && s.customer !== parseInt(formData.customer)) return false;
+                      if (formData.product && s.product !== parseInt(formData.product)) return false;
+                      if (formCategory && s.product_detail?.category !== formCategory) return false;
+                      return true;
+                    })
+                    .map((sale) => (
+                      <option key={sale.id} value={sale.id}>
+                        Sale #{sale.id} - {sale.product_detail?.brand} {sale.product_detail?.model}
+                        {sale.customer_detail?.name ? ` (${sale.customer_detail.name})` : ''}
+                      </option>
+                    ))}
                 </select>
+                {(formData.customer || formData.product) && (
+                  <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
+                    Filtered by:{' '}
+                    {formData.customer && <strong>{customers.find(c => c.id === parseInt(formData.customer))?.name}</strong>}
+                    {formData.customer && formData.product && ' · '}
+                    {formData.product && <strong>{products.find(p => p.id === parseInt(formData.product))?.brand} {products.find(p => p.id === parseInt(formData.product))?.model}</strong>}
+                  </small>
+                )}
               </div>
               <div className="form-group">
                 <label>Quantity</label>
@@ -305,59 +403,40 @@ const Returns = () => {
       {showRefundForm && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>Mark Return #{refundFormData.returnId} as Refunded</h2>
+          <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
+            Fill in any combination of refund methods. Leave a field empty or 0 if not used.
+          </p>
           <form onSubmit={handleRefundSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Refund Amount</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={refundFormData.refund_amount}
-                  onChange={(e) => setRefundFormData({ ...refundFormData, refund_amount: e.target.value })}
-                  required
-                />
+                <label>UZS — Cash</label>
+                <input type="number" step="0.01" min="0" placeholder="0"
+                  value={refundFormData.uzs_cash}
+                  onChange={(e) => setRefundFormData({ ...refundFormData, uzs_cash: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>Currency</label>
-                <select
-                  value={refundFormData.refund_currency}
-                  onChange={(e) => setRefundFormData({ ...refundFormData, refund_currency: e.target.value })}
-                  required
-                >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
-                </select>
+                <label>UZS — Card</label>
+                <input type="number" step="0.01" min="0" placeholder="0"
+                  value={refundFormData.uzs_card}
+                  onChange={(e) => setRefundFormData({ ...refundFormData, uzs_card: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>Payment Type</label>
-                <select
-                  value={refundFormData.refund_payment_type}
-                  onChange={(e) => setRefundFormData({ ...refundFormData, refund_payment_type: e.target.value })}
-                  required
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                </select>
+                <label>USD — Cash</label>
+                <input type="number" step="0.01" min="0" placeholder="0"
+                  value={refundFormData.usd_cash}
+                  onChange={(e) => setRefundFormData({ ...refundFormData, usd_cash: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>USD — Card</label>
+                <input type="number" step="0.01" min="0" placeholder="0"
+                  value={refundFormData.usd_card}
+                  onChange={(e) => setRefundFormData({ ...refundFormData, usd_card: e.target.value })} />
               </div>
             </div>
             <div className="form-actions">
-              <button type="submit" className="btn-primary">
-                Mark as Refunded
-              </button>
-              <button
-                type="button"
-                className="btn-edit"
-                onClick={() => {
-                  setShowRefundForm(false);
-                  setRefundFormData({
-                    returnId: null,
-                    refund_amount: '',
-                    refund_currency: 'USD',
-                    refund_payment_type: 'cash',
-                  });
-                }}
-              >
+              <button type="submit" className="btn-primary">Mark as Refunded</button>
+              <button type="button" className="btn-edit"
+                onClick={() => { setShowRefundForm(false); setRefundFormData({ returnId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' }); }}>
                 Cancel
               </button>
             </div>
@@ -370,6 +449,18 @@ const Returns = () => {
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h3>Filters</h3>
         <div className="form-grid">
+          <div className="form-group">
+            <label>Category</label>
+            <select
+              value={filters.category}
+              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+            >
+              <option value="">All Categories</option>
+              {[...new Set(returns.map(r => r.product_detail?.category).filter(Boolean))].sort().map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label>Brand</label>
             <select
@@ -482,7 +573,7 @@ const Returns = () => {
             <button
               type="button"
               className="btn-edit"
-              onClick={() => setFilters({ brand: '', model: '', size: '', color: '', reason: '', year: '', month: '' })}
+              onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', reason: '', year: '', month: '' })}
             >
               Clear Filters
             </button>
@@ -496,15 +587,24 @@ const Returns = () => {
           <thead>
             <tr>
               <th>ID</th>
+              <th>Category</th>
+              <th>Name</th>
               <th>Product</th>
               <th>Brand</th>
               <th>Model</th>
               <th>Size</th>
               <th>Color</th>
               <th>Sale</th>
+              <th>Customer</th>
+              <th>Phone</th>
               <th>Quantity</th>
               <th>Reason</th>
+              <th>Refund UZS Cash</th>
+              <th>Refund UZS Card</th>
+              <th>Refund USD Cash</th>
+              <th>Refund USD Card</th>
               <th>Refund Status</th>
+              <th>Notes</th>
               <th>Processed By</th>
               <th>Date</th>
               <th>Actions</th>
@@ -513,7 +613,7 @@ const Returns = () => {
           <tbody>
             {filteredReturns.length === 0 ? (
               <tr>
-                <td colSpan="12" style={{ textAlign: 'center' }}>
+                <td colSpan="22" style={{ textAlign: 'center' }}>
                   No returns found
                 </td>
               </tr>
@@ -521,6 +621,8 @@ const Returns = () => {
               filteredReturns.map((returnItem) => (
                 <tr key={returnItem.id}>
                   <td>#{returnItem.id}</td>
+                  <td>{returnItem.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
+                  <td>{returnItem.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
                     {returnItem.product_detail
                       ? `${returnItem.product_detail.brand} ${returnItem.product_detail.model}`
@@ -533,18 +635,36 @@ const Returns = () => {
                   <td>
                     {returnItem.sale ? `Sale #${returnItem.sale}` : '-'}
                   </td>
+                  <td>{returnItem.customer_detail?.name || <span style={{ color: '#bbb' }}>—</span>}</td>
+                  <td>{returnItem.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
                   <td>{returnItem.quantity}</td>
                   <td>{returnItem.reason.replace('_', ' ')}</td>
                   <td>
-                    <span className={`status-badge ${returnItem.refund_status === 'refunded' ? 'completed' : 'pending'}`}>
-                      {returnItem.refund_status === 'refunded' ? 'REFUNDED' : 'NOT_REFUNDED'}
-                    </span>
-                    {returnItem.refund_status === 'refunded' && returnItem.refund_amount && (
-                      <small style={{ display: 'block', color: '#666', fontSize: '0.85em', marginTop: '3px' }}>
-                        {returnItem.refund_currency} {parseFloat(returnItem.refund_amount).toLocaleString()} ({returnItem.refund_payment_type === 'cash' ? 'Cash' : 'Card'})
-                      </small>
-                    )}
+                    {parseFloat(returnItem.refund_uzs_cash) > 0
+                      ? <span style={{ color: '#4caf50' }}>{parseFloat(returnItem.refund_uzs_cash).toLocaleString()} UZS</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
                   </td>
+                  <td>
+                    {parseFloat(returnItem.refund_uzs_card) > 0
+                      ? <span style={{ color: '#4caf50' }}>{parseFloat(returnItem.refund_uzs_card).toLocaleString()} UZS</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(returnItem.refund_usd_cash) > 0
+                      ? <span style={{ color: '#4caf50' }}>${parseFloat(returnItem.refund_usd_cash).toFixed(2)}</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(returnItem.refund_usd_card) > 0
+                      ? <span style={{ color: '#4caf50' }}>${parseFloat(returnItem.refund_usd_card).toFixed(2)}</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    <span className={`status-badge ${returnItem.refund_status === 'refunded' ? 'completed' : 'pending'}`}>
+                      {returnItem.refund_status === 'refunded' ? 'Refunded' : 'Pending'}
+                    </span>
+                  </td>
+                  <td>{returnItem.notes || <span style={{ color: '#bbb' }}>—</span>}</td>
                   <td>{returnItem.processed_by_detail?.username || '-'}</td>
                   <td>{new Date(returnItem.return_date).toLocaleString()}</td>
                   <td>

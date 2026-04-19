@@ -10,6 +10,7 @@ const Orders = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [filters, setFilters] = useState({
+    category: '',
     brand: '',
     model: '',
     size: '',
@@ -22,7 +23,7 @@ const Orders = () => {
   const [formData, setFormData] = useState({
     order_type: 'stock',
     product: '',
-    supplier_country: 'germany',
+    supplier_country: '',
     eshop: '',
     ordered_quantity: '',
     cost_per_unit: '',
@@ -39,9 +40,10 @@ const Orders = () => {
 
   const [paymentFormData, setPaymentFormData] = useState({
     orderId: null,
-    order_payment_amount: '',
-    order_payment_currency: 'USD',
-    order_payment_type: 'card',
+    uzs_cash: '',
+    uzs_card: '',
+    usd_cash: '',
+    usd_card: '',
     is_pay_order: false,
     is_received_and_pay: false,
   });
@@ -49,15 +51,20 @@ const Orders = () => {
   
   const [cargoFormData, setCargoFormData] = useState({
     orderId: null,
-    cargo_amount: '',
-    cargo_currency: 'UZS',
-    cargo_payment_type: 'cash',
-    cargo_is_paid: false,
+    uzs_cash: '',
+    uzs_card: '',
+    usd_cash: '',
+    usd_card: '',
   });
   const [showCargoForm, setShowCargoForm] = useState(false);
   
   const [showMoveToInventoryForm, setShowMoveToInventoryForm] = useState(false);
   const [isNewEshop, setIsNewEshop] = useState(false);
+  const [isNewCountry, setIsNewCountry] = useState(false);
+  const [formCategory, setFormCategory] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+  const productDropdownRef = useRef(null);
 
   const paymentFormRef = useRef(null);
   const cargoFormRef = useRef(null);
@@ -117,6 +124,16 @@ const Orders = () => {
     fetchCustomers();
     fetchBalances();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (productDropdownRef.current && !productDropdownRef.current.contains(e.target)) {
+        setProductDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const fetchBalances = async () => {
@@ -188,6 +205,11 @@ const Orders = () => {
   const applyFilters = (ordersList) => {
     let filtered = ordersList;
     
+    if (filters.category) {
+      filtered = filtered.filter(order =>
+        order.product_detail?.category === filters.category
+      );
+    }
     if (filters.brand) {
       filtered = filtered.filter(order => 
         order.product_detail?.brand === filters.brand
@@ -276,6 +298,10 @@ const Orders = () => {
       await api.post('/orders/', orderData);
       setShowForm(false);
       setIsNewEshop(false);
+      setIsNewCountry(false);
+      setFormCategory('');
+      setProductSearch('');
+      setProductDropdownOpen(false);
       setFormData({
         order_type: 'stock',
         product: '',
@@ -320,9 +346,10 @@ const Orders = () => {
     const order = orders.find(o => o.id === orderId);
     setPaymentFormData({
       orderId: orderId,
-      order_payment_amount: order?.cost_total || '',
-      order_payment_currency: order?.order_payment_currency || 'USD',
-      order_payment_type: order?.order_payment_type || 'card',
+      uzs_cash: '',
+      uzs_card: '',
+      usd_cash: order?.cost_total || '',
+      usd_card: '',
       is_pay_order: true,
       is_received_and_pay: false,
     });
@@ -331,14 +358,16 @@ const Orders = () => {
   };
 
   const handlePayCargo = async (orderId) => {
-    // Show form to enter cargo payment details
     const order = orders.find(o => o.id === orderId);
+    // Pre-fill the field that matches the order's cargo cost currency
+    const costUzs = order?.cargo_cost_uzs > 0 ? order.cargo_cost_uzs : '';
+    const costUsd = order?.cargo_cost_usd > 0 ? order.cargo_cost_usd : '';
     setCargoFormData({
       orderId: orderId,
-      cargo_amount: order?.cargo_cost_uzs || order?.cargo_cost_usd || '',
-      cargo_currency: order?.cargo_payment_currency || 'UZS',
-      cargo_payment_type: 'cash',
-      cargo_is_paid: true,
+      uzs_cash: costUzs && order?.cargo_payment_currency !== 'USD' ? costUzs : '',
+      uzs_card: '',
+      usd_cash: costUsd && order?.cargo_payment_currency === 'USD' ? costUsd : '',
+      usd_card: '',
     });
     setShowCargoForm(true);
     setTimeout(() => cargoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -349,32 +378,34 @@ const Orders = () => {
     try {
       // Check if this is for paying order separately
       if (paymentFormData.is_pay_order) {
-        // Check balance before submitting
-        const required = parseFloat(paymentFormData.order_payment_amount);
-        const available = getAvailableBalance(paymentFormData.order_payment_currency, paymentFormData.order_payment_type);
-        if (available < required) {
-          showNotification(
-            `Insufficient balance. Available: ${available.toFixed(2)} ${paymentFormData.order_payment_currency} (${paymentFormData.order_payment_type}), Required: ${required.toFixed(2)} ${paymentFormData.order_payment_currency}. Please top up your balance first.`,
-            'error'
-          );
+        const uzs_cash = parseFloat(paymentFormData.uzs_cash) || 0;
+        const uzs_card = parseFloat(paymentFormData.uzs_card) || 0;
+        const usd_cash = parseFloat(paymentFormData.usd_cash) || 0;
+        const usd_card = parseFloat(paymentFormData.usd_card) || 0;
+        if (uzs_cash + uzs_card + usd_cash + usd_card === 0) {
+          showNotification('Please enter at least one payment amount.', 'error');
           return;
         }
-        // Pay for order separately
-        await api.post(`/orders/${paymentFormData.orderId}/pay_order/`, {
-          order_payment_amount: paymentFormData.order_payment_amount,
-          order_payment_currency: paymentFormData.order_payment_currency,
-          order_payment_type: paymentFormData.order_payment_type,
-        });
+        const checks = [
+          { amount: uzs_cash, currency: 'UZS', type: 'cash' },
+          { amount: uzs_card, currency: 'UZS', type: 'card' },
+          { amount: usd_cash, currency: 'USD', type: 'cash' },
+          { amount: usd_card, currency: 'USD', type: 'card' },
+        ];
+        for (const { amount, currency, type } of checks) {
+          if (amount > 0) {
+            const available = getAvailableBalance(currency, type);
+            if (available < amount) {
+              showNotification(`Insufficient ${currency} ${type} balance. Available: ${available.toFixed(2)} ${currency}, Required: ${amount.toFixed(2)} ${currency}.`, 'error');
+              return;
+            }
+          }
+        }
+        await api.post(`/orders/${paymentFormData.orderId}/pay_order/`, { uzs_cash, uzs_card, usd_cash, usd_card });
         setShowPaymentForm(false);
-        setPaymentFormData({
-          orderId: null,
-          order_payment_amount: '',
-          order_payment_currency: 'USD',
-          order_payment_type: 'card',
-          is_pay_order: false,
-          is_received_and_pay: false,
-        });
+        setPaymentFormData({ orderId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '', is_pay_order: false, is_received_and_pay: false });
         fetchOrders();
+        showNotification('Order payment completed successfully!', 'success');
         return;
       }
       
@@ -385,16 +416,30 @@ const Orders = () => {
       // Check if order is already paid - if so, don't send payment info again
       const isAlreadyPaid = order?.order_is_paid;
 
-      // Check balance before submitting (only if not already paid)
+      // Check balances before submitting (only if not already paid)
       if (!isAlreadyPaid) {
-        const required = parseFloat(order?.cost_total || 0);
-        const available = getAvailableBalance(paymentFormData.order_payment_currency, paymentFormData.order_payment_type);
-        if (available < required) {
-          showNotification(
-            `Insufficient balance. Available: ${available.toFixed(2)} ${paymentFormData.order_payment_currency} (${paymentFormData.order_payment_type}), Required: ${required.toFixed(2)} ${paymentFormData.order_payment_currency}. Please top up your balance first.`,
-            'error'
-          );
+        const uzs_cash = parseFloat(paymentFormData.uzs_cash) || 0;
+        const uzs_card = parseFloat(paymentFormData.uzs_card) || 0;
+        const usd_cash = parseFloat(paymentFormData.usd_cash) || 0;
+        const usd_card = parseFloat(paymentFormData.usd_card) || 0;
+        if (uzs_cash + uzs_card + usd_cash + usd_card === 0) {
+          showNotification('Please enter at least one payment amount.', 'error');
           return;
+        }
+        const balChecks = [
+          { amount: uzs_cash, currency: 'UZS', type: 'cash' },
+          { amount: uzs_card, currency: 'UZS', type: 'card' },
+          { amount: usd_cash, currency: 'USD', type: 'cash' },
+          { amount: usd_card, currency: 'USD', type: 'card' },
+        ];
+        for (const { amount, currency, type } of balChecks) {
+          if (amount > 0) {
+            const available = getAvailableBalance(currency, type);
+            if (available < amount) {
+              showNotification(`Insufficient ${currency} ${type} balance. Available: ${available.toFixed(2)} ${currency}, Required: ${amount.toFixed(2)} ${currency}.`, 'error');
+              return;
+            }
+          }
         }
       }
       
@@ -405,9 +450,10 @@ const Orders = () => {
       
       // Only send payment info if order is not already paid
       if (!isAlreadyPaid) {
-        updatePayload.order_payment_amount = paymentFormData.order_payment_amount;
-        updatePayload.order_payment_currency = paymentFormData.order_payment_currency;
-        updatePayload.order_payment_type = paymentFormData.order_payment_type;
+        updatePayload.uzs_cash = parseFloat(paymentFormData.uzs_cash) || 0;
+        updatePayload.uzs_card = parseFloat(paymentFormData.uzs_card) || 0;
+        updatePayload.usd_cash = parseFloat(paymentFormData.usd_cash) || 0;
+        updatePayload.usd_card = parseFloat(paymentFormData.usd_card) || 0;
         updatePayload.order_is_paid = true;
       }
       
@@ -436,36 +482,41 @@ const Orders = () => {
   const handleCargoPaymentSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (!cargoFormData.cargo_amount) {
-        showNotification('Please enter cargo amount', 'error');
+      const uzs_cash = parseFloat(cargoFormData.uzs_cash) || 0;
+      const uzs_card = parseFloat(cargoFormData.uzs_card) || 0;
+      const usd_cash = parseFloat(cargoFormData.usd_cash) || 0;
+      const usd_card = parseFloat(cargoFormData.usd_card) || 0;
+
+      if (uzs_cash + uzs_card + usd_cash + usd_card === 0) {
+        showNotification('Please enter at least one payment amount.', 'error');
         return;
       }
 
-      // Check balance before submitting
-      const required = parseFloat(cargoFormData.cargo_amount);
-      const available = getAvailableBalance(cargoFormData.cargo_currency, cargoFormData.cargo_payment_type);
-      if (available < required) {
-        showNotification(
-          `Insufficient balance. Available: ${available.toFixed(2)} ${cargoFormData.cargo_currency} (${cargoFormData.cargo_payment_type}), Required: ${required.toFixed(2)} ${cargoFormData.cargo_currency}. Please top up your balance first.`,
-          'error'
-        );
-        return;
+      // Client-side balance checks
+      const checks = [
+        { amount: uzs_cash, currency: 'UZS', type: 'cash' },
+        { amount: uzs_card, currency: 'UZS', type: 'card' },
+        { amount: usd_cash, currency: 'USD', type: 'cash' },
+        { amount: usd_card, currency: 'USD', type: 'card' },
+      ];
+      for (const { amount, currency, type } of checks) {
+        if (amount > 0) {
+          const available = getAvailableBalance(currency, type);
+          if (available < amount) {
+            showNotification(
+              `Insufficient ${currency} ${type} balance. Available: ${available.toFixed(2)} ${currency}, Required: ${amount.toFixed(2)} ${currency}. Please top up your balance first.`,
+              'error'
+            );
+            return;
+          }
+        }
       }
-      
+
       await api.post(`/orders/${cargoFormData.orderId}/pay_cargo/`, {
-        cargo_amount: cargoFormData.cargo_amount,
-        cargo_currency: cargoFormData.cargo_currency,
-        cargo_payment_type: cargoFormData.cargo_payment_type,
+        uzs_cash, uzs_card, usd_cash, usd_card,
       });
       setShowCargoForm(false);
-      setCargoFormData({
-        orderId: null,
-        cargo_amount: '',
-        cargo_currency: 'UZS',
-        cargo_payment_type: 'cash',
-        cargo_is_paid: false,
-      });
-      // Refresh orders to get updated payment status
+      setCargoFormData({ orderId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' });
       await fetchOrders();
       showNotification('Cargo payment processed successfully!', 'success');
     } catch (error) {
@@ -495,7 +546,13 @@ const Orders = () => {
 
   const handleMoveToInventoryFromOrder = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
-    
+
+    // Check if order payment has not been made
+    if (!order?.order_is_paid) {
+      showNotification('Cannot move to inventory: Order payment must be completed first. Please pay for the order before moving to inventory.', 'error');
+      return;
+    }
+
     // Check if cargo payment has not been made
     if (!order?.cargo_is_paid) {
       showNotification('Cannot move to inventory: Cargo payment must be completed first. Please pay for the cargo before moving to inventory.', 'error');
@@ -612,65 +669,45 @@ const Orders = () => {
           <h2>
             {paymentFormData.is_pay_order ? 'Pay for the Order' : paymentFormData.is_received_and_pay ? 'Mark Order as Received and Pay' : 'Move Order to Inventory & Pay'}
           </h2>
-          <p>Please enter payment details for this order:</p>
+          <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
+            Fill in any combination of payment methods. Leave a field empty or 0 if not used.
+          </p>
           <form onSubmit={handlePaymentSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Payment Amount ({paymentFormData.order_payment_currency})</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={paymentFormData.order_payment_amount}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, order_payment_amount: e.target.value })}
-                  required
-                />
-                <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
-                  Auto-filled from order total (adjustable)
-                </small>
+                <label>UZS — Cash</label>
+                <input type="number" step="0.01" min="0" placeholder="0"
+                  value={paymentFormData.uzs_cash}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs_cash: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>Payment Currency</label>
-                <select
-                  value={paymentFormData.order_payment_currency}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, order_payment_currency: e.target.value })}
-                  required
-                >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
-                </select>
+                <label>UZS — Card</label>
+                <input type="number" step="0.01" min="0" placeholder="0"
+                  value={paymentFormData.uzs_card}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs_card: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>Payment Type</label>
-                <select
-                  value={paymentFormData.order_payment_type}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, order_payment_type: e.target.value })}
-                  required
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                </select>
+                <label>USD — Cash</label>
+                <input type="number" step="0.01" min="0" placeholder="0"
+                  value={paymentFormData.usd_cash}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, usd_cash: e.target.value })} />
+              </div>
+              <div className="form-group">
+                <label>USD — Card</label>
+                <input type="number" step="0.01" min="0" placeholder="0"
+                  value={paymentFormData.usd_card}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, usd_card: e.target.value })} />
               </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
                 {paymentFormData.is_pay_order ? 'Pay for the Order' : paymentFormData.is_received_and_pay ? 'Mark as Received and Pay' : 'Confirm & Move to Inventory'}
               </button>
-              <button
-                type="button"
-                className="btn-edit"
+              <button type="button" className="btn-edit"
                 onClick={() => {
                   setShowPaymentForm(false);
-                  setPaymentFormData({
-                    orderId: null,
-                    order_payment_amount: '',
-                    order_payment_currency: 'USD',
-                    order_payment_type: 'card',
-                    is_pay_order: false,
-                    is_received_and_pay: false,
-                  });
-                }}
-              >
+                  setPaymentFormData({ orderId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '', is_pay_order: false, is_received_and_pay: false });
+                }}>
                 Cancel
               </button>
             </div>
@@ -733,40 +770,54 @@ const Orders = () => {
       {showCargoForm && (
         <div className="form-card" style={{ marginBottom: '20px' }} ref={cargoFormRef}>
           <h2>Pay for Cargo - Order #{cargoFormData.orderId}</h2>
+          <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
+            Fill in any combination of payment methods. Leave a field empty or 0 if not used.
+          </p>
           <form onSubmit={handleCargoPaymentSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Cargo Amount</label>
+                <label>UZS — Cash</label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={cargoFormData.cargo_amount}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, cargo_amount: e.target.value })}
-                  required
+                  placeholder="0"
+                  value={cargoFormData.uzs_cash}
+                  onChange={(e) => setCargoFormData({ ...cargoFormData, uzs_cash: e.target.value })}
                 />
               </div>
               <div className="form-group">
-                <label>Cargo Currency</label>
-                <select
-                  value={cargoFormData.cargo_currency}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, cargo_currency: e.target.value })}
-                  required
-                >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
-                </select>
+                <label>UZS — Card</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={cargoFormData.uzs_card}
+                  onChange={(e) => setCargoFormData({ ...cargoFormData, uzs_card: e.target.value })}
+                />
               </div>
               <div className="form-group">
-                <label>Payment Type</label>
-                <select
-                  value={cargoFormData.cargo_payment_type}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, cargo_payment_type: e.target.value })}
-                  required
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                </select>
+                <label>USD — Cash</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={cargoFormData.usd_cash}
+                  onChange={(e) => setCargoFormData({ ...cargoFormData, usd_cash: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>USD — Card</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={cargoFormData.usd_card}
+                  onChange={(e) => setCargoFormData({ ...cargoFormData, usd_card: e.target.value })}
+                />
               </div>
             </div>
             <div className="form-actions">
@@ -778,13 +829,7 @@ const Orders = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowCargoForm(false);
-                  setCargoFormData({
-                    orderId: null,
-                    cargo_amount: '',
-                    cargo_currency: 'UZS',
-                    cargo_payment_type: 'cash',
-                    cargo_is_paid: false,
-                  });
+                  setCargoFormData({ orderId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' });
                 }}
               >
                 Cancel
@@ -811,39 +856,188 @@ const Orders = () => {
                 </select>
               </div>
               <div className="form-group">
-                <label>Product</label>
+                <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
                 <select
-                  value={formData.product}
-                  onChange={(e) => {
-                    const selectedProductId = e.target.value;
-                    const selectedProduct = products.find(p => p.id === parseInt(selectedProductId));
-                    setFormData({
-                      ...formData,
-                      product: selectedProductId,
-                      cost_per_unit: selectedProduct ? selectedProduct.cost_price : '',
-                    });
-                  }}
-                  required
+                  value={formCategory}
+                  onChange={(e) => { setFormCategory(e.target.value); setProductSearch(''); setProductDropdownOpen(false); setFormData({ ...formData, product: '', cost_per_unit: '', supplier_country: '' }); }}
                 >
-                  <option value="">Select a product</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.brand} {product.model} - Size {product.size} ({product.color}) - ${product.cost_price}
-                    </option>
+                  <option value="">All Categories</option>
+                  {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
               </div>
+              <div className="form-group" ref={productDropdownRef} style={{ position: 'relative' }}>
+                <label>Product</label>
+                {(() => {
+                  const selectedProduct = products.find(p => p.id === parseInt(formData.product));
+                  const filteredByCategory = products.filter(p => !formCategory || p.category === formCategory);
+                  const searchLower = productSearch.toLowerCase();
+                  const filteredProducts = filteredByCategory.filter(p =>
+                    !productSearch ||
+                    `${p.brand} ${p.model} ${p.size} ${p.color} ${p.cost_price}`.toLowerCase().includes(searchLower)
+                  );
+                  return (
+                    <>
+                      <div
+                        onClick={() => { setProductDropdownOpen(o => !o); setProductSearch(''); }}
+                        style={{
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          background: 'white',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          minHeight: '38px',
+                          userSelect: 'none',
+                        }}
+                      >
+                        <span style={{ color: selectedProduct ? '#333' : '#999' }}>
+                          {selectedProduct
+                            ? `${selectedProduct.brand} ${selectedProduct.model} - Size ${selectedProduct.size} (${selectedProduct.color}) - $${selectedProduct.cost_price}`
+                            : 'Select a product'}
+                        </span>
+                        <span style={{ color: '#666', fontSize: '0.8em' }}>{productDropdownOpen ? '▲' : '▼'}</span>
+                      </div>
+                      {productDropdownOpen && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          background: 'white',
+                          border: '1px solid #ddd',
+                          borderRadius: '4px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          zIndex: 100,
+                          maxHeight: '280px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                        }}>
+                          <div style={{ padding: '8px', borderBottom: '1px solid #eee' }}>
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search product..."
+                              value={productSearch}
+                              onChange={(e) => setProductSearch(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                width: '100%',
+                                padding: '6px 10px',
+                                border: '1px solid #ccc',
+                                borderRadius: '4px',
+                                fontSize: '14px',
+                                boxSizing: 'border-box',
+                              }}
+                            />
+                          </div>
+                          <div style={{ overflowY: 'auto', flex: 1 }}>
+                            {filteredProducts.length === 0 ? (
+                              <div style={{ padding: '12px', color: '#999', textAlign: 'center', fontSize: '14px' }}>No products found</div>
+                            ) : (
+                              filteredProducts.map(product => (
+                                <div
+                                  key={product.id}
+                                  onClick={() => {
+                                    setIsNewCountry(false);
+                                    setFormData({
+                                      ...formData,
+                                      product: String(product.id),
+                                      cost_per_unit: product.cost_price,
+                                      supplier_country: product.supplier_country || '',
+                                    });
+                                    setProductDropdownOpen(false);
+                                    setProductSearch('');
+                                  }}
+                                  style={{
+                                    padding: '9px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    borderBottom: '1px solid #f0f0f0',
+                                    background: formData.product === String(product.id) ? '#e8f4fd' : 'white',
+                                    fontWeight: formData.product === String(product.id) ? 600 : 400,
+                                  }}
+                                  onMouseEnter={(e) => { if (formData.product !== String(product.id)) e.currentTarget.style.background = '#f5f5f5'; }}
+                                  onMouseLeave={(e) => { if (formData.product !== String(product.id)) e.currentTarget.style.background = 'white'; }}
+                                >
+                                  {product.brand} {product.model} — Size {product.size} ({product.color}) — ${product.cost_price}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
               <div className="form-group">
                 <label>Supplier Country</label>
-                <select
-                  value={formData.supplier_country}
-                  onChange={(e) => setFormData({ ...formData, supplier_country: e.target.value })}
-                  required
-                >
-                  <option value="germany">Germany</option>
-                  <option value="japan">Japan</option>
-                  <option value="korea">Korea</option>
-                </select>
+                {!isNewCountry ? (
+                  <select
+                    value={formData.supplier_country}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setIsNewCountry(true);
+                        setFormData({ ...formData, supplier_country: '' });
+                      } else {
+                        setFormData({ ...formData, supplier_country: e.target.value });
+                      }
+                    }}
+                    required
+                  >
+                    <option value="">Select a country</option>
+                    {(() => {
+                      const selectedProduct = products.find(p => p.id === parseInt(formData.product));
+                      const countryList = selectedProduct
+                        ? [...new Set(
+                            products
+                              .filter(p => p.brand === selectedProduct.brand && p.model === selectedProduct.model)
+                              .map(p => p.supplier_country)
+                              .filter(Boolean)
+                          )].sort()
+                        : [...new Set(products.map(p => p.supplier_country).filter(Boolean))].sort();
+                      return countryList.map(country => (
+                        <option key={country} value={country}>
+                          {country.charAt(0).toUpperCase() + country.slice(1)}
+                        </option>
+                      ));
+                    })()}
+                    <option value="__new__">+ Add new country...</option>
+                  </select>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="Enter country name"
+                      value={formData.supplier_country}
+                      onChange={(e) => setFormData({ ...formData, supplier_country: e.target.value })}
+                      required
+                      autoFocus
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsNewCountry(false);
+                        setFormData({ ...formData, supplier_country: '' });
+                      }}
+                      style={{
+                        padding: '0 10px',
+                        background: '#eee',
+                        border: '1px solid #ccc',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>eShop</label>
@@ -1066,6 +1260,10 @@ const Orders = () => {
                 onClick={() => {
                   setShowForm(false);
                   setIsNewEshop(false);
+                  setIsNewCountry(false);
+                  setFormCategory('');
+                  setProductSearch('');
+                  setProductDropdownOpen(false);
                   setFormData({
                     order_type: 'stock',
                     product: '',
@@ -1168,6 +1366,18 @@ const Orders = () => {
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h3>Filters</h3>
         <div className="form-grid">
+          <div className="form-group">
+            <label>Category</label>
+            <select
+              value={filters.category}
+              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+            >
+              <option value="">All Categories</option>
+              {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label>Brand</label>
             <select
@@ -1290,7 +1500,7 @@ const Orders = () => {
             <button
               type="button"
               className="btn-edit"
-              onClick={() => setFilters({ brand: '', model: '', size: '', color: '', order_type: '', status: '', year: '', month: '' })}
+              onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', order_type: '', status: '', year: '', month: '' })}
             >
               Clear Filters
             </button>
@@ -1304,6 +1514,8 @@ const Orders = () => {
           <thead>
             <tr>
               <th>ID</th>
+              <th>Category</th>
+              <th>Name</th>
               <th>Product</th>
               <th>Brand</th>
               <th>Model</th>
@@ -1314,8 +1526,14 @@ const Orders = () => {
               <th>Quantity</th>
               <th>Cost Per Unit</th>
               <th>Total Cost</th>
-              <th>Order Payment</th>
-              <th>Cargo Cost</th>
+              <th>Order UZS Cash</th>
+              <th>Order UZS Card</th>
+              <th>Order USD Cash</th>
+              <th>Order USD Card</th>
+              <th>Cargo UZS Cash</th>
+              <th>Cargo UZS Card</th>
+              <th>Cargo USD Cash</th>
+              <th>Cargo USD Card</th>
               <th>Status</th>
               <th>Created By</th>
               <th>Date</th>
@@ -1325,7 +1543,7 @@ const Orders = () => {
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="17" style={{ textAlign: 'center' }}>
+                <td colSpan="25" style={{ textAlign: 'center' }}>
                   No orders found
                 </td>
               </tr>
@@ -1333,6 +1551,8 @@ const Orders = () => {
               filteredOrders.map((order) => (
                 <tr key={order.id}>
                   <td>#{order.id}</td>
+                  <td>{order.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
+                  <td>{order.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
                     {order.product_detail
                       ? `${order.product_detail.brand} ${order.product_detail.model}`
@@ -1372,27 +1592,44 @@ const Orders = () => {
                   <td>${order.cost_per_unit}</td>
                   <td>${order.cost_total}</td>
                   <td>
-                    {order.order_is_paid ? (
-                      <span className={`status-badge ${order.order_payment_type === 'card' ? 'confirmed' : ''}`}>
-                        {order.order_payment_currency} {order.order_payment_type === 'cash' ? 'Cash' : 'Card'}
-                      </span>
-                    ) : (
-                      <span style={{ color: '#f44336' }}>Unpaid</span>
-                    )}
+                    {parseFloat(order.order_payment_uzs_cash) > 0
+                      ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>{parseFloat(order.order_payment_uzs_cash).toLocaleString()} UZS</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
                   </td>
                   <td>
-                    {order.cargo_cost_uzs > 0 ? (
-                      <span>{order.cargo_cost_uzs} UZS</span>
-                    ) : order.cargo_cost_usd > 0 ? (
-                      <span>{order.cargo_cost_usd} USD</span>
-                    ) : (
-                      '-'
-                    )}
-                    {order.cargo_cost_uzs > 0 || order.cargo_cost_usd > 0 ? (
-                      <span style={{ display: 'block', fontSize: '0.85em', color: order.cargo_is_paid ? '#4caf50' : '#f44336' }}>
-                        {order.cargo_is_paid ? 'Paid' : 'Unpaid'}
-                      </span>
-                    ) : null}
+                    {parseFloat(order.order_payment_uzs_card) > 0
+                      ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>{parseFloat(order.order_payment_uzs_card).toLocaleString()} UZS</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(order.order_payment_usd_cash) > 0
+                      ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>${parseFloat(order.order_payment_usd_cash).toFixed(2)}</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(order.order_payment_usd_card) > 0
+                      ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>${parseFloat(order.order_payment_usd_card).toFixed(2)}</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(order.cargo_payment_uzs_cash) > 0
+                      ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>{parseFloat(order.cargo_payment_uzs_cash).toLocaleString()} UZS</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(order.cargo_payment_uzs_card) > 0
+                      ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>{parseFloat(order.cargo_payment_uzs_card).toLocaleString()} UZS</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(order.cargo_payment_usd_cash) > 0
+                      ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>${parseFloat(order.cargo_payment_usd_cash).toFixed(2)}</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(order.cargo_payment_usd_card) > 0
+                      ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>${parseFloat(order.cargo_payment_usd_card).toFixed(2)}</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
                   </td>
                   <td>
                     <span className={`status-badge ${order.status}`}>
@@ -1416,6 +1653,10 @@ const Orders = () => {
                       <button
                         className="btn-status"
                         onClick={() => {
+                          if (!order.order_is_paid) {
+                            showNotification('Cannot move to inventory: Order payment must be completed first. Please pay for the order before moving to inventory.', 'error');
+                            return;
+                          }
                           if (!order.cargo_is_paid) {
                             showNotification('Cannot move to inventory: Cargo payment must be completed first. Please pay for the cargo before moving to inventory.', 'error');
                             return;

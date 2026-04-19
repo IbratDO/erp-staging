@@ -8,7 +8,9 @@ const Inventory = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [formCategory, setFormCategory] = useState('');
   const [filters, setFilters] = useState({
+    category: '',
     brand: '',
     model: '',
     size: '',
@@ -54,6 +56,11 @@ const Inventory = () => {
   const applyFilters = (inventoryList) => {
     let filtered = inventoryList;
     
+    if (filters.category) {
+      filtered = filtered.filter(item =>
+        item.product_detail?.category === filters.category
+      );
+    }
     if (filters.brand) {
       filtered = filtered.filter(item => 
         item.product_detail?.brand === filters.brand
@@ -114,6 +121,7 @@ const Inventory = () => {
     try {
       await api.post('/inventory/', formData);
       setShowForm(false);
+      setFormCategory('');
       setFormData({
         product: '',
         quantity: '',
@@ -146,6 +154,18 @@ const Inventory = () => {
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
+                <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
+                <select
+                  value={formCategory}
+                  onChange={(e) => { setFormCategory(e.target.value); setFormData({ ...formData, product: '' }); }}
+                >
+                  <option value="">All Categories</option>
+                  {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
                 <label>Product</label>
                 <select
                   value={formData.product}
@@ -153,11 +173,13 @@ const Inventory = () => {
                   required
                 >
                   <option value="">Select a product</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.brand} {product.model} - Size {product.size} ({product.color})
-                    </option>
-                  ))}
+                  {products
+                    .filter(p => !formCategory || p.category === formCategory)
+                    .map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.brand} {product.model} - Size {product.size} ({product.color})
+                      </option>
+                    ))}
                 </select>
               </div>
               <div className="form-group">
@@ -206,6 +228,18 @@ const Inventory = () => {
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h3>Filters</h3>
         <div className="form-grid">
+          <div className="form-group">
+            <label>Category</label>
+            <select
+              value={filters.category}
+              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+            >
+              <option value="">All Categories</option>
+              {[...new Set(inventory.map(i => i.product_detail?.category).filter(Boolean))].sort().map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
           <div className="form-group">
             <label>Brand</label>
             <select
@@ -317,7 +351,7 @@ const Inventory = () => {
             <button
               type="button"
               className="btn-edit"
-              onClick={() => setFilters({ brand: '', model: '', size: '', color: '', status: '', year: '', month: '' })}
+              onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', status: '', year: '', month: '' })}
             >
               Clear Filters
             </button>
@@ -330,6 +364,8 @@ const Inventory = () => {
         <table className="data-table">
           <thead>
             <tr>
+              <th>Category</th>
+              <th>Name</th>
               <th>Product</th>
               <th>Brand</th>
               <th>Model</th>
@@ -344,13 +380,15 @@ const Inventory = () => {
           <tbody>
             {filteredInventory.length === 0 ? (
               <tr>
-                <td colSpan="9" style={{ textAlign: 'center' }}>
+                <td colSpan="10" style={{ textAlign: 'center' }}>
                   No inventory items found
                 </td>
               </tr>
             ) : (
               filteredInventory.map((item) => (
                 <tr key={item.id}>
+                  <td>{item.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
+                  <td>{item.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
                     {item.product_detail
                       ? `${item.product_detail.brand} ${item.product_detail.model}`
