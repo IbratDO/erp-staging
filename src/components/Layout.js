@@ -34,6 +34,7 @@ const Layout = () => {
     { path: '/finance', label: 'Finance', icon: '💵' },
     { path: '/money-balance', label: 'Money Balance', icon: '💳' },
     { path: '/customers', label: 'Customers', icon: '👥' },
+    { path: '/dispatchers', label: 'Dispatchers', icon: '🚚' },
     { path: '/workers', label: 'Workers', icon: '👷' },
     { path: '/audit-logs', label: 'Audit Logs', icon: '📝' },
   ];

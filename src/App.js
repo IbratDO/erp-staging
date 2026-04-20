@@ -15,6 +15,7 @@ import Finance from './pages/Finance';
 import MoneyBalance from './pages/MoneyBalance';
 import AuditLogs from './pages/AuditLogs';
 import Customers from './pages/Customers';
+import Dispatchers from './pages/Dispatchers';
 import Workers from './pages/Workers';
 import './App.css';
 
@@ -44,6 +45,7 @@ function App() {
             <Route path="money-balance" element={<MoneyBalance />} />
             <Route path="audit-logs" element={<AuditLogs />} />
             <Route path="customers" element={<Customers />} />
+            <Route path="dispatchers" element={<Dispatchers />} />
             <Route path="workers" element={<Workers />} />
           </Route>
         </Routes>

@@ -1514,6 +1514,7 @@ const Orders = () => {
           <thead>
             <tr>
               <th>ID</th>
+              <th>Actions</th>
               <th>Category</th>
               <th>Name</th>
               <th>Product</th>
@@ -1537,7 +1538,6 @@ const Orders = () => {
               <th>Status</th>
               <th>Created By</th>
               <th>Date</th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1551,6 +1551,75 @@ const Orders = () => {
               filteredOrders.map((order) => (
                 <tr key={order.id}>
                   <td>#{order.id}</td>
+                  <td>
+                    {/* Show status update buttons based on current status */}
+                    {order.status === 'ordered' && (
+                      <button
+                        className="btn-status"
+                        onClick={() => handleStatusUpdate(order.id, 'received')}
+                        style={{ marginRight: '5px' }}
+                      >
+                        Mark as Received
+                      </button>
+                    )}
+                    {order.status === 'received' && order.order_type === 'stock' && (
+                      <button
+                        className="btn-status"
+                        onClick={() => {
+                          if (!order.order_is_paid) {
+                            showNotification('Cannot move to inventory: Order payment must be completed first. Please pay for the order before moving to inventory.', 'error');
+                            return;
+                          }
+                          if (!order.cargo_is_paid) {
+                            showNotification('Cannot move to inventory: Cargo payment must be completed first. Please pay for the cargo before moving to inventory.', 'error');
+                            return;
+                          }
+                          handleStatusUpdate(order.id, 'in_inventory');
+                        }}
+                        style={{ marginRight: '5px' }}
+                      >
+                        Move to Inventory
+                      </button>
+                    )}
+                    {/* Show payment buttons if payments haven't been made, regardless of status */}
+                    {!order.order_is_paid && (
+                      <button
+                        className="btn-status"
+                        onClick={() => handlePayOrder(order.id)}
+                        style={{ marginRight: '5px' }}
+                      >
+                        Pay for the Order
+                      </button>
+                    )}
+                    {!order.cargo_is_paid && (
+                      <button
+                        className="btn-status"
+                        onClick={() => handlePayCargo(order.id)}
+                        style={{ marginRight: '5px' }}
+                      >
+                        Pay for the Cargo
+                      </button>
+                    )}
+                    {/* On-demand order specific buttons when received */}
+                    {order.order_type === 'on_demand' && order.status === 'received' && !order.has_sale && (
+                      <>
+                        <button
+                          className="btn-status"
+                          onClick={() => handleSellProduct(order.id)}
+                          style={{ marginRight: '5px', backgroundColor: '#4caf50', color: 'white' }}
+                        >
+                          Sell the Product
+                        </button>
+                        <button
+                          className="btn-status"
+                          onClick={() => handleMoveToInventoryFromOrder(order.id)}
+                          style={{ backgroundColor: '#2196f3', color: 'white' }}
+                        >
+                          Move to Inventory
+                        </button>
+                      </>
+                    )}
+                  </td>
                   <td>{order.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>{order.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
@@ -1638,76 +1707,6 @@ const Orders = () => {
                   </td>
                   <td>{order.created_by_detail?.username || '-'}</td>
                   <td>{new Date(order.order_date || order.created_at).toLocaleString()}</td>
-                  <td>
-                    {/* Show status update buttons based on current status */}
-                    {order.status === 'ordered' && (
-                      <button
-                        className="btn-status"
-                        onClick={() => handleStatusUpdate(order.id, 'received')}
-                        style={{ marginRight: '5px' }}
-                      >
-                        Mark as Received
-                      </button>
-                    )}
-                    {order.status === 'received' && order.order_type === 'stock' && (
-                      <button
-                        className="btn-status"
-                        onClick={() => {
-                          if (!order.order_is_paid) {
-                            showNotification('Cannot move to inventory: Order payment must be completed first. Please pay for the order before moving to inventory.', 'error');
-                            return;
-                          }
-                          if (!order.cargo_is_paid) {
-                            showNotification('Cannot move to inventory: Cargo payment must be completed first. Please pay for the cargo before moving to inventory.', 'error');
-                            return;
-                          }
-                          handleStatusUpdate(order.id, 'in_inventory');
-                        }}
-                        style={{ marginRight: '5px' }}
-                      >
-                        Move to Inventory
-                      </button>
-                    )}
-                    
-                    {/* Show payment buttons if payments haven't been made, regardless of status */}
-                    {!order.order_is_paid && (
-                      <button
-                        className="btn-status"
-                        onClick={() => handlePayOrder(order.id)}
-                        style={{ marginRight: '5px' }}
-                      >
-                        Pay for the Order
-                      </button>
-                    )}
-                    {!order.cargo_is_paid && (
-                      <button
-                        className="btn-status"
-                        onClick={() => handlePayCargo(order.id)}
-                        style={{ marginRight: '5px' }}
-                      >
-                        Pay for the Cargo
-                      </button>
-                    )}
-                    {/* On-demand order specific buttons when received */}
-                    {order.order_type === 'on_demand' && order.status === 'received' && !order.has_sale && (
-                      <>
-                        <button
-                          className="btn-status"
-                          onClick={() => handleSellProduct(order.id)}
-                          style={{ marginRight: '5px', backgroundColor: '#4caf50', color: 'white' }}
-                        >
-                          Sell the Product
-                        </button>
-                        <button
-                          className="btn-status"
-                          onClick={() => handleMoveToInventoryFromOrder(order.id)}
-                          style={{ backgroundColor: '#2196f3', color: 'white' }}
-                        >
-                          Move to Inventory
-                        </button>
-                      </>
-                    )}
-                  </td>
                 </tr>
               ))
             )}

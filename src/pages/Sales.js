@@ -279,10 +279,12 @@ const Sales = () => {
     delivery_cost: '',
     tracking_number: '',
     dispatch_type: 'dostavshik',
+    dispatcher: '',
     is_paid: false,
     currency: 'UZS',
     payment_type: 'cash',
   });
+  const [dispatchersList, setDispatchersList] = useState([]);
   const [showDispatchForm, setShowDispatchForm] = useState(false);
   
   const [showSellReservedForm, setShowSellReservedForm] = useState(false);
@@ -337,6 +339,7 @@ const Sales = () => {
           delivery_cost: '',
           tracking_number: '',
           dispatch_type: 'dostavshik',
+          dispatcher: '',
           is_paid: false,
           currency: 'UZS',
           payment_type: 'cash',
@@ -415,11 +418,16 @@ const Sales = () => {
         usd_card: parseFloat(paymentFormData.usd_card) || 0,
       };
       
-      // Add dispatch payment info if needed
-      if (paymentFormData.dispatch_payment_needed && paymentFormData.dispatch_payment_amount) {
-        requestData.dispatch_payment_amount = paymentFormData.dispatch_payment_amount;
-        requestData.dispatch_payment_currency = paymentFormData.dispatch_payment_currency;
-        requestData.dispatch_payment_type = paymentFormData.dispatch_payment_type;
+      // Dispatch cost must be paid on completion when dispatch exists and was unpaid at dispatch time
+      if (paymentFormData.dispatch_payment_needed) {
+        const dAmt = parseFloat(String(paymentFormData.dispatch_payment_amount).replace(',', '.')) || 0;
+        if (dAmt <= 0) {
+          showNotification('Enter the delivery / dispatch payment amount (or check dispatch setup).', 'error');
+          return;
+        }
+        requestData.dispatch_payment_amount = dAmt;
+        requestData.dispatch_payment_currency = paymentFormData.dispatch_payment_currency || 'UZS';
+        requestData.dispatch_payment_type = paymentFormData.dispatch_payment_type || 'cash';
       }
       
       await api.post(`/sales/${paymentFormData.saleId}/update_status/`, requestData);
@@ -444,9 +452,33 @@ const Sales = () => {
     }
   };
 
+  useEffect(() => {
+    if (!showDispatchForm) return;
+    (async () => {
+      try {
+        const res = await api.get('/dispatchers/', { params: { is_active: true } });
+        setDispatchersList(res.data.results || res.data);
+      } catch (err) {
+        console.error('Error loading dispatchers:', err);
+        setDispatchersList([]);
+      }
+    })();
+  }, [showDispatchForm]);
+
   const handleDispatchSubmit = async (e) => {
     e.preventDefault();
     try {
+      if (dispatchFormData.dispatch_type === 'dostavshik') {
+        if (!dispatchFormData.dispatcher) {
+          showNotification('Select a dispatcher for Dostavshik delivery.', 'error');
+          return;
+        }
+        if (dispatchersList.length === 0) {
+          showNotification('No active dispatchers. Add one under Dispatchers.', 'error');
+          return;
+        }
+      }
+
       // First update sale status to dispatched
       await api.post(`/sales/${dispatchFormData.saleId}/update_status/`, { status: 'dispatched' });
       
@@ -462,6 +494,9 @@ const Sales = () => {
           tracking_number: dispatchFormData.tracking_number || '',
           status: 'dispatched',
         };
+        if (dispatchFormData.dispatch_type === 'dostavshik' && dispatchFormData.dispatcher) {
+          dispatchData.dispatcher = parseInt(dispatchFormData.dispatcher, 10);
+        }
         
         // Map payment_type and currency to delivery_payment_cash or delivery_payment_card
         if (dispatchFormData.currency === 'UZS') {
@@ -487,6 +522,7 @@ const Sales = () => {
         delivery_cost: '',
         tracking_number: '',
         dispatch_type: 'dostavshik',
+        dispatcher: '',
         is_paid: false,
         currency: 'UZS',
         payment_type: 'cash',
@@ -565,6 +601,7 @@ const Sales = () => {
           delivery_cost: '',
           tracking_number: '',
           dispatch_type: 'dostavshik',
+          dispatcher: '',
           is_paid: false,
           currency: 'UZS',
           payment_type: 'cash',
@@ -738,13 +775,40 @@ const Sales = () => {
                 <label>Dispatch Type</label>
                 <select
                   value={dispatchFormData.dispatch_type}
-                  onChange={(e) => setDispatchFormData({ ...dispatchFormData, dispatch_type: e.target.value })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDispatchFormData({
+                      ...dispatchFormData,
+                      dispatch_type: v,
+                      dispatcher: v === 'dostavshik' ? dispatchFormData.dispatcher : '',
+                    });
+                  }}
                   required
                 >
                   <option value="dostavshik">Dostavshik</option>
                   <option value="bts">BTS</option>
                 </select>
+                <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: '#555' }}>
+                  Dostavshik: assign your courier here. BTS: carrier logistics; delivery and payments are still tracked in the Dispatchers tab.
+                </p>
               </div>
+              {dispatchFormData.dispatch_type === 'dostavshik' && (
+                <div className="form-group">
+                  <label>Dispatcher *</label>
+                  <select
+                    value={dispatchFormData.dispatcher}
+                    onChange={(e) => setDispatchFormData({ ...dispatchFormData, dispatcher: e.target.value })}
+                    required
+                  >
+                    <option value="">Select dispatcher…</option>
+                    {dispatchersList.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="form-group">
                 <label>Currency</label>
                 <select
@@ -810,6 +874,9 @@ const Sales = () => {
                     saleId: null,
                     delivery_cost: '',
                     tracking_number: '',
+                    dispatch_type: 'dostavshik',
+                    dispatcher: '',
+                    is_paid: false,
                     currency: 'UZS',
                     payment_type: 'cash',
                   });
@@ -1684,6 +1751,7 @@ const Sales = () => {
           <thead>
             <tr>
               <th>ID</th>
+              <th>Actions</th>
               <th>Category</th>
               <th>Name</th>
               <th>Product</th>
@@ -1705,7 +1773,6 @@ const Sales = () => {
               <th>Salesman</th>
               <th>Status</th>
               <th>Date</th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -1719,57 +1786,6 @@ const Sales = () => {
               filteredSales.map((sale) => (
                 <tr key={sale.id}>
                   <td>#{sale.id}</td>
-                  <td>{sale.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>{sale.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>
-                    {sale.product_detail
-                      ? `${sale.product_detail.brand} ${sale.product_detail.model}`
-                      : `Product #${sale.product}`}
-                  </td>
-                  <td>{sale.product_detail?.brand || '-'}</td>
-                  <td>{sale.product_detail?.model || '-'}</td>
-                  <td><strong>{sale.product_detail?.size || '-'}</strong></td>
-                  <td><strong>{sale.product_detail?.color || '-'}</strong></td>
-                  <td>{sale.sale_type === 'bought_from_shop' ? 'Shop' : sale.sale_type === 'from_order' ? 'From Order' : sale.sale_type === 'reserved' ? 'Reserved' : 'Delivery'}</td>
-                  <td>
-                    {sale.package_type ? (
-                      <span>
-                        {sale.package_type} {sale.package_cost_per_unit ? `($${sale.package_cost_per_unit.toFixed(2)})` : ''}
-                      </span>
-                    ) : '-'}
-                  </td>
-                  <td>{sale.quantity}</td>
-                  <td>${sale.selling_price}</td>
-                  <td>${sale.total_amount}</td>
-                  <td>
-                    {parseFloat(sale.payment_uzs_cash) > 0
-                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>{parseFloat(sale.payment_uzs_cash).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(sale.payment_uzs_card) > 0
-                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>{parseFloat(sale.payment_uzs_card).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(sale.payment_usd_cash) > 0
-                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>${parseFloat(sale.payment_usd_cash).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(sale.payment_usd_card) > 0
-                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>${parseFloat(sale.payment_usd_card).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>{sale.customer_detail?.name || '-'}</td>
-                  <td>{sale.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
-                  <td>{sale.salesman_detail?.username || '-'}</td>
-                  <td>
-                    <span className={`status-badge ${sale.status}`}>
-                      {sale.status}
-                    </span>
-                  </td>
-                  <td>{new Date(sale.sale_date).toLocaleString()}</td>
                   <td>
                     {sale.status === 'pending' && sale.sale_type === 'delivery' && (
                       <button
@@ -1833,6 +1849,57 @@ const Sales = () => {
                       </span>
                     )}
                   </td>
+                  <td>{sale.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
+                  <td>{sale.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
+                  <td>
+                    {sale.product_detail
+                      ? `${sale.product_detail.brand} ${sale.product_detail.model}`
+                      : `Product #${sale.product}`}
+                  </td>
+                  <td>{sale.product_detail?.brand || '-'}</td>
+                  <td>{sale.product_detail?.model || '-'}</td>
+                  <td><strong>{sale.product_detail?.size || '-'}</strong></td>
+                  <td><strong>{sale.product_detail?.color || '-'}</strong></td>
+                  <td>{sale.sale_type === 'bought_from_shop' ? 'Shop' : sale.sale_type === 'from_order' ? 'From Order' : sale.sale_type === 'reserved' ? 'Reserved' : 'Delivery'}</td>
+                  <td>
+                    {sale.package_type ? (
+                      <span>
+                        {sale.package_type} {sale.package_cost_per_unit ? `($${sale.package_cost_per_unit.toFixed(2)})` : ''}
+                      </span>
+                    ) : '-'}
+                  </td>
+                  <td>{sale.quantity}</td>
+                  <td>${sale.selling_price}</td>
+                  <td>${sale.total_amount}</td>
+                  <td>
+                    {parseFloat(sale.payment_uzs_cash) > 0
+                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>{parseFloat(sale.payment_uzs_cash).toLocaleString()} UZS</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(sale.payment_uzs_card) > 0
+                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>{parseFloat(sale.payment_uzs_card).toLocaleString()} UZS</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(sale.payment_usd_cash) > 0
+                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>${parseFloat(sale.payment_usd_cash).toFixed(2)}</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>
+                    {parseFloat(sale.payment_usd_card) > 0
+                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>${parseFloat(sale.payment_usd_card).toFixed(2)}</span>
+                      : <span style={{ color: '#bbb' }}>—</span>}
+                  </td>
+                  <td>{sale.customer_detail?.name || '-'}</td>
+                  <td>{sale.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
+                  <td>{sale.salesman_detail?.username || '-'}</td>
+                  <td>
+                    <span className={`status-badge ${sale.status}`}>
+                      {sale.status}
+                    </span>
+                  </td>
+                  <td>{new Date(sale.sale_date).toLocaleString()}</td>
                 </tr>
               ))
             )}

@@ -206,6 +206,37 @@ const Returns = () => {
         showNotification('Please enter at least one refund amount.', 'error');
         return;
       }
+      const balanceResponse = await api.get('/cash-balance/');
+      const balanceList = balanceResponse.data.results || balanceResponse.data;
+      const getBalNow = (currency, paymentType) => {
+        const balanceTypeMap = {
+          'USD-cash': 'usd_cash',
+          'UZS-cash': 'uzs_cash',
+          'USD-card': 'usd_card',
+          'UZS-card': 'uzs_card',
+        };
+        const bt = balanceTypeMap[`${currency}-${paymentType}`];
+        const found = balanceList.find(b => b.balance_type === bt);
+        return found ? parseFloat(found.balance) : 0;
+      };
+      const balChecks = [
+        { amount: uzs_cash, currency: 'UZS', type: 'cash' },
+        { amount: uzs_card, currency: 'UZS', type: 'card' },
+        { amount: usd_cash, currency: 'USD', type: 'cash' },
+        { amount: usd_card, currency: 'USD', type: 'card' },
+      ];
+      for (const { amount, currency, type } of balChecks) {
+        if (amount > 0) {
+          const available = getBalNow(currency, type);
+          if (available < amount) {
+            showNotification(
+              `Insufficient ${currency} ${type} balance for this refund. Available: ${available.toFixed(2)} ${currency}, Required: ${amount.toFixed(2)} ${currency}.`,
+              'error'
+            );
+            return;
+          }
+        }
+      }
       await api.post(`/returns/${refundFormData.returnId}/mark_refunded/`, {
         uzs_cash, uzs_card, usd_cash, usd_card,
       });
@@ -587,6 +618,7 @@ const Returns = () => {
           <thead>
             <tr>
               <th>ID</th>
+              <th>Actions</th>
               <th>Category</th>
               <th>Name</th>
               <th>Product</th>
@@ -607,7 +639,6 @@ const Returns = () => {
               <th>Notes</th>
               <th>Processed By</th>
               <th>Date</th>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -621,6 +652,16 @@ const Returns = () => {
               filteredReturns.map((returnItem) => (
                 <tr key={returnItem.id}>
                   <td>#{returnItem.id}</td>
+                  <td>
+                    {returnItem.refund_status === 'not_refunded' && (
+                      <button
+                        className="btn-status"
+                        onClick={() => handleMarkRefunded(returnItem.id)}
+                      >
+                        Mark as Refunded
+                      </button>
+                    )}
+                  </td>
                   <td>{returnItem.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>{returnItem.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
@@ -667,16 +708,6 @@ const Returns = () => {
                   <td>{returnItem.notes || <span style={{ color: '#bbb' }}>—</span>}</td>
                   <td>{returnItem.processed_by_detail?.username || '-'}</td>
                   <td>{new Date(returnItem.return_date).toLocaleString()}</td>
-                  <td>
-                    {returnItem.refund_status === 'not_refunded' && (
-                      <button
-                        className="btn-status"
-                        onClick={() => handleMarkRefunded(returnItem.id)}
-                      >
-                        Mark as Refunded
-                      </button>
-                    )}
-                  </td>
                 </tr>
               ))
             )}
