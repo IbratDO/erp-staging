@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
 import './TablePage.css';
 
@@ -127,6 +127,22 @@ const Returns = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
+  const returnColumnTotals = useMemo(() => {
+    let quantity = 0;
+    let uzsCash = 0;
+    let uzsCard = 0;
+    let usdCash = 0;
+    let usdCard = 0;
+    for (const r of filteredReturns) {
+      quantity += parseInt(r.quantity, 10) || 0;
+      uzsCash += parseFloat(r.refund_uzs_cash) || 0;
+      uzsCard += parseFloat(r.refund_uzs_card) || 0;
+      usdCash += parseFloat(r.refund_usd_cash) || 0;
+      usdCard += parseFloat(r.refund_usd_card) || 0;
+    }
+    return { quantity, uzsCash, uzsCard, usdCash, usdCard };
+  }, [filteredReturns]);
+
   const fetchProducts = async () => {
     try {
       const response = await api.get('/products/');
@@ -156,6 +172,10 @@ const Returns = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!String(formData.notes || '').trim()) {
+      showNotification('Please enter notes.', 'error');
+      return;
+    }
     if (formData.sale) {
       const selectedSale = sales.find(s => s.id === parseInt(formData.sale));
       if (selectedSale && parseInt(formData.quantity) > selectedSale.quantity) {
@@ -164,7 +184,19 @@ const Returns = () => {
       }
     }
     try {
-      await api.post('/returns/', formData);
+      const payload = {
+        product: parseInt(formData.product, 10),
+        quantity: parseInt(formData.quantity, 10),
+        reason: formData.reason,
+        notes: String(formData.notes).trim(),
+        sale: formData.sale ? parseInt(formData.sale, 10) : null,
+        customer: formData.customer ? parseInt(formData.customer, 10) : null,
+      };
+      if (Number.isNaN(payload.product) || Number.isNaN(payload.quantity)) {
+        showNotification('Please select a product and enter a valid quantity.', 'error');
+        return;
+      }
+      await api.post('/returns/', payload);
       showNotification('Return created successfully!', 'success');
       setShowForm(false);
       setFormCategory('');
@@ -179,7 +211,16 @@ const Returns = () => {
       fetchReturns();
     } catch (error) {
       console.error('Error creating return:', error);
-      showNotification(error.response?.data?.quantity?.[0] || error.response?.data?.error || 'Error creating return', 'error');
+      const d = error.response?.data;
+      const msg =
+        (Array.isArray(d?.quantity) && d.quantity[0]) ||
+        (typeof d?.quantity === 'string' && d.quantity) ||
+        d?.detail ||
+        d?.error ||
+        (typeof d === 'string' ? d : null) ||
+        error.message ||
+        'Error creating return';
+      showNotification(typeof msg === 'string' ? msg : 'Error creating return', 'error');
     }
   };
 
@@ -241,7 +282,13 @@ const Returns = () => {
         uzs_cash, uzs_card, usd_cash, usd_card,
       });
       setShowRefundForm(false);
-      setRefundFormData({ returnId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' });
+      setRefundFormData({
+        returnId: null,
+        uzs_cash: '',
+        uzs_card: '',
+        usd_cash: '',
+        usd_card: '',
+      });
       fetchReturns();
     } catch (error) {
       console.error('Error marking return as refunded:', error);
@@ -414,11 +461,12 @@ const Returns = () => {
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes</label>
+                <label>Notes *</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows="3"
+                  required
                 />
               </div>
             </div>
@@ -465,9 +513,23 @@ const Returns = () => {
               </div>
             </div>
             <div className="form-actions">
-              <button type="submit" className="btn-primary">Mark as Refunded</button>
-              <button type="button" className="btn-edit"
-                onClick={() => { setShowRefundForm(false); setRefundFormData({ returnId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' }); }}>
+              <button type="submit" className="btn-primary">
+                Mark as Refunded
+              </button>
+              <button
+                type="button"
+                className="btn-edit"
+                onClick={() => {
+                  setShowRefundForm(false);
+                  setRefundFormData({
+                    returnId: null,
+                    uzs_cash: '',
+                    uzs_card: '',
+                    usd_cash: '',
+                    usd_card: '',
+                  });
+                }}
+              >
                 Cancel
               </button>
             </div>
@@ -477,10 +539,10 @@ const Returns = () => {
 
       {/* Filters */}
       {!showForm && !showRefundForm && (
-        <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h3>Filters</h3>
-        <div className="form-grid">
-          <div className="form-group">
+        <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
+          <h3 className="filter-card__title">Filters</h3>
+        <div className="filter-toolbar">
+          <div className="filter-field">
             <label>Category</label>
             <select
               value={filters.category}
@@ -492,7 +554,7 @@ const Returns = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Brand</label>
             <select
               value={filters.brand}
@@ -506,7 +568,7 @@ const Returns = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Model</label>
             <select
               value={filters.model}
@@ -520,7 +582,7 @@ const Returns = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Size</label>
             <select
               value={filters.size}
@@ -534,7 +596,7 @@ const Returns = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Color</label>
             <select
               value={filters.color}
@@ -548,7 +610,7 @@ const Returns = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Reason</label>
             <select
               value={filters.reason}
@@ -562,7 +624,7 @@ const Returns = () => {
               <option value="other">Other</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Year</label>
             <select
               value={filters.year}
@@ -579,7 +641,7 @@ const Returns = () => {
               })}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Month</label>
             <select
               value={filters.month}
@@ -600,13 +662,13 @@ const Returns = () => {
               <option value="12">December</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-toolbar__actions">
             <button
               type="button"
               className="btn-edit"
               onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', reason: '', year: '', month: '' })}
             >
-              Clear Filters
+              Clear all
             </button>
           </div>
         </div>
@@ -614,6 +676,7 @@ const Returns = () => {
       )}
 
       <div className="table-card">
+        <div className="data-table-scroll">
         <table className="data-table">
           <thead>
             <tr>
@@ -712,7 +775,38 @@ const Returns = () => {
               ))
             )}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="12" style={{ textAlign: 'right' }}>
+                Total
+              </td>
+              <td style={{ fontWeight: 600 }}>{returnColumnTotals.quantity.toLocaleString()}</td>
+              <td>—</td>
+              <td>
+                {returnColumnTotals.uzsCash > 0
+                  ? `${returnColumnTotals.uzsCash.toLocaleString()} UZS`
+                  : '—'}
+              </td>
+              <td>
+                {returnColumnTotals.uzsCard > 0
+                  ? `${returnColumnTotals.uzsCard.toLocaleString()} UZS`
+                  : '—'}
+              </td>
+              <td>
+                {returnColumnTotals.usdCash > 0
+                  ? `$${returnColumnTotals.usdCash.toFixed(2)}`
+                  : '—'}
+              </td>
+              <td>
+                {returnColumnTotals.usdCard > 0
+                  ? `$${returnColumnTotals.usdCard.toFixed(2)}`
+                  : '—'}
+              </td>
+              <td colSpan="4">—</td>
+            </tr>
+          </tfoot>
         </table>
+        </div>
       </div>
     </div>
   );

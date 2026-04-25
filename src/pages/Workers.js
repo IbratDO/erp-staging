@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
+import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat';
 import './TablePage.css';
 
 const Workers = () => {
@@ -77,6 +78,10 @@ const Workers = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!String(formData.notes || '').trim()) {
+      alert('Please enter notes.');
+      return;
+    }
     try {
       if (formData.id) {
         await api.put(`/workers/${formData.id}/`, formData);
@@ -150,11 +155,12 @@ const Workers = () => {
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes</label>
+                <label>Notes *</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows="3"
+                  required
                 />
               </div>
             </div>
@@ -238,6 +244,16 @@ const Workers = () => {
               ))
             )}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="3" style={{ textAlign: 'right' }}>
+                Total
+              </td>
+              <td colSpan="2" style={{ textAlign: 'right' }}>
+                {workers.length} {workers.length === 1 ? 'worker' : 'workers'}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
@@ -321,31 +337,22 @@ const Workers = () => {
                     {workerPerformance.statistics.pending_sales || 0}
                   </div>
                 </div>
-                <div className="metric-card">
+                <div className="metric-card" title="May mix UZS and USD">
                   <div className="metric-label">Total Amount (Completed)</div>
                   <div className="metric-value" style={{ color: '#27ae60' }}>
-                    ${parseFloat(workerPerformance.statistics.total_amount || 0).toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatPlainAmount(workerPerformance.statistics.total_amount || 0)}
                   </div>
                 </div>
-                <div className="metric-card">
+                <div className="metric-card" title="May mix UZS and USD">
                   <div className="metric-label">Reserved Amount</div>
                   <div className="metric-value" style={{ color: '#9b59b6' }}>
-                    ${parseFloat(workerPerformance.statistics.reserved_amount || 0).toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatPlainAmount(workerPerformance.statistics.reserved_amount || 0)}
                   </div>
                 </div>
-                <div className="metric-card">
+                <div className="metric-card" title="May mix UZS and USD">
                   <div className="metric-label">Deposits Received</div>
                   <div className="metric-value" style={{ color: '#9b59b6' }}>
-                    ${parseFloat(workerPerformance.statistics.reserved_deposits || 0).toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    {formatPlainAmount(workerPerformance.statistics.reserved_deposits || 0)}
                   </div>
                 </div>
               </div>
@@ -382,8 +389,8 @@ const Workers = () => {
                             : `Product #${sale.product}`}
                         </td>
                         <td>{sale.quantity}</td>
-                        <td>${sale.selling_price}</td>
-                        <td>${sale.total_amount}</td>
+                        <td>{formatDisplayAmount(sale.selling_price, sale.sale_currency || 'USD')}</td>
+                        <td>{formatDisplayAmount(sale.total_amount, sale.sale_currency || 'USD')}</td>
                         <td>
                           {sale.sale_type === 'bought_from_shop' ? 'Shop' :
                            sale.sale_type === 'from_order' ? 'From Order' : 'Delivery'}
@@ -484,10 +491,7 @@ const Workers = () => {
                       </span>
                     </td>
                     <td style={{ fontWeight: '600', color: '#e74c3c' }}>
-                      -${parseFloat(record.amount).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      -{formatDisplayAmount(record.amount, record.currency || 'USD')}
                     </td>
                     <td>{record.currency || 'USD'}</td>
                     <td>

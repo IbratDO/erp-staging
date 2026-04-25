@@ -1,6 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../utils/api';
+import SaleCompletePayForm from '../components/SaleCompletePayForm';
 import './TablePage.css';
+
+const canCompleteAndPay = (sale) => !!(sale && sale.status === 'dispatched');
+
+/** Synthetic “partner” row for BTS (company) dispatches — not a DB dispatcher id. */
+const BTS_ROW_ID = 'bts';
 
 const DISPATCH_STATUSES = [
   { value: '', label: 'All statuses' },
@@ -38,6 +44,15 @@ const Dispatchers = () => {
   const [selectedDispatcher, setSelectedDispatcher] = useState(null);
   const [dispatcherDetail, setDispatcherDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [completePaySale, setCompletePaySale] = useState(null);
+  const [notification, setNotification] = useState({ show: false, message: '', type: 'info' });
+
+  const showNotification = (message, type = 'info') => {
+    setNotification({ show: true, message, type });
+    window.setTimeout(() => {
+      setNotification((n) => (n.show ? { show: false, message: '', type: 'info' } : n));
+    }, 4000);
+  };
 
   const [formData, setFormData] = useState({
     name: '',
@@ -48,7 +63,19 @@ const Dispatchers = () => {
   const [filters, setFilters] = useState({
     status: '',
     dispatcher: '',
+    serviceType: '',
   });
+  const [btsLoadCount, setBtsLoadCount] = useState(null);
+
+  const allDeliveriesCostTotals = useMemo(() => {
+    let uzs = 0;
+    let usd = 0;
+    for (const row of dispatches) {
+      uzs += parseFloat(row.delivery_cost_uzs) || 0;
+      usd += parseFloat(row.delivery_cost) || 0;
+    }
+    return { uzs, usd };
+  }, [dispatches]);
 
   const fetchDispatchers = useCallback(async () => {
     try {
@@ -75,6 +102,7 @@ const Dispatchers = () => {
       const params = {};
       if (filters.status) params.status = filters.status;
       if (filters.dispatcher) params.dispatcher = filters.dispatcher;
+      if (filters.serviceType) params.dispatch_type = filters.serviceType;
       const res = await api.get('/dispatches/', { params });
       const list = res.data.results || res.data;
       setDispatches(list);
@@ -83,7 +111,7 @@ const Dispatchers = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters.status, filters.dispatcher]);
+  }, [filters.status, filters.dispatcher, filters.serviceType]);
 
   const loadDispatcherDetail = useCallback(async (dispatcher) => {
     setDetailLoading(true);
@@ -99,11 +127,52 @@ const Dispatchers = () => {
     }
   }, []);
 
+  const loadBtsDetail = useCallback(async () => {
+    setDetailLoading(true);
+    setDispatcherDetail(null);
+    try {
+      const res = await api.get('/dispatchers/bts-deliveries/');
+      setDispatcherDetail(res.data);
+      if (res.data?.summary?.total_dispatches != null) {
+        setBtsLoadCount(res.data.summary.total_dispatches);
+      }
+    } catch (e) {
+      console.error('Error loading BTS deliveries:', e);
+      alert('Could not load BTS deliveries');
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
+  const fetchBtsCount = useCallback(async () => {
+    try {
+      const res = await api.get('/dispatches/', { params: { dispatch_type: 'bts', page_size: 1 } });
+      if (typeof res.data.count === 'number') {
+        setBtsLoadCount(res.data.count);
+        return;
+      }
+      const list = res.data.results || res.data;
+      setBtsLoadCount(Array.isArray(list) ? list.length : 0);
+    } catch (e) {
+      console.error('Error counting BTS dispatches:', e);
+    }
+  }, []);
+
   const afterDispatchMutation = useCallback(async () => {
     await fetchDispatches();
     await fetchDispatchers();
     await fetchActiveDispatchers();
-    if (selectedDispatcher) {
+    if (selectedDispatcher?.isBts) {
+      try {
+        const res = await api.get('/dispatchers/bts-deliveries/');
+        setDispatcherDetail(res.data);
+        if (res.data?.summary?.total_dispatches != null) {
+          setBtsLoadCount(res.data.summary.total_dispatches);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    } else if (selectedDispatcher && !selectedDispatcher.isBts) {
       try {
         const res = await api.get(`/dispatchers/${selectedDispatcher.id}/deliveries/`);
         setDispatcherDetail(res.data);
@@ -111,7 +180,8 @@ const Dispatchers = () => {
         console.error(e);
       }
     }
-  }, [selectedDispatcher, fetchDispatches, fetchDispatchers, fetchActiveDispatchers]);
+    await fetchBtsCount();
+  }, [selectedDispatcher, fetchDispatches, fetchDispatchers, fetchActiveDispatchers, fetchBtsCount]);
 
   useEffect(() => {
     fetchDispatchers();
@@ -122,18 +192,50 @@ const Dispatchers = () => {
     fetchDispatches();
   }, [fetchDispatches]);
 
+  useEffect(() => {
+    fetchBtsCount();
+  }, [fetchBtsCount]);
+
   const handleRowSelect = (d) => {
+    if (d.is_bts_channel) {
+      setSelectedDispatcher({ ...d, isBts: true });
+      loadBtsDetail();
+      return;
+    }
     setSelectedDispatcher(d);
     loadDispatcherDetail(d);
   };
 
+  /** When the BTS DB row was deleted, keep a synthetic row to open the BTS workspace. */
+  const handleSyntheticBtsRowSelect = () => {
+    setSelectedDispatcher({ id: BTS_ROW_ID, name: 'BTS', isBts: true, synthetic: true });
+    loadBtsDetail();
+  };
+
+  const handleRestoreBtsPartner = async () => {
+    try {
+      await api.post('/dispatchers/ensure-bts/');
+      await fetchDispatchers();
+      await fetchActiveDispatchers();
+      await fetchBtsCount();
+      showNotification('BTS partner row restored.', 'success');
+    } catch (e) {
+      console.error(e);
+      showNotification(e.response?.data?.detail || 'Could not restore BTS row', 'error');
+    }
+  };
+
   const handleDispatcherSubmit = async (e) => {
     e.preventDefault();
+    if (!String(formData.notes || '').trim()) {
+      alert('Please enter notes.');
+      return;
+    }
     try {
       const payload = {
         name: formData.name,
         telephone: formData.telephone || '',
-        notes: formData.notes || '',
+        notes: String(formData.notes).trim(),
         is_active: formData.is_active,
       };
       if (formData.id) {
@@ -163,7 +265,11 @@ const Dispatchers = () => {
   };
 
   const handleDeleteDispatcher = async (id) => {
-    if (!window.confirm('Delete this dispatcher? Assigned dispatches will be unassigned.')) return;
+    const row = dispatchers.find((x) => x.id === id);
+    const message = row?.is_bts_channel
+      ? 'Delete the BTS partner line? BTS (company) dispatches stay in the system; you can add this row back with “Restore BTS” in the Actions column.'
+      : 'Delete this dispatcher? Assigned dispatches will be unassigned.';
+    if (!window.confirm(message)) return;
     try {
       await api.delete(`/dispatchers/${id}/`);
       if (selectedDispatcher?.id === id) {
@@ -173,6 +279,7 @@ const Dispatchers = () => {
       fetchDispatchers();
       fetchActiveDispatchers();
       fetchDispatches();
+      fetchBtsCount();
     } catch (err) {
       console.error(err);
       alert(err.response?.data?.detail || 'Cannot delete (may be in use). Try deactivating instead.');
@@ -184,19 +291,99 @@ const Dispatchers = () => {
     await afterDispatchMutation();
   };
 
-  const postDispatchStatus = async (id, status, notes = '') => {
-    await api.post(`/dispatches/${id}/update_status/`, { status, notes });
+  const postDispatchStatus = async (id, status, notes) => {
+    const t = String(notes ?? '').trim();
+    if (!t) {
+      showNotification('Notes are required for dispatch status changes.', 'error');
+      return;
+    }
+    await api.post(`/dispatches/${id}/update_status/`, { status, notes: t });
     await afterDispatchMutation();
   };
+
+  const promptDispatchStatusChange = async (row, newStatus) => {
+    const n = window.prompt('Enter notes (required) for this status change:');
+    if (n === null) return;
+    if (!String(n).trim()) {
+      showNotification('Notes are required for status changes.', 'error');
+      return;
+    }
+    try {
+      await postDispatchStatus(row.id, newStatus, n);
+    } catch (err) {
+      console.error(err);
+      showNotification(
+        err.response?.data?.detail || err.response?.data?.error || err.response?.data?.notes || 'Could not update status',
+        'error',
+      );
+    }
+  };
+
+  const openCompleteAndPay = async (sale) => {
+    if (!sale?.id) return;
+    try {
+      const res = await api.get(`/sales/${sale.id}/`);
+      setCompletePaySale(res.data);
+    } catch (e) {
+      console.error(e);
+      showNotification(e.response?.data?.detail || e.response?.data?.error || 'Could not load sale', 'error');
+    }
+  };
+
+  const detailDeliveriesCostTotals = useMemo(() => {
+    const rows = dispatcherDetail?.dispatches || [];
+    let uzs = 0;
+    let usd = 0;
+    for (const row of rows) {
+      uzs += parseFloat(row.delivery_cost_uzs) || 0;
+      usd += parseFloat(row.delivery_cost) || 0;
+    }
+    return { uzs, usd };
+  }, [dispatcherDetail]);
+
+  const detailDispatches = dispatcherDetail?.dispatches || [];
 
   if (loading && dispatches.length === 0) {
     return <div className="page-container">Loading...</div>;
   }
 
-  const detailDispatches = dispatcherDetail?.dispatches || [];
+  const btsFromApi = dispatchers.find((d) => d.is_bts_channel);
+  const partnersWithoutBts = dispatchers.filter((d) => !d.is_bts_channel);
 
   return (
     <div className="page-container">
+      {notification.show && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '80px',
+            right: '20px',
+            zIndex: 9999,
+            padding: '12px 20px',
+            borderRadius: '8px',
+            backgroundColor:
+              notification.type === 'success' ? '#4caf50' : notification.type === 'error' ? '#f44336' : '#2196f3',
+            color: 'white',
+            maxWidth: 'min(90vw, 400px)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          }}
+        >
+          {notification.message}
+        </div>
+      )}
+
+      {completePaySale && (
+        <SaleCompletePayForm
+          sale={completePaySale}
+          onClose={() => setCompletePaySale(null)}
+          onSuccess={async () => {
+            setCompletePaySale(null);
+            await afterDispatchMutation();
+          }}
+          showNotification={showNotification}
+        />
+      )}
+
       <div className="page-header">
         <h1>Dispatchers</h1>
         <button
@@ -236,11 +423,12 @@ const Dispatchers = () => {
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes</label>
+                <label>Notes *</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows={3}
+                  required
                 />
               </div>
               <div className="form-group">
@@ -267,8 +455,10 @@ const Dispatchers = () => {
         <div className="table-card" style={{ flex: selectedDispatcher ? '0 0 42%' : '1', minWidth: 0 }}>
           <h2>Delivery partners</h2>
           <p style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#555' }}>
-            Click a row to see every shipment assigned to that dispatcher: products, costs, status, and timeline. Sales →
-            Dostavshik dispatches created there appear here when a dispatcher is assigned.
+            The <strong>BTS</strong> line is a normal partner record (company delivery): you can <strong>Delete</strong>{' '}
+            it like any other name. BTS <em>dispatches</em> still use type BTS; use <strong>Restore BTS</strong> if the
+            row is missing. Named partners are Dostavshik couriers; both appear in the workspace and in the right-hand
+            detail.
           </p>
           <table className="data-table">
             <thead>
@@ -281,26 +471,110 @@ const Dispatchers = () => {
               </tr>
             </thead>
             <tbody>
-              {dispatchers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ textAlign: 'center' }}>
-                    No dispatchers yet — add one above.
+              {btsFromApi ? (
+                <tr
+                  key={`bts-${btsFromApi.id}`}
+                  onClick={() => handleRowSelect(btsFromApi)}
+                  style={{
+                    cursor: 'pointer',
+                    backgroundColor:
+                      selectedDispatcher?.isBts && selectedDispatcher?.id === btsFromApi.id
+                        ? '#e8f5e9'
+                        : 'transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor =
+                      selectedDispatcher?.isBts && selectedDispatcher?.id === btsFromApi.id
+                        ? '#e8f5e9'
+                        : '#f1f8e9';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor =
+                      selectedDispatcher?.isBts && selectedDispatcher?.id === btsFromApi.id
+                        ? '#e8f5e9'
+                        : 'transparent';
+                  }}
+                >
+                  <td>
+                    <strong>{btsFromApi.name || 'BTS'}</strong>{' '}
+                    <span style={{ fontSize: '0.85em', color: '#666', fontWeight: 400 }}>(company delivery)</span>
+                  </td>
+                  <td>{btsFromApi.telephone || '—'}</td>
+                  <td>{btsLoadCount != null ? btsLoadCount : '—'}</td>
+                  <td>{btsFromApi.is_active ? 'Yes' : 'No'}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="btn-edit" onClick={() => handleEditDispatcher(btsFromApi)}>
+                      Edit
+                    </button>{' '}
+                    <button type="button" className="btn-delete" onClick={() => handleDeleteDispatcher(btsFromApi.id)}>
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ) : (
-                dispatchers.map((d) => (
+                <tr
+                  key="bts-synthetic"
+                  onClick={handleSyntheticBtsRowSelect}
+                  style={{
+                    cursor: 'pointer',
+                    backgroundColor:
+                      selectedDispatcher?.synthetic && selectedDispatcher?.isBts ? '#e8f5e9' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor =
+                      selectedDispatcher?.synthetic && selectedDispatcher?.isBts ? '#e8f5e9' : '#f1f8e9';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor =
+                      selectedDispatcher?.synthetic && selectedDispatcher?.isBts ? '#e8f5e9' : 'transparent';
+                  }}
+                >
+                  <td>
+                    <strong>BTS</strong>{' '}
+                    <span style={{ fontSize: '0.85em', color: '#666', fontWeight: 400 }}>(company — row removed)</span>
+                  </td>
+                  <td>—</td>
+                  <td>{btsLoadCount != null ? btsLoadCount : '—'}</td>
+                  <td>—</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={handleRestoreBtsPartner}
+                      style={{ fontSize: '0.9em' }}
+                    >
+                      Restore BTS
+                    </button>
+                  </td>
+                </tr>
+              )}
+              {partnersWithoutBts.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center' }}>
+                    {btsFromApi
+                      ? 'No named (Dostavshik) partners yet — add one with + New dispatcher.'
+                      : 'No named (Dostavshik) partners yet — or restore the BTS row with the button above.'}
+                  </td>
+                </tr>
+              ) : (
+                partnersWithoutBts.map((d) => (
                   <tr
                     key={d.id}
                     onClick={() => handleRowSelect(d)}
                     style={{
                       cursor: 'pointer',
-                      backgroundColor: selectedDispatcher?.id === d.id ? '#e3f2fd' : 'transparent',
+                      backgroundColor:
+                        !selectedDispatcher?.isBts && selectedDispatcher?.id === d.id ? '#e3f2fd' : 'transparent',
                     }}
                     onMouseEnter={(e) => {
-                      if (selectedDispatcher?.id !== d.id) e.currentTarget.style.backgroundColor = '#f5f5f5';
+                      if (selectedDispatcher?.id !== d.id || selectedDispatcher?.isBts) {
+                        e.currentTarget.style.backgroundColor = '#f5f5f5';
+                      }
                     }}
                     onMouseLeave={(e) => {
-                      if (selectedDispatcher?.id !== d.id) e.currentTarget.style.backgroundColor = 'transparent';
+                      if (selectedDispatcher?.id !== d.id || selectedDispatcher?.isBts) {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                      }
                     }}
                   >
                     <td>
@@ -327,7 +601,11 @@ const Dispatchers = () => {
         {selectedDispatcher && (
           <div className="table-card" style={{ flex: '1', minWidth: 0 }}>
             <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ margin: 0 }}>{selectedDispatcher.name} — assignments &amp; history</h2>
+              <h2 style={{ margin: 0 }}>
+                {selectedDispatcher.isBts
+                  ? 'BTS — company delivery'
+                  : `${selectedDispatcher.name} — assignments & history`}
+              </h2>
               <button
                 type="button"
                 className="btn-edit"
@@ -405,12 +683,13 @@ const Dispatchers = () => {
                         <th>Delivered</th>
                         <th>Tracking</th>
                         <th>Notes</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {detailDispatches.length === 0 ? (
                         <tr>
-                          <td colSpan={12} style={{ textAlign: 'center' }}>
+                          <td colSpan={13} style={{ textAlign: 'center' }}>
                             No dispatches assigned yet.
                           </td>
                         </tr>
@@ -434,7 +713,7 @@ const Dispatchers = () => {
                               <td>
                                 <select
                                   value={row.status}
-                                  onChange={(e) => postDispatchStatus(row.id, e.target.value, '')}
+                                  onChange={(e) => promptDispatchStatusChange(row, e.target.value)}
                                 >
                                   {statusOptionsRow.map((s) => (
                                     <option key={s.value} value={s.value}>
@@ -454,11 +733,45 @@ const Dispatchers = () => {
                                   onSave={(notes) => patchDispatch(row.id, { logistics_notes: notes })}
                                 />
                               </td>
+                              <td onClick={(e) => e.stopPropagation()}>
+                                {canCompleteAndPay(sale) && (
+                                  <button
+                                    type="button"
+                                    className="btn-status"
+                                    onClick={() => openCompleteAndPay(sale)}
+                                  >
+                                    Complete &amp; Pay
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           );
                         })
                       )}
                     </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan="6" style={{ textAlign: 'right' }}>
+                          Total
+                        </td>
+                        <td style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+                          {detailDeliveriesCostTotals.uzs > 0 || detailDeliveriesCostTotals.usd > 0
+                            ? [
+                                detailDeliveriesCostTotals.uzs > 0
+                                  ? `${detailDeliveriesCostTotals.uzs.toLocaleString()} UZS`
+                                  : null,
+                                detailDeliveriesCostTotals.usd > 0
+                                  ? `$${detailDeliveriesCostTotals.usd.toFixed(2)}`
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(' · ')
+                            : '—'}
+                        </td>
+                        <td colSpan="5">—</td>
+                        <td>—</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
 
@@ -507,12 +820,13 @@ const Dispatchers = () => {
 
       <div className="table-card" style={{ marginTop: '24px' }}>
         <h2>All deliveries (workspace)</h2>
-        <p style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#555' }}>
-          Filter and update any dispatch. Reassign couriers or edit logistics for BTS and other routes.
+        <p style={{ margin: '0 0 10px', fontSize: '0.9rem', color: '#555' }}>
+          Filter and update any dispatch. Includes <strong>BTS</strong> (company) and <strong>Dostavshik</strong> (named
+          partner) — reassign or add notes the same way for both.
         </p>
-        <div className="form-grid" style={{ marginBottom: '16px', maxWidth: '640px' }}>
-          <div className="form-group">
-            <label>Filter by status</label>
+        <div className="filter-toolbar filter-toolbar--tight filter-toolbar--bleed">
+          <div className="filter-field">
+            <label>Status</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
@@ -524,8 +838,19 @@ const Dispatchers = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
-            <label>Filter by dispatcher</label>
+          <div className="filter-field">
+            <label>Service</label>
+            <select
+              value={filters.serviceType}
+              onChange={(e) => setFilters({ ...filters, serviceType: e.target.value })}
+            >
+              <option value="">All</option>
+              <option value="bts">BTS</option>
+              <option value="dostavshik">Dostavshik</option>
+            </select>
+          </div>
+          <div className="filter-field">
+            <label>Dispatcher</label>
             <select
               value={filters.dispatcher}
               onChange={(e) => setFilters({ ...filters, dispatcher: e.target.value })}
@@ -553,12 +878,13 @@ const Dispatchers = () => {
                 <th>Status</th>
                 <th>Delivered</th>
                 <th>Logistics notes</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {dispatches.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center' }}>
+                  <td colSpan={10} style={{ textAlign: 'center' }}>
                     No dispatches match filters.
                   </td>
                 </tr>
@@ -591,7 +917,7 @@ const Dispatchers = () => {
                       <td>
                         <select
                           value={row.status}
-                          onChange={(e) => postDispatchStatus(row.id, e.target.value, '')}
+                          onChange={(e) => promptDispatchStatusChange(row, e.target.value)}
                         >
                           {statusOptionsRow.map((s) => (
                             <option key={s.value} value={s.value}>
@@ -610,11 +936,45 @@ const Dispatchers = () => {
                           onSave={(notes) => patchDispatch(row.id, { logistics_notes: notes })}
                         />
                       </td>
+                      <td>
+                        {canCompleteAndPay(sale) && (
+                          <button
+                            type="button"
+                            className="btn-status"
+                            onClick={() => openCompleteAndPay(sale)}
+                          >
+                            Complete &amp; Pay
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })
               )}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan="4" style={{ textAlign: 'right' }}>
+                  Total (filtered)
+                </td>
+                <td style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+                  {allDeliveriesCostTotals.uzs > 0 || allDeliveriesCostTotals.usd > 0
+                    ? [
+                        allDeliveriesCostTotals.uzs > 0
+                          ? `${allDeliveriesCostTotals.uzs.toLocaleString()} UZS`
+                          : null,
+                        allDeliveriesCostTotals.usd > 0
+                          ? `$${allDeliveriesCostTotals.usd.toFixed(2)}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
+                    : '—'}
+                </td>
+                <td colSpan="4">—</td>
+                <td>—</td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -643,7 +1003,18 @@ function LogisticsNotesCell({ dispatchId, initial, onSave }) {
         }}
       />
       {dirty && (
-        <button type="button" className="btn-primary" onClick={() => onSave(value)}>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => {
+            if (!String(value).trim()) {
+              alert('Please enter logistics notes before saving.');
+              return;
+            }
+            onSave(String(value).trim());
+            setDirty(false);
+          }}
+        >
           Save
         </button>
       )}

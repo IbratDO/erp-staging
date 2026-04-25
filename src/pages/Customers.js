@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
+import { formatDisplayAmount, formatAmountByBalanceType, formatPlainAmount } from '../utils/currencyFormat';
 import './TablePage.css';
 
 const Customers = () => {
@@ -74,8 +75,22 @@ const Customers = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
+  const customerListTotals = useMemo(() => {
+    let totalSalesCount = 0;
+    let onCreditSum = 0;
+    for (const c of filteredCustomers) {
+      totalSalesCount += parseInt(c.sales_count, 10) || 0;
+      onCreditSum += parseFloat(c.on_credit_outstanding) || 0;
+    }
+    return { totalSalesCount, onCreditSum };
+  }, [filteredCustomers]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!String(formData.notes || '').trim()) {
+      alert('Please enter notes.');
+      return;
+    }
     try {
       if (formData.id) {
         await api.put(`/customers/${formData.id}/`, formData);
@@ -192,11 +207,12 @@ const Customers = () => {
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes</label>
+                <label>Notes *</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows="3"
+                  required
                 />
               </div>
             </div>
@@ -221,25 +237,25 @@ const Customers = () => {
 
       {/* Filters */}
       {!showForm && (
-        <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h3>Filters</h3>
-        <div className="form-grid">
-          <div className="form-group">
+        <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
+          <h3 className="filter-card__title">Filters</h3>
+        <div className="filter-toolbar">
+          <div className="filter-field filter-field--grow">
             <label>Name</label>
             <input
-              type="text"
+              type="search"
               value={filters.name}
               onChange={(e) => setFilters({ ...filters, name: e.target.value })}
-              placeholder="Filter by name"
+              placeholder="Search name"
             />
           </div>
-          <div className="form-group">
+          <div className="filter-toolbar__actions">
             <button
               type="button"
               className="btn-edit"
               onClick={() => setFilters({ name: '' })}
             >
-              Clear Filters
+              Clear
             </button>
           </div>
         </div>
@@ -249,6 +265,7 @@ const Customers = () => {
       <div style={{ display: 'flex', gap: '20px' }}>
         {/* Customers List */}
         <div className="table-card" style={{ flex: selectedCustomer ? '0 0 40%' : '1' }}>
+          <div className="data-table-scroll data-table-scroll--pane">
           <table className="data-table">
             <thead>
               <tr>
@@ -257,13 +274,14 @@ const Customers = () => {
                 <th>Instagram</th>
                 <th>Region</th>
                 <th>Total Sales</th>
+                <th>On credit (due)</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredCustomers.length === 0 ? (
                 <tr>
-                <td colSpan="6" style={{ textAlign: 'center' }}>
+                <td colSpan="7" style={{ textAlign: 'center' }}>
                   No customers found
                 </td>
                 </tr>
@@ -292,6 +310,11 @@ const Customers = () => {
                     <td>{customer.instagram || '-'}</td>
                     <td>{customer.region || '-'}</td>
                     <td>{customer.sales_count || 0} sales</td>
+                    <td style={{ fontSize: '0.9em' }}>
+                      {parseFloat(customer.on_credit_outstanding || 0) > 0
+                        ? customer.on_credit_outstanding
+                        : '—'}
+                    </td>
                     <td onClick={(e) => e.stopPropagation()}>
                       <button
                         className="btn-edit"
@@ -311,7 +334,22 @@ const Customers = () => {
                 ))
               )}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan="4" style={{ textAlign: 'right' }}>
+                  Total
+                </td>
+                <td style={{ fontWeight: 600 }}>{customerListTotals.totalSalesCount.toLocaleString()} sales</td>
+                <td style={{ fontWeight: 600 }}>
+                  {customerListTotals.onCreditSum > 0
+                    ? customerListTotals.onCreditSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : '—'}
+                </td>
+                <td>—</td>
+              </tr>
+            </tfoot>
           </table>
+          </div>
         </div>
 
         {/* Customer History */}
@@ -343,8 +381,11 @@ const Customers = () => {
                 <div>
                   <strong>Reserved Sales:</strong> <span style={{ color: '#9b59b6', fontWeight: 'bold' }}>{customerHistory.summary.reserved_sales || 0}</span>
                   {customerHistory.summary.reserved_amount > 0 && (
-                    <span style={{ fontSize: '0.9em', color: '#666', marginLeft: '5px' }}>
-                      (${parseFloat(customerHistory.summary.reserved_amount || 0).toFixed(2)})
+                    <span
+                      style={{ fontSize: '0.9em', color: '#666', marginLeft: '5px' }}
+                      title="Sum of sale totals; may mix UZS and USD"
+                    >
+                      ({formatPlainAmount(customerHistory.summary.reserved_amount)})
                     </span>
                   )}
                 </div>
@@ -357,17 +398,49 @@ const Customers = () => {
                 <div>
                   <strong>Total Orders:</strong> {customerHistory.summary.total_orders || 0}
                 </div>
-                <div>
-                  <strong>Total Advance Payments:</strong> ${parseFloat(customerHistory.summary.total_advance_payments || 0).toFixed(2)}
+                <div title="Open-order advances; may mix UZS and USD">
+                  <strong>Total Advance Payments:</strong>{' '}
+                  {formatPlainAmount(customerHistory.summary.total_advance_payments || 0)}
+                </div>
+                <div title="Completed sale totals; may mix UZS and USD">
+                  <strong>Total Amount (Completed):</strong>{' '}
+                  {formatPlainAmount(customerHistory.summary.total_amount || 0)}
+                </div>
+                <div title="Includes balance movements; see Money Balance for detail">
+                  <strong>Total Paid:</strong> {formatPlainAmount(customerHistory.summary.total_paid || 0)}
                 </div>
                 <div>
-                  <strong>Total Amount (Completed):</strong> ${parseFloat(customerHistory.summary.total_amount || 0).toFixed(2)}
-                </div>
-                <div>
-                  <strong>Total Paid:</strong> ${parseFloat(customerHistory.summary.total_paid || 0).toFixed(2)}
+                  <strong>On credit (outstanding):</strong>{' '}
+                  {parseFloat(customerHistory.summary.on_credit_outstanding || 0) > 0
+                    ? customerHistory.summary.on_credit_outstanding
+                    : '0'}
                 </div>
               </div>
             </div>
+
+            {customerHistory.pending_receivables && customerHistory.pending_receivables.length > 0 && (
+              <>
+                <h3 style={{ marginTop: '20px', marginBottom: '10px' }}>Open on-credit (receivables)</h3>
+                <table className="data-table" style={{ marginBottom: '30px' }}>
+                  <thead>
+                    <tr>
+                      <th>Sale #</th>
+                      <th>Product</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customerHistory.pending_receivables.map((row) => (
+                      <tr key={row.receivable_id}>
+                        <td>#{row.sale_id}</td>
+                        <td>{row.product_label || '—'}</td>
+                        <td>{formatDisplayAmount(row.amount, row.currency || 'USD')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
 
             {/* Orders History */}
             {customerHistory.orders && customerHistory.orders.length > 0 && (
@@ -401,9 +474,12 @@ const Customers = () => {
                           </span>
                         </td>
                         <td>
-                          {order.advance_payment_amount ? 
-                            `${order.advance_payment_currency} ${order.advance_payment_amount} (${order.advance_payment_type})` : 
-                            '-'}
+                          {order.advance_payment_amount
+                            ? `${formatDisplayAmount(
+                                order.advance_payment_amount,
+                                order.advance_payment_currency || 'USD',
+                              )} (${order.advance_payment_type})`
+                            : '-'}
                         </td>
                       </tr>
                     ))}
@@ -443,8 +519,8 @@ const Customers = () => {
                           : `Product #${sale.product}`}
                       </td>
                       <td>{sale.quantity}</td>
-                      <td>${sale.selling_price}</td>
-                      <td>${sale.total_amount}</td>
+                      <td>{formatDisplayAmount(sale.selling_price, sale.sale_currency || 'USD')}</td>
+                      <td>{formatDisplayAmount(sale.total_amount, sale.sale_currency || 'USD')}</td>
                       <td>
                         {sale.sale_type === 'bought_from_shop' ? 'Shop' : 
                          sale.sale_type === 'from_order' ? 'From Order' : 'Delivery'}
@@ -500,7 +576,7 @@ const Customers = () => {
                              transaction.transaction_type === 'sale_completion' ? 'Sale Completion' : 
                              transaction.transaction_type}
                           </td>
-                          <td>${transaction.amount}</td>
+                          <td>{formatAmountByBalanceType(transaction.amount, transaction.balance_detail?.balance_type)}</td>
                           <td>
                             {transaction.balance_detail?.balance_type?.includes('USD') ? 'USD' : 
                              transaction.balance_detail?.balance_type?.includes('UZS') ? 'UZS' : '-'}

@@ -1,6 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
 import './TablePage.css';
+
+const defaultPaymentState = {
+  payment_uzs_cash: '',
+  payment_uzs_card: '',
+  payment_usd_cash: '',
+  payment_usd_card: '',
+};
+
+/** Strip $, commas, spaces (so pasting "$1,200.50" does not stick a $ in the value). */
+const sanitizePaymentAmountInput = (raw) => {
+  if (raw === '' || raw == null) return '';
+  return String(raw).replace(/[$\s,]/g, '');
+};
+
+function formatApiError(data) {
+  if (data == null) return null;
+  if (typeof data === 'string') return data;
+  if (Array.isArray(data)) {
+    return data.map((x) => formatApiError(x)).filter(Boolean).join(' ');
+  }
+  if (typeof data === 'object' && data.detail != null) return formatApiError(data.detail);
+  if (typeof data === 'object' && data.error) return String(data.error);
+  if (typeof data === 'object') {
+    const parts = Object.entries(data).map(([k, v]) => {
+      const inner = formatApiError(v);
+      return inner ? `${k}: ${inner}` : null;
+    });
+    return parts.filter(Boolean).join(' — ') || null;
+  }
+  return String(data);
+}
 
 const Packages = () => {
   const [packages, setPackages] = useState([]);
@@ -11,18 +42,13 @@ const Packages = () => {
   const [formData, setFormData] = useState({
     package_type: 'M',
     quantity: '',
-    cost_per_unit: '',
-    is_paid: false,
-    payment_amount: '',
-    payment_currency: 'USD',
-    payment_type: 'cash',
+    cost_per_unit_uzs: '',
+    cost_per_unit_usd: '',
   });
   const [paymentFormData, setPaymentFormData] = useState({
     historyId: null,
     quantity_received: '',
-    payment_amount: '',
-    payment_currency: 'USD',
-    payment_type: 'cash',
+    ...defaultPaymentState,
   });
   const [showPaymentForm, setShowPaymentForm] = useState(false);
 
@@ -30,6 +56,55 @@ const Packages = () => {
     fetchPackages();
     fetchPackageHistory();
   }, []);
+
+  const packageStockTotals = useMemo(() => {
+    let quantity = 0;
+    let totalUzs = 0;
+    let totalUsd = 0;
+    for (const p of packages) {
+      const q = parseFloat(p.quantity) || 0;
+      const cpuUzs = parseFloat(p.cost_per_unit_uzs) || 0;
+      const cpuUsd = parseFloat(p.cost_per_unit_usd) || 0;
+      quantity += q;
+      totalUzs += q * cpuUzs;
+      totalUsd += q * cpuUsd;
+    }
+    return { quantity, totalUzs, totalUsd };
+  }, [packages]);
+
+  const packageHistoryTotals = useMemo(() => {
+    let quantityAdded = 0;
+    let totalCostUzs = 0;
+    let totalCostUsd = 0;
+    let sumUzsCash = 0;
+    let sumUzsCard = 0;
+    let sumUsdCash = 0;
+    let sumUsdCard = 0;
+    for (const h of packageHistory) {
+      quantityAdded += parseFloat(h.quantity_added) || 0;
+      totalCostUzs += parseFloat(h.total_cost_uzs) || 0;
+      totalCostUsd += parseFloat(h.total_cost_usd) || 0;
+      const isPaid = h.is_paid || h.status === 'paid';
+      if (isPaid) {
+        sumUzsCash += parseFloat(h.payment_uzs_cash) || 0;
+        sumUzsCard += parseFloat(h.payment_uzs_card) || 0;
+        sumUsdCash += parseFloat(h.payment_usd_cash) || 0;
+        sumUsdCard += parseFloat(h.payment_usd_card) || 0;
+      }
+    }
+    return { quantityAdded, totalCostUzs, totalCostUsd, sumUzsCash, sumUzsCard, sumUsdCash, sumUsdCard };
+  }, [packageHistory]);
+
+  const formatHistoryUzs = (n) => {
+    const v = parseFloat(n);
+    if (!v || v <= 0) return '—';
+    return `${v.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`;
+  };
+  const formatHistoryUsd = (n) => {
+    const v = parseFloat(n);
+    if (!v || v <= 0) return '—';
+    return v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   const fetchPackages = async () => {
     try {
@@ -48,7 +123,8 @@ const Packages = () => {
             await api.post('/packages/', {
               package_type: type,
               quantity: 0,
-              cost_per_unit: cost,
+              cost_per_unit_uzs: 0,
+              cost_per_unit_usd: cost,
             });
           } catch (error) {
             console.error(`Error creating package ${type}:`, error);
@@ -69,53 +145,34 @@ const Packages = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Calculate total cost for payment amount default
       const quantity = parseInt(formData.quantity) || 0;
-      const costPerUnit = parseFloat(formData.cost_per_unit) || (formData.package_type === 'M' ? 1.00 : 2.00);
-      const totalCost = quantity * costPerUnit;
-      const paymentAmount = formData.is_paid && formData.payment_amount 
-        ? parseFloat(formData.payment_amount) 
-        : totalCost;
-      
+      const defUsd = formData.package_type === 'M' ? 1.0 : 2.0;
+      const costUzs = parseFloat(formData.cost_per_unit_uzs) || 0;
+      const costUsd =
+        formData.cost_per_unit_usd !== '' && formData.cost_per_unit_usd != null
+          ? parseFloat(formData.cost_per_unit_usd) || 0
+          : defUsd;
+
       if (editingPackage) {
-        // Update existing package
-        const packageData = {
+        await api.put(`/packages/${editingPackage.id}/`, {
           package_type: formData.package_type,
           quantity: parseInt(formData.quantity) || 0,
-          cost_per_unit: costPerUnit,
-          is_paid: formData.is_paid,
-        };
-        
-        if (formData.is_paid) {
-          packageData.payment_amount = paymentAmount;
-          packageData.payment_currency = formData.payment_currency;
-          packageData.payment_type = formData.payment_type;
-        }
-        
-        await api.put(`/packages/${editingPackage.id}/`, packageData);
+          cost_per_unit_uzs: costUzs,
+          cost_per_unit_usd: costUsd,
+        });
       } else {
-        // Check if package type already exists
         const existingPackage = packages.find(p => p.package_type === formData.package_type);
         const packageData = {
           package_type: formData.package_type,
-          quantity: existingPackage 
+          quantity: existingPackage
             ? (parseInt(existingPackage.quantity) || 0) + quantity
             : quantity,
-          cost_per_unit: costPerUnit,
-          is_paid: formData.is_paid,
+          cost_per_unit_uzs: costUzs,
+          cost_per_unit_usd: costUsd,
         };
-        
-        if (formData.is_paid) {
-          packageData.payment_amount = paymentAmount;
-          packageData.payment_currency = formData.payment_currency;
-          packageData.payment_type = formData.payment_type;
-        }
-        
         if (existingPackage) {
-          // Update existing package quantity (add to existing)
           await api.put(`/packages/${existingPackage.id}/`, packageData);
         } else {
-          // Create new package
           await api.post('/packages/', packageData);
         }
       }
@@ -124,16 +181,15 @@ const Packages = () => {
       setFormData({
         package_type: '',
         quantity: '',
-        cost_per_unit: '',
-        is_paid: false,
-        payment_amount: '',
-        payment_currency: 'USD',
-        payment_type: 'cash',
+        cost_per_unit_uzs: '',
+        cost_per_unit_usd: '',
       });
       fetchPackages();
     } catch (error) {
       console.error('Error saving package:', error);
-      alert(error.response?.data?.detail || error.response?.data?.error || 'Error saving package');
+      const d = error.response?.data;
+      const msg = formatApiError(d) || error.message;
+      alert(msg || 'Error saving package');
     } finally {
       fetchPackageHistory(); // Refresh history after adding stock
     }
@@ -153,11 +209,8 @@ const Packages = () => {
     setFormData({
       package_type: packageItem.package_type,
       quantity: packageItem.quantity,
-      cost_per_unit: packageItem.cost_per_unit,
-      is_paid: false,
-      payment_amount: '',
-      payment_currency: 'USD',
-      payment_type: 'cash',
+      cost_per_unit_uzs: String(packageItem.cost_per_unit_uzs ?? ''),
+      cost_per_unit_usd: String(packageItem.cost_per_unit_usd ?? ''),
     });
     setShowForm(true);
   };
@@ -165,15 +218,15 @@ const Packages = () => {
   const handleMarkReceivedAndPay = (historyId) => {
     const historyItem = packageHistory.find(h => h.id === historyId);
     const quantityOrdered = historyItem?.quantity_added || 0;
-    const costPerUnit = parseFloat(historyItem?.cost_per_unit) || 0;
-    const defaultPaymentAmount = quantityOrdered * costPerUnit;
-    
+    const dueUzs = (parseFloat(historyItem?.cost_per_unit_uzs) || 0) * quantityOrdered;
+    const dueUsd = (parseFloat(historyItem?.cost_per_unit_usd) || 0) * quantityOrdered;
     setPaymentFormData({
       historyId: historyId,
-      quantity_received: quantityOrdered, // Auto-fill with ordered quantity
-      payment_amount: defaultPaymentAmount,
-      payment_currency: 'USD',
-      payment_type: 'cash',
+      quantity_received: quantityOrdered,
+      payment_uzs_cash: dueUzs > 0 ? String(dueUzs) : '',
+      payment_uzs_card: '',
+      payment_usd_cash: dueUsd > 0 ? String(dueUsd) : '',
+      payment_usd_card: '',
     });
     setShowPaymentForm(true);
   };
@@ -181,24 +234,38 @@ const Packages = () => {
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
     try {
+      const historyItem = packageHistory.find(h => h.id === paymentFormData.historyId);
+      const cpuUzs = parseFloat(historyItem?.cost_per_unit_uzs) || 0;
+      const cpuUsd = parseFloat(historyItem?.cost_per_unit_usd) || 0;
+      const qty = parseInt(paymentFormData.quantity_received) || 0;
+      const dueUzs = qty * cpuUzs;
+      const dueUsd = qty * cpuUsd;
+      const uzs = (parseFloat(paymentFormData.payment_uzs_cash) || 0) + (parseFloat(paymentFormData.payment_uzs_card) || 0);
+      const usd = (parseFloat(paymentFormData.payment_usd_cash) || 0) + (parseFloat(paymentFormData.payment_usd_card) || 0);
+      if ((dueUzs > 0 || dueUsd > 0) && uzs + usd <= 0) {
+        alert('Enter at least one of: UZS cash, UZS card, USD cash, USD card.');
+        return;
+      }
       await api.post(`/package-history/${paymentFormData.historyId}/mark_received_and_pay/`, {
         quantity_received: paymentFormData.quantity_received,
-        payment_amount: paymentFormData.payment_amount,
-        payment_currency: paymentFormData.payment_currency,
-        payment_type: paymentFormData.payment_type,
+        payment_uzs_cash: parseFloat(paymentFormData.payment_uzs_cash) || 0,
+        payment_uzs_card: parseFloat(paymentFormData.payment_uzs_card) || 0,
+        payment_usd_cash: parseFloat(paymentFormData.payment_usd_cash) || 0,
+        payment_usd_card: parseFloat(paymentFormData.payment_usd_card) || 0,
       });
       setShowPaymentForm(false);
       setPaymentFormData({
         historyId: null,
-        payment_amount: '',
-        payment_currency: 'USD',
-        payment_type: 'cash',
+        quantity_received: '',
+        ...defaultPaymentState,
       });
       fetchPackages();
       fetchPackageHistory();
     } catch (error) {
       console.error('Error marking package as received and paid:', error);
-      alert(error.response?.data?.error || error.response?.data?.detail || 'Error marking package as received and paid');
+      const d = error.response?.data;
+      const msg = formatApiError(d) || error.message;
+      alert(msg || 'Error marking package as received and paid');
     }
   };
 
@@ -235,13 +302,19 @@ const Packages = () => {
                       value={formData.package_type === 'custom' ? 'custom' : (packages.find(p => p.package_type === formData.package_type) ? formData.package_type : 'custom')}
                       onChange={(e) => {
                         if (e.target.value === 'custom') {
-                          setFormData({ ...formData, package_type: '', cost_per_unit: '' });
+                          setFormData({ ...formData, package_type: '', cost_per_unit_uzs: '', cost_per_unit_usd: '' });
                         } else {
                           const selectedPackage = packages.find(p => p.package_type === e.target.value);
+                          const defUsd = e.target.value === 'M' ? '1.00' : '2.00';
                           setFormData({ 
                             ...formData, 
                             package_type: e.target.value, 
-                            cost_per_unit: selectedPackage ? selectedPackage.cost_per_unit.toString() : (e.target.value === 'M' ? '1.00' : '2.00')
+                            cost_per_unit_uzs: selectedPackage
+                              ? String(selectedPackage.cost_per_unit_uzs ?? '')
+                              : '0',
+                            cost_per_unit_usd: selectedPackage
+                              ? String(selectedPackage.cost_per_unit_usd ?? '')
+                              : defUsd,
                           });
                         }
                       }}
@@ -250,7 +323,7 @@ const Packages = () => {
                       <option value="custom">+ Add New Package Type</option>
                       {packages.map(pkg => (
                         <option key={pkg.id} value={pkg.package_type}>
-                          {pkg.package_type} (${parseFloat(pkg.cost_per_unit).toFixed(2)})
+                          {pkg.package_type} (UZS {parseFloat(pkg.cost_per_unit_uzs || 0).toLocaleString()} · ${parseFloat(pkg.cost_per_unit_usd || 0).toFixed(2)})
                         </option>
                       ))}
                     </select>
@@ -279,63 +352,27 @@ const Packages = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Cost Per Unit</label>
+                <label>Cost per unit (UZS)</label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={formData.cost_per_unit}
-                  onChange={(e) => setFormData({ ...formData, cost_per_unit: e.target.value })}
-                  required
+                  value={formData.cost_per_unit_uzs}
+                  onChange={(e) => setFormData({ ...formData, cost_per_unit_uzs: e.target.value })}
+                  placeholder="0"
                 />
               </div>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={formData.is_paid}
-                    onChange={(e) => setFormData({ ...formData, is_paid: e.target.checked })}
-                  />
-                  Payment Made (if unchecked, will be recorded as Payable)
-                </label>
+              <div className="form-group">
+                <label>Cost per unit (USD)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.cost_per_unit_usd}
+                  onChange={(e) => setFormData({ ...formData, cost_per_unit_usd: e.target.value })}
+                  placeholder={formData.package_type === 'L' ? '2.00' : '1.00'}
+                />
               </div>
-              {formData.is_paid && (
-                <>
-                  <div className="form-group">
-                    <label>Payment Amount ({formData.payment_currency})</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={formData.payment_amount || (parseFloat(formData.quantity) || 0) * (parseFloat(formData.cost_per_unit) || (formData.package_type === 'M' ? 1.00 : 2.00))}
-                      onChange={(e) => setFormData({ ...formData, payment_amount: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Currency</label>
-                    <select
-                      value={formData.payment_currency}
-                      onChange={(e) => setFormData({ ...formData, payment_currency: e.target.value })}
-                      required
-                    >
-                      <option value="USD">USD</option>
-                      <option value="UZS">UZS</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Payment Type</label>
-                    <select
-                      value={formData.payment_type}
-                      onChange={(e) => setFormData({ ...formData, payment_type: e.target.value })}
-                      required
-                    >
-                      <option value="cash">Cash</option>
-                      <option value="card">Card</option>
-                    </select>
-                  </div>
-                </>
-              )}
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -358,15 +395,20 @@ const Packages = () => {
                   min="0"
                   value={paymentFormData.quantity_received}
                   onChange={(e) => {
-                    const qty = parseInt(e.target.value) || 0;
                     const historyItem = packageHistory.find(h => h.id === paymentFormData.historyId);
-                    const costPerUnit = parseFloat(historyItem?.cost_per_unit) || 0;
-                    const newPaymentAmount = qty * costPerUnit;
-                    setPaymentFormData({ 
-                      ...paymentFormData, 
+                    const cpuUzs = parseFloat(historyItem?.cost_per_unit_uzs) || 0;
+                    const cpuUsd = parseFloat(historyItem?.cost_per_unit_usd) || 0;
+                    const qty = parseInt(e.target.value) || 0;
+                    const dueUzs = qty * cpuUzs;
+                    const dueUsd = qty * cpuUsd;
+                    setPaymentFormData((prev) => ({
+                      ...prev,
                       quantity_received: e.target.value,
-                      payment_amount: newPaymentAmount > 0 ? newPaymentAmount : paymentFormData.payment_amount
-                    });
+                      payment_uzs_cash: dueUzs > 0 ? String(dueUzs) : '',
+                      payment_uzs_card: '',
+                      payment_usd_cash: dueUsd > 0 ? String(dueUsd) : '',
+                      payment_usd_card: '',
+                    }));
                   }}
                   required
                 />
@@ -375,37 +417,60 @@ const Packages = () => {
                 </small>
               </div>
               <div className="form-group">
-                <label>Payment Amount ({paymentFormData.payment_currency})</label>
+                <label>UZS (cash)</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={paymentFormData.payment_amount}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, payment_amount: e.target.value })}
-                  required
+                  type="text"
+                  inputMode="decimal"
+                  value={paymentFormData.payment_uzs_cash}
+                  onChange={(e) =>
+                    setPaymentFormData({
+                      ...paymentFormData,
+                      payment_uzs_cash: sanitizePaymentAmountInput(e.target.value),
+                    })
+                  }
                 />
               </div>
               <div className="form-group">
-                <label>Currency</label>
-                <select
-                  value={paymentFormData.payment_currency}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, payment_currency: e.target.value })}
-                  required
-                >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
-                </select>
+                <label>UZS (card)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={paymentFormData.payment_uzs_card}
+                  onChange={(e) =>
+                    setPaymentFormData({
+                      ...paymentFormData,
+                      payment_uzs_card: sanitizePaymentAmountInput(e.target.value),
+                    })
+                  }
+                />
               </div>
               <div className="form-group">
-                <label>Payment Type</label>
-                <select
-                  value={paymentFormData.payment_type}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, payment_type: e.target.value })}
-                  required
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                </select>
+                <label>USD (cash)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={paymentFormData.payment_usd_cash}
+                  onChange={(e) =>
+                    setPaymentFormData({
+                      ...paymentFormData,
+                      payment_usd_cash: sanitizePaymentAmountInput(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>USD (card)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={paymentFormData.payment_usd_card}
+                  onChange={(e) =>
+                    setPaymentFormData({
+                      ...paymentFormData,
+                      payment_usd_card: sanitizePaymentAmountInput(e.target.value),
+                    })
+                  }
+                />
               </div>
             </div>
             <div className="form-actions">
@@ -420,9 +485,7 @@ const Packages = () => {
                   setPaymentFormData({
                     historyId: null,
                     quantity_received: '',
-                    payment_amount: '',
-                    payment_currency: 'USD',
-                    payment_type: 'cash',
+                    ...defaultPaymentState,
                   });
                 }}
               >
@@ -439,8 +502,10 @@ const Packages = () => {
             <tr>
               <th>Package Type</th>
               <th>Quantity</th>
-              <th>Cost Per Unit</th>
-              <th>Total Value</th>
+              <th>Cost / unit (UZS)</th>
+              <th>Cost / unit (USD)</th>
+              <th>Total (UZS)</th>
+              <th>Total (USD)</th>
               <th>Updated</th>
               <th>Actions</th>
             </tr>
@@ -448,7 +513,7 @@ const Packages = () => {
           <tbody>
             {packages.length === 0 ? (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center' }}>
+                <td colSpan="8" style={{ textAlign: 'center' }}>
                   No packages found
                 </td>
               </tr>
@@ -457,8 +522,20 @@ const Packages = () => {
                 <tr key={packageItem.id}>
                   <td><strong>Package {packageItem.package_type}</strong></td>
                   <td>{packageItem.quantity}</td>
-                  <td>${packageItem.cost_per_unit}</td>
-                  <td>${(parseFloat(packageItem.quantity) * parseFloat(packageItem.cost_per_unit)).toFixed(2)}</td>
+                  <td>{parseFloat(packageItem.cost_per_unit_uzs || 0).toLocaleString()}</td>
+                  <td>${parseFloat(packageItem.cost_per_unit_usd || 0).toFixed(2)}</td>
+                  <td>
+                    {(
+                      parseFloat(packageItem.quantity) * parseFloat(packageItem.cost_per_unit_uzs || 0)
+                    ).toLocaleString()}{' '}
+                    UZS
+                  </td>
+                  <td>
+                    $
+                    {(
+                      parseFloat(packageItem.quantity) * parseFloat(packageItem.cost_per_unit_usd || 0)
+                    ).toFixed(2)}
+                  </td>
                   <td>{new Date(packageItem.updated_at).toLocaleString()}</td>
                   <td>
                     <button
@@ -472,6 +549,21 @@ const Packages = () => {
               ))
             )}
           </tbody>
+            <tfoot>
+            <tr>
+              <td style={{ textAlign: 'right' }}>Total</td>
+              <td style={{ fontWeight: 600 }}>{packageStockTotals.quantity.toLocaleString()}</td>
+              <td>—</td>
+              <td>—</td>
+              <td style={{ fontWeight: 600 }}>
+                {packageStockTotals.totalUzs.toLocaleString()} UZS
+              </td>
+              <td style={{ fontWeight: 600 }}>
+                ${packageStockTotals.totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </td>
+              <td colSpan="2">—</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
@@ -483,9 +575,13 @@ const Packages = () => {
               <th>ID</th>
               <th>Package Type</th>
               <th>Quantity Added</th>
-              <th>Cost Per Unit</th>
-              <th>Total Cost</th>
+              <th>Cost / unit</th>
+              <th>Total cost</th>
               <th>Status</th>
+              <th>UZS cash</th>
+              <th>UZS card</th>
+              <th>USD cash</th>
+              <th>USD card</th>
               <th>Added By</th>
               <th>Date</th>
               <th>Actions</th>
@@ -494,12 +590,18 @@ const Packages = () => {
           <tbody>
             {packageHistory.length === 0 ? (
               <tr>
-                <td colSpan="9" style={{ textAlign: 'center' }}>
+                <td colSpan="13" style={{ textAlign: 'center' }}>
                   No package history found
                 </td>
               </tr>
             ) : (
-              packageHistory.map((historyItem) => (
+              packageHistory.map((historyItem) => {
+                const showPay = historyItem.is_paid || historyItem.status === 'paid';
+                const cpuU = parseFloat(historyItem.cost_per_unit_uzs) || 0;
+                const cpuD = parseFloat(historyItem.cost_per_unit_usd) || 0;
+                const totU = parseFloat(historyItem.total_cost_uzs) || 0;
+                const totD = parseFloat(historyItem.total_cost_usd) || 0;
+                return (
                 <tr key={historyItem.id}>
                   <td>#{historyItem.id}</td>
                   <td><strong>Package {historyItem.package_detail?.package_type || historyItem.package}</strong></td>
@@ -512,29 +614,102 @@ const Packages = () => {
                       `+${historyItem.quantity_added}`
                     )}
                   </td>
-                  <td>${parseFloat(historyItem.cost_per_unit).toFixed(2)}</td>
-                  <td style={{ fontWeight: '600' }}>${parseFloat(historyItem.total_cost).toFixed(2)}</td>
+                  <td style={{ fontSize: '0.9em' }}>
+                    {cpuU > 0 && <div>{cpuU.toLocaleString()} UZS</div>}
+                    {cpuD > 0 && <div>${cpuD.toFixed(2)} USD</div>}
+                    {cpuU === 0 && cpuD === 0 && '—'}
+                  </td>
+                  <td style={{ fontWeight: '600', fontSize: '0.9em' }}>
+                    {totU > 0 && <div>{totU.toLocaleString()} UZS</div>}
+                    {totD > 0 && <div>${totD.toFixed(2)} USD</div>}
+                    {totU === 0 && totD === 0 && '—'}
+                  </td>
                   <td>
-                    <span className={`status-badge ${historyItem.status === 'paid' ? 'completed' : historyItem.status === 'received' ? 'confirmed' : 'pending'}`}>
-                      {historyItem.status === 'paid' ? 'PAID' : historyItem.status === 'received' ? 'RECEIVED' : 'ORDERED'}
+                    <span
+                      className={`status-badge ${
+                        historyItem.status === 'paid'
+                          ? 'completed'
+                          : historyItem.status === 'received'
+                            ? 'confirmed'
+                            : 'pending'
+                      }`}
+                      title={
+                        historyItem.status === 'ordered'
+                          ? 'Awaiting receipt and payment (use action when stock arrives)'
+                          : historyItem.status === 'paid'
+                            ? 'Recorded with payment'
+                            : 'Added to stock; no payment line (cost only)'
+                      }
+                    >
+                      {historyItem.status === 'paid'
+                        ? 'PAID'
+                        : historyItem.status === 'received'
+                          ? 'IN STOCK'
+                          : 'ORDERED'}
                     </span>
                   </td>
+                  <td style={{ fontSize: '0.9em' }}>{showPay ? formatHistoryUzs(historyItem.payment_uzs_cash) : '—'}</td>
+                  <td style={{ fontSize: '0.9em' }}>{showPay ? formatHistoryUzs(historyItem.payment_uzs_card) : '—'}</td>
+                  <td style={{ fontSize: '0.9em' }}>{showPay ? formatHistoryUsd(historyItem.payment_usd_cash) : '—'}</td>
+                  <td style={{ fontSize: '0.9em' }}>{showPay ? formatHistoryUsd(historyItem.payment_usd_card) : '—'}</td>
                   <td>{historyItem.created_by_detail?.username || '-'}</td>
                   <td>{new Date(historyItem.created_at).toLocaleString()}</td>
                   <td>
-                    {historyItem.status === 'ordered' && (
+                    {historyItem.status === 'ordered' ? (
                       <button
+                        type="button"
                         className="btn-status"
                         onClick={() => handleMarkReceivedAndPay(historyItem.id)}
                       >
                         Mark as Received and Pay
                       </button>
+                    ) : (
+                      <span style={{ color: '#adb5bd' }}>—</span>
                     )}
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="2" style={{ textAlign: 'right' }}>
+                Total
+              </td>
+              <td style={{ fontWeight: 600 }}>{packageHistoryTotals.quantityAdded.toLocaleString()}</td>
+              <td>—</td>
+              <td style={{ fontWeight: 600, fontSize: '0.95em' }}>
+                {packageHistoryTotals.totalCostUzs > 0 && (
+                  <div>
+                    {packageHistoryTotals.totalCostUzs.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
+                  </div>
+                )}
+                {packageHistoryTotals.totalCostUsd > 0 && (
+                  <div>
+                    ${packageHistoryTotals.totalCostUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                )}
+                {packageHistoryTotals.totalCostUzs === 0 && packageHistoryTotals.totalCostUsd === 0 && '—'}
+              </td>
+              <td>—</td>
+              <td style={{ fontSize: '0.9em', fontWeight: 600 }}>
+                {formatHistoryUzs(packageHistoryTotals.sumUzsCash)}
+              </td>
+              <td style={{ fontSize: '0.9em', fontWeight: 600 }}>
+                {formatHistoryUzs(packageHistoryTotals.sumUzsCard)}
+              </td>
+              <td style={{ fontSize: '0.9em', fontWeight: 600 }}>
+                {formatHistoryUsd(packageHistoryTotals.sumUsdCash)}
+              </td>
+              <td style={{ fontSize: '0.9em', fontWeight: 600 }}>
+                {formatHistoryUsd(packageHistoryTotals.sumUsdCard)}
+              </td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>

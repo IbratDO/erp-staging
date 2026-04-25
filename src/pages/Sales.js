@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
+import { productSalePickerLabel } from '../utils/productCost';
+import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat';
+import SaleCompletePayForm from '../components/SaleCompletePayForm';
 import './TablePage.css';
 
 const Sales = () => {
@@ -10,6 +13,14 @@ const Sales = () => {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showBatchForm, setShowBatchForm] = useState(false);
+  const [batchFormCategory, setBatchFormCategory] = useState('');
+  const [batchCustomer, setBatchCustomer] = useState('');
+  const [batchDefaults, setBatchDefaults] = useState({
+    sale_type: 'bought_from_shop',
+    sale_currency: 'USD',
+  });
+  const [batchLines, setBatchLines] = useState([]);
   const [formCategory, setFormCategory] = useState('');
   const [filters, setFilters] = useState({
     category: '',
@@ -28,6 +39,7 @@ const Sales = () => {
     sale_currency: 'USD',
     sale_type: 'bought_from_shop',
     package_type: '',
+    package_quantity: '',
     customer: '',
     status: 'pending',
     deposit_received: false,
@@ -106,10 +118,18 @@ const Sales = () => {
   
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
+    if (!String(newCustomerData.notes || '').trim()) {
+      showNotification('Please enter customer notes.', 'error');
+      return;
+    }
     try {
-      const response = await api.post('/customers/', newCustomerData);
+      const response = await api.post('/customers/', { ...newCustomerData, notes: String(newCustomerData.notes).trim() });
       await fetchCustomers();
-      setFormData({ ...formData, customer: response.data.id });
+      if (showBatchForm) {
+        setBatchCustomer(String(response.data.id));
+      } else {
+        setFormData({ ...formData, customer: response.data.id });
+      }
       setShowCustomerForm(false);
       setNewCustomerData({ name: '', telephone: '', instagram: '', notes: '' });
       showNotification('Customer created successfully!', 'success');
@@ -194,6 +214,48 @@ const Sales = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
+  const salesColumnTotals = useMemo(() => {
+    const list = filteredSales;
+    if (!list.length) {
+      return {
+        quantity: 0,
+        totalAmount: 0,
+        totalAmountCurrency: null,
+        uzsCash: 0,
+        uzsCard: 0,
+        usdCash: 0,
+        usdCard: 0,
+      };
+    }
+    let quantity = 0;
+    let totalAmount = 0;
+    let uzsCash = 0;
+    let uzsCard = 0;
+    let usdCash = 0;
+    let usdCard = 0;
+    const saleCurrencies = new Set();
+    for (const s of list) {
+      quantity += parseInt(s.quantity, 10) || 0;
+      totalAmount += parseFloat(s.total_amount) || 0;
+      saleCurrencies.add(s.sale_currency || 'USD');
+      uzsCash += parseFloat(s.payment_uzs_cash) || 0;
+      uzsCard += parseFloat(s.payment_uzs_card) || 0;
+      usdCash += parseFloat(s.payment_usd_cash) || 0;
+      usdCard += parseFloat(s.payment_usd_card) || 0;
+    }
+    const totalAmountCurrency =
+      saleCurrencies.size === 1 ? [...saleCurrencies][0] : null;
+    return {
+      quantity,
+      totalAmount,
+      totalAmountCurrency,
+      uzsCash,
+      uzsCard,
+      usdCash,
+      usdCard,
+    };
+  }, [filteredSales]);
+
   const fetchProducts = async () => {
     try {
       const response = await api.get('/products/');
@@ -219,6 +281,7 @@ const Sales = () => {
       return;
     }
     try {
+      const itemQty = parseInt(formData.quantity, 10) || 1;
       // Check inventory availability for the selected product
       const selectedProduct = products.find(p => p.id === parseInt(formData.product));
       if (selectedProduct) {
@@ -228,7 +291,7 @@ const Sales = () => {
         );
         const totalAvailable = inventoryItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
         
-        if (totalAvailable < parseInt(formData.quantity)) {
+        if (totalAvailable < itemQty) {
           showNotification(`Insufficient inventory! Available: ${totalAvailable}, Requested: ${formData.quantity}. This product is sold out or has insufficient stock.`, 'error');
           return;
         }
@@ -241,14 +304,24 @@ const Sales = () => {
           showNotification(`Package type "${formData.package_type}" does not exist. Please add it to inventory first.`, 'error');
           return;
         }
-        const packagesNeeded = parseInt(formData.quantity) || 1;
+        const packagesNeeded = parseInt(String(formData.package_quantity), 10) || itemQty;
         if (selectedPackage.quantity < packagesNeeded) {
-          showNotification(`Insufficient package stock! Available: ${selectedPackage.quantity}, Required: ${packagesNeeded} for ${formData.quantity} item(s).`, 'error');
+          showNotification(`Insufficient package stock! Available: ${selectedPackage.quantity}, Required: ${packagesNeeded} package(s).`, 'error');
           return;
         }
       }
       
-      await api.post('/sales/', formData);
+      const salePayload = {
+        ...formData,
+        product: parseInt(formData.product, 10),
+        quantity: itemQty,
+        customer: parseInt(formData.customer, 10),
+        package_type: formData.package_type || null,
+        package_quantity: formData.package_type
+          ? (parseInt(String(formData.package_quantity), 10) || itemQty)
+          : null,
+      };
+      await api.post('/sales/', salePayload);
       setShowForm(false);
       setFormCategory('');
       setFormData({
@@ -258,6 +331,7 @@ const Sales = () => {
         sale_currency: 'USD',
         sale_type: 'bought_from_shop',
         package_type: '',
+        package_quantity: '',
         customer: '',
         status: 'pending',
         deposit_received: false,
@@ -274,6 +348,159 @@ const Sales = () => {
     }
   };
 
+  const updateBatchLine = (key, field, value) => {
+    setBatchLines((lines) =>
+      lines.map((l) => {
+        if (l.key !== key) return l;
+        if (field === 'product') {
+          const p = value && products.find((x) => x.id === parseInt(value, 10));
+          const next = { ...l, product: value };
+          if (p && p.selling_price != null) {
+            next.selling_price = String(p.selling_price);
+          }
+          if (!value) {
+            next.selling_price = '';
+            next.package_type = '';
+            next.package_quantity = '';
+          }
+          return next;
+        }
+        if (field === 'package_type') {
+          if (!value) {
+            return { ...l, package_type: '', package_quantity: '' };
+          }
+          const iq = parseInt(String(l.quantity), 10) || 1;
+          return { ...l, package_type: value, package_quantity: String(iq) };
+        }
+        return { ...l, [field]: value };
+      })
+    );
+  };
+
+  const addBatchLine = () => {
+    setBatchLines((lines) => [
+      ...lines,
+      {
+        key: `${Date.now()}-${Math.random()}`,
+        product: '',
+        quantity: '1',
+        selling_price: '',
+        package_type: '',
+        package_quantity: '',
+      },
+    ]);
+  };
+
+  const removeBatchLine = (key) => {
+    setBatchLines((lines) => (lines.length <= 1 ? lines : lines.filter((l) => l.key !== key)));
+  };
+
+  const handleBatchSubmit = async (e) => {
+    e.preventDefault();
+    if (!batchCustomer) {
+      showNotification('Please select a customer before creating sales.', 'error');
+      return;
+    }
+    const withProduct = batchLines.filter((l) => l.product);
+    if (withProduct.length === 0) {
+      showNotification('Add at least one line with a product selected.', 'error');
+      return;
+    }
+    for (const l of withProduct) {
+      if (l.selling_price === '' || l.selling_price == null) {
+        showNotification('Set a selling price for every line (pick a product to prefill it).', 'error');
+        return;
+      }
+    }
+    const items = withProduct.map((l) => {
+      const itemQty = parseInt(String(l.quantity), 10) || 1;
+      const row = {
+        product: parseInt(l.product, 10),
+        quantity: itemQty,
+        selling_price: l.selling_price,
+      };
+      if (l.package_type) {
+        row.package_type = l.package_type;
+        row.package_quantity = parseInt(String(l.package_quantity), 10) || itemQty;
+      }
+      return row;
+    });
+    const needByProduct = new Map();
+    for (const l of withProduct) {
+      const pid = parseInt(l.product, 10);
+      const q = parseInt(l.quantity, 10) || 0;
+      needByProduct.set(pid, (needByProduct.get(pid) || 0) + q);
+    }
+    for (const [pid, need] of needByProduct) {
+      const invItems = inventory.filter(
+        (x) => x.product === pid && x.status === 'in_inventory'
+      );
+      const available = invItems.reduce((s, it) => s + (it.quantity || 0), 0);
+      if (available < need) {
+        showNotification(
+          `Insufficient inventory for product #${pid}: need ${need}, have ${available}.`,
+          'error'
+        );
+        return;
+      }
+    }
+    const needPkg = new Map();
+    for (const l of withProduct) {
+      if (!l.package_type) continue;
+      const itemQty = parseInt(l.quantity, 10) || 1;
+      const pk = parseInt(String(l.package_quantity), 10) || itemQty;
+      needPkg.set(l.package_type, (needPkg.get(l.package_type) || 0) + pk);
+    }
+    for (const [pt, n] of needPkg) {
+      const pkg = packages.find((p) => p.package_type === pt);
+      if (!pkg) {
+        showNotification(`Package type "${pt}" is not in inventory.`, 'error');
+        return;
+      }
+      if (pkg.quantity < n) {
+        showNotification(
+          `Insufficient package "${pt}": need ${n}, have ${pkg.quantity}.`,
+          'error'
+        );
+        return;
+      }
+    }
+    try {
+      const { data } = await api.post('/sales/batch_create/', {
+        customer: parseInt(batchCustomer, 10),
+        defaults: {
+          sale_type: batchDefaults.sale_type,
+          sale_currency: batchDefaults.sale_currency,
+          status: 'pending',
+        },
+        items,
+      });
+      showNotification(data.message || `Created ${data.count} sale(s).`, 'success');
+      setShowBatchForm(false);
+      setBatchFormCategory('');
+      setBatchCustomer('');
+      setBatchLines([]);
+      fetchSales();
+      fetchInventory();
+      fetchPackages();
+    } catch (error) {
+      console.error('Error batch-creating sales:', error);
+      const d = error.response?.data;
+      if (d?.item_errors) {
+        showNotification(
+          d.error || 'One or more lines failed validation.',
+          'error'
+        );
+        console.warn('batch_create item_errors', d.item_errors);
+      } else {
+        showNotification(
+          d?.error || d?.detail || 'Error creating batch sales',
+          'error'
+        );
+      }
+    }
+  };
+
   const [dispatchFormData, setDispatchFormData] = useState({
     saleId: null,
     delivery_cost: '',
@@ -283,6 +510,7 @@ const Sales = () => {
     is_paid: false,
     currency: 'UZS',
     payment_type: 'cash',
+    dispatch_notes: '',
   });
   const [dispatchersList, setDispatchersList] = useState([]);
   const [showDispatchForm, setShowDispatchForm] = useState(false);
@@ -296,22 +524,8 @@ const Sales = () => {
     usd_card: '',
   });
   
-  const [paymentFormData, setPaymentFormData] = useState({
-    saleId: null,
-    uzs_cash: '',
-    uzs_card: '',
-    usd_cash: '',
-    usd_card: '',
-    // Prepayment fields for sales from orders
-    prepayment_amount: '',
-    total_sale_amount: '',
-    // Dispatch payment fields
-    dispatch_payment_needed: false,
-    dispatch_payment_amount: '',
-    dispatch_payment_currency: 'UZS',
-    dispatch_payment_type: 'cash',
-  });
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  /** When set, shows shared Complete & Pay form (same flow as Dispatchers tab). */
+  const [completePaySale, setCompletePaySale] = useState(null);
   
   const [showCompleteFromOrderForm, setShowCompleteFromOrderForm] = useState(false);
   const [completeFromOrderData, setCompleteFromOrderData] = useState({
@@ -320,6 +534,7 @@ const Sales = () => {
     selling_price: '',
     sale_type: 'bought_from_shop',
     package_type: '',
+    package_quantity: '',
     now_uzs_cash: '',
     now_uzs_card: '',
     now_usd_cash: '',
@@ -343,58 +558,24 @@ const Sales = () => {
           is_paid: false,
           currency: 'UZS',
           payment_type: 'cash',
+          dispatch_notes: '',
         });
         setShowDispatchForm(true);
       } else if (newStatus === 'completed') {
-        // Show payment form - auto-fill from sale data (no API call here)
         const sale = sales.find(s => s.id === saleId);
         if (!sale) {
           console.warn('Sale not found when trying to complete:', saleId);
           return;
         }
-
-        const sellingPrice = parseFloat(sale.selling_price || 0);
-        const quantity = parseFloat(sale.quantity || 0);
-        const totalAmount = !isNaN(sellingPrice * quantity) ? sellingPrice * quantity : 0;
-        const advancePayment = parseFloat(sale.advance_payment_received || 0);
-        const nowBeingPaid = totalAmount - advancePayment;
-        
-        // Check if sale has dispatch that is not paid (using dispatch_info from API)
-        const dispatch = sale.dispatch_info;
-        const dispatchPaymentNeeded =
-          dispatch &&
-          !dispatch.is_paid &&
-          ((dispatch.delivery_cost_uzs && parseFloat(dispatch.delivery_cost_uzs) > 0) ||
-            (dispatch.delivery_cost && parseFloat(dispatch.delivery_cost) > 0));
-        
-        // Check if sale is from order (has advance payment)
-        const isFromOrder = !!(sale.order || advancePayment > 0 || sale.sale_type === 'from_order');
-        
-        setPaymentFormData({
-          saleId: saleId,
-          uzs_cash: '',
-          uzs_card: '',
-          usd_cash: isFromOrder
-            ? (nowBeingPaid > 0 ? nowBeingPaid.toFixed(2) : '0')
-            : totalAmount.toFixed(2),
-          usd_card: '',
-          prepayment_amount: isFromOrder && advancePayment > 0 ? advancePayment.toFixed(2) : '',
-          total_sale_amount: isFromOrder && advancePayment > 0 ? totalAmount.toFixed(2) : '',
-          // Dispatch payment fields - auto-fill from dispatch if not paid
-          dispatch_payment_needed: !!dispatchPaymentNeeded,
-          dispatch_payment_amount: dispatchPaymentNeeded
-            ? dispatch.delivery_cost_uzs || dispatch.delivery_cost || ''
-            : '',
-          dispatch_payment_currency: dispatchPaymentNeeded
-            ? (dispatch.delivery_cost_uzs ? 'UZS' : 'USD')
-            : 'UZS',
-          dispatch_payment_type: dispatchPaymentNeeded
-            ? (dispatch.delivery_payment_cash && parseFloat(dispatch.delivery_payment_cash) > 0 ? 'cash' : 'card')
-            : 'cash',
-        });
-        setShowPaymentForm(true);
+        setCompletePaySale(sale);
       } else {
-        await api.post(`/sales/${saleId}/update_status/`, { status: newStatus });
+        const n = window.prompt('Enter notes (required) for this sale status change:');
+        if (n === null) return;
+        if (!String(n).trim()) {
+          showNotification('Notes are required for status changes.', 'error');
+          return;
+        }
+        await api.post(`/sales/${saleId}/update_status/`, { status: newStatus, notes: String(n).trim() });
         fetchSales();
         showNotification(`Sale status updated to ${newStatus}`, 'success');
       }
@@ -404,51 +585,6 @@ const Sales = () => {
       if (newStatus !== 'completed') {
         showNotification('Error updating status', 'error');
       }
-    }
-  };
-
-  const handlePaymentSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const requestData = {
-        status: 'completed',
-        uzs_cash: parseFloat(paymentFormData.uzs_cash) || 0,
-        uzs_card: parseFloat(paymentFormData.uzs_card) || 0,
-        usd_cash: parseFloat(paymentFormData.usd_cash) || 0,
-        usd_card: parseFloat(paymentFormData.usd_card) || 0,
-      };
-      
-      // Dispatch cost must be paid on completion when dispatch exists and was unpaid at dispatch time
-      if (paymentFormData.dispatch_payment_needed) {
-        const dAmt = parseFloat(String(paymentFormData.dispatch_payment_amount).replace(',', '.')) || 0;
-        if (dAmt <= 0) {
-          showNotification('Enter the delivery / dispatch payment amount (or check dispatch setup).', 'error');
-          return;
-        }
-        requestData.dispatch_payment_amount = dAmt;
-        requestData.dispatch_payment_currency = paymentFormData.dispatch_payment_currency || 'UZS';
-        requestData.dispatch_payment_type = paymentFormData.dispatch_payment_type || 'cash';
-      }
-      
-      await api.post(`/sales/${paymentFormData.saleId}/update_status/`, requestData);
-      setShowPaymentForm(false);
-      setPaymentFormData({
-        saleId: null,
-        payment_currency: 'USD',
-        payment_amount: '',
-        payment_type: 'cash',
-        prepayment_amount: '',
-        total_sale_amount: '',
-        dispatch_payment_needed: false,
-        dispatch_payment_amount: '',
-        dispatch_payment_currency: 'UZS',
-        dispatch_payment_type: 'cash',
-      });
-      fetchSales();
-      showNotification('Sale completed successfully!', 'success');
-    } catch (error) {
-      console.error('Error completing sale:', error);
-      showNotification(error.response?.data?.error || 'Error completing sale', 'error');
     }
   };
 
@@ -467,6 +603,11 @@ const Sales = () => {
 
   const handleDispatchSubmit = async (e) => {
     e.preventDefault();
+    if (!String(dispatchFormData.dispatch_notes || '').trim()) {
+      showNotification('Please enter notes for the status change and dispatch.', 'error');
+      return;
+    }
+    const dn = String(dispatchFormData.dispatch_notes).trim();
     try {
       if (dispatchFormData.dispatch_type === 'dostavshik') {
         if (!dispatchFormData.dispatcher) {
@@ -480,7 +621,7 @@ const Sales = () => {
       }
 
       // First update sale status to dispatched
-      await api.post(`/sales/${dispatchFormData.saleId}/update_status/`, { status: 'dispatched' });
+      await api.post(`/sales/${dispatchFormData.saleId}/update_status/`, { status: 'dispatched', notes: dn });
       
       // Then create dispatch with delivery cost
       const sale = sales.find(s => s.id === dispatchFormData.saleId);
@@ -493,6 +634,7 @@ const Sales = () => {
           delivery_cost_uzs: dispatchFormData.currency === 'UZS' ? dispatchFormData.delivery_cost : 0,
           tracking_number: dispatchFormData.tracking_number || '',
           status: 'dispatched',
+          logistics_notes: dn,
         };
         if (dispatchFormData.dispatch_type === 'dostavshik' && dispatchFormData.dispatcher) {
           dispatchData.dispatcher = parseInt(dispatchFormData.dispatcher, 10);
@@ -526,6 +668,7 @@ const Sales = () => {
         is_paid: false,
         currency: 'UZS',
         payment_type: 'cash',
+        dispatch_notes: '',
       });
       fetchSales();
       showNotification('Dispatch created successfully!', 'success');
@@ -547,6 +690,7 @@ const Sales = () => {
         selling_price: sale.selling_price || '',
         sale_type: 'bought_from_shop',
         package_type: '',
+        package_quantity: String(sale.quantity || 1),
         now_uzs_cash: '',
         now_uzs_card: '',
         now_usd_cash: nowPaidAmount > 0 ? nowPaidAmount.toFixed(2) : '0',
@@ -570,11 +714,31 @@ const Sales = () => {
         return;
       }
       
+      if (completeFromOrderData.package_type) {
+        const fromOrderSaleForStock = sales.find(s => s.id === completeFromOrderData.saleId);
+        const orderItemQty = fromOrderSaleForStock ? (parseInt(fromOrderSaleForStock.quantity, 10) || 1) : 1;
+        const packagesNeeded = parseInt(String(completeFromOrderData.package_quantity), 10) || orderItemQty;
+        const selectedPackage = packages.find(p => p.package_type === completeFromOrderData.package_type);
+        if (!selectedPackage) {
+          showNotification(`Package type "${completeFromOrderData.package_type}" does not exist. Please add it to inventory first.`, 'error');
+          return;
+        }
+        if (selectedPackage.quantity < packagesNeeded) {
+          showNotification(`Insufficient package stock! Available: ${selectedPackage.quantity}, Required: ${packagesNeeded} package(s).`, 'error');
+          return;
+        }
+      }
+      
+      const fromOrderSale = sales.find(s => s.id === completeFromOrderData.saleId);
+      const orderItemQty = fromOrderSale ? (parseInt(fromOrderSale.quantity, 10) || 1) : 1;
       const requestData = {
         customer: completeFromOrderData.customer,
         selling_price: sellingPrice,
         sale_type: completeFromOrderData.sale_type,
         package_type: completeFromOrderData.package_type || null,
+        package_quantity: completeFromOrderData.package_type
+          ? (parseInt(String(completeFromOrderData.package_quantity), 10) || orderItemQty)
+          : null,
         uzs_cash: parseFloat(completeFromOrderData.now_uzs_cash) || 0,
         uzs_card: parseFloat(completeFromOrderData.now_uzs_card) || 0,
         usd_cash: parseFloat(completeFromOrderData.now_usd_cash) || 0,
@@ -605,6 +769,7 @@ const Sales = () => {
           is_paid: false,
           currency: 'UZS',
           payment_type: 'cash',
+          dispatch_notes: '',
         });
         setShowDispatchForm(true);
         setCompleteFromOrderData({
@@ -613,6 +778,7 @@ const Sales = () => {
           selling_price: '',
           sale_type: 'bought_from_shop',
           package_type: '',
+          package_quantity: '',
           now_uzs_cash: '',
           now_uzs_card: '',
           now_usd_cash: '',
@@ -632,6 +798,7 @@ const Sales = () => {
           selling_price: '',
           sale_type: 'bought_from_shop',
           package_type: '',
+          package_quantity: '',
           now_uzs_cash: '',
           now_uzs_card: '',
           now_usd_cash: '',
@@ -761,9 +928,56 @@ const Sales = () => {
 
       <div className="page-header">
         <h1>Sales</h1>
-        <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : '+ New Sale'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              if (showForm) {
+                setShowForm(false);
+                setFormCategory('');
+              } else {
+                setShowBatchForm(false);
+                setShowForm(true);
+              }
+            }}
+          >
+            {showForm ? 'Cancel' : '+ New sale'}
+          </button>
+          <button
+            type="button"
+            className="btn-edit"
+            onClick={() => {
+              if (showBatchForm) {
+                setShowBatchForm(false);
+                setBatchFormCategory('');
+                setBatchLines([]);
+              } else {
+                setShowForm(false);
+                setFormCategory('');
+                setShowBatchForm(true);
+                setBatchFormCategory('');
+                setBatchCustomer('');
+                setBatchDefaults({
+                  sale_type: 'bought_from_shop',
+                  sale_currency: 'USD',
+                });
+                setBatchLines([
+                  {
+                    key: `${Date.now()}-0`,
+                    product: '',
+                    quantity: '1',
+                    selling_price: '',
+                    package_type: '',
+                    package_quantity: '',
+                  },
+                ]);
+              }
+            }}
+          >
+            {showBatchForm ? 'Close' : 'Multi-item (one customer)'}
+          </button>
+        </div>
       </div>
 
       {showDispatchForm && (
@@ -851,6 +1065,16 @@ const Sales = () => {
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>Notes *</label>
+                <textarea
+                  rows={3}
+                  value={dispatchFormData.dispatch_notes}
+                  onChange={(e) => setDispatchFormData({ ...dispatchFormData, dispatch_notes: e.target.value })}
+                  required
+                />
+                <small style={{ color: '#666' }}>Required for the sale status change and for dispatch logistics notes.</small>
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
                   <input
                     type="checkbox"
@@ -879,6 +1103,7 @@ const Sales = () => {
                     is_paid: false,
                     currency: 'UZS',
                     payment_type: 'cash',
+                    dispatch_notes: '',
                   });
                 }}
               >
@@ -1032,13 +1257,34 @@ const Sales = () => {
                 <label>Package Type (Optional)</label>
                 <select
                   value={completeFromOrderData.package_type || ''}
-                  onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, package_type: e.target.value })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const so = sales.find(s => s.id === completeFromOrderData.saleId);
+                    const q = so ? (parseInt(so.quantity, 10) || 1) : 1;
+                    if (!v) {
+                      setCompleteFromOrderData({ ...completeFromOrderData, package_type: '', package_quantity: '' });
+                    } else {
+                      setCompleteFromOrderData({ ...completeFromOrderData, package_type: v, package_quantity: String(q) });
+                    }
+                  }}
                 >
                   <option value="">No Package</option>
                   <option value="M">M</option>
                   <option value="L">L</option>
                 </select>
               </div>
+              {completeFromOrderData.package_type && (
+                <div className="form-group">
+                  <label>Number of packages</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={completeFromOrderData.package_quantity}
+                    onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, package_quantity: e.target.value })}
+                    required
+                  />
+                </div>
+              )}
               <div className="form-group" style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', paddingTop: '12px', marginTop: '4px' }}>
                 <p style={{ margin: '0 0 10px 0', color: '#555', fontSize: '0.9em', fontWeight: 600 }}>
                   Payment — fill any combination:
@@ -1084,9 +1330,11 @@ const Sales = () => {
                     selling_price: '',
                     sale_type: 'bought_from_shop',
                     package_type: '',
-                    now_paid_amount: '',
-                    now_paid_currency: 'USD',
-                    now_paid_type: 'cash',
+                    package_quantity: '',
+                    now_uzs_cash: '',
+                    now_uzs_card: '',
+                    now_usd_cash: '',
+                    now_usd_card: '',
                     deposit_received: false,
                     deposit_amount: '',
                     deposit_currency: 'USD',
@@ -1101,117 +1349,16 @@ const Sales = () => {
         </div>
       )}
 
-      {showPaymentForm && (
-        <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>Complete Sale #{paymentFormData.saleId}</h2>
-          <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Fill in any combination of payment methods. Leave a field empty or 0 if not used.
-          </p>
-          <form onSubmit={handlePaymentSubmit}>
-            <div className="form-grid">
-              {paymentFormData.prepayment_amount && parseFloat(paymentFormData.prepayment_amount) > 0 && (
-                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label>Prepayment Already Received</label>
-                  <input type="number" step="0.01" value={paymentFormData.prepayment_amount} readOnly
-                    style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }} />
-                  <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>This amount was received when the order was created</small>
-                </div>
-              )}
-              <div className="form-group">
-                <label>UZS — Cash</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={paymentFormData.uzs_cash}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs_cash: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>UZS — Card</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={paymentFormData.uzs_card}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs_card: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Cash</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={paymentFormData.usd_cash}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, usd_cash: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Card</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={paymentFormData.usd_card}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, usd_card: e.target.value })} />
-              </div>
-              
-              {/* Dispatch Payment Fields - shown if dispatch exists and is not paid */}
-              {paymentFormData.dispatch_payment_needed && (
-                <>
-                  <div className="form-group" style={{ gridColumn: '1 / -1', marginTop: '20px', paddingTop: '20px', borderTop: '2px solid #e0e0e0' }}>
-                    <h3 style={{ margin: '0 0 15px 0', color: '#333' }}>Dispatch Payment</h3>
-                    <p style={{ margin: '0 0 15px 0', color: '#666', fontSize: '0.9em' }}>
-                      This dispatch was not paid at dispatch time. Please enter payment details now.
-                    </p>
-                  </div>
-                  <div className="form-group">
-                    <label>Dispatch Payment Amount ({paymentFormData.dispatch_payment_currency})</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={paymentFormData.dispatch_payment_amount}
-                      onChange={(e) => setPaymentFormData({ ...paymentFormData, dispatch_payment_amount: e.target.value })}
-                      required={paymentFormData.dispatch_payment_needed}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Dispatch Payment Currency</label>
-                    <select
-                      value={paymentFormData.dispatch_payment_currency || 'UZS'}
-                      onChange={(e) => setPaymentFormData({ ...paymentFormData, dispatch_payment_currency: e.target.value })}
-                      required={paymentFormData.dispatch_payment_needed}
-                    >
-                      <option value="USD">USD</option>
-                      <option value="UZS">UZS</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Dispatch Payment Type</label>
-                    <select
-                      value={paymentFormData.dispatch_payment_type || 'cash'}
-                      onChange={(e) => setPaymentFormData({ ...paymentFormData, dispatch_payment_type: e.target.value })}
-                      required={paymentFormData.dispatch_payment_needed}
-                    >
-                      <option value="cash">Cash</option>
-                      <option value="card">Card</option>
-                    </select>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="form-actions">
-              <button type="submit" className="btn-primary">
-                Complete Sale
-              </button>
-              <button
-                type="button"
-                className="btn-edit"
-                onClick={() => {
-                  setShowPaymentForm(false);
-                  setPaymentFormData({
-                    saleId: null,
-                    uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '',
-                    prepayment_amount: '', total_sale_amount: '',
-                    dispatch_payment_needed: false,
-                    dispatch_payment_amount: '',
-                    dispatch_payment_currency: 'UZS',
-                    dispatch_payment_type: 'cash',
-                  });
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
+      {completePaySale && (
+        <SaleCompletePayForm
+          sale={completePaySale}
+          onClose={() => setCompletePaySale(null)}
+          onSuccess={() => {
+            setCompletePaySale(null);
+            fetchSales();
+          }}
+          showNotification={showNotification}
+        />
       )}
 
       {showSellReservedForm && (
@@ -1277,7 +1424,7 @@ const Sales = () => {
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
+                <label>Filter by category</label>
                 <select
                   value={formCategory}
                   onChange={(e) => { setFormCategory(e.target.value); setFormData({ ...formData, product: '', selling_price: '' }); }}
@@ -1306,22 +1453,15 @@ const Sales = () => {
                   <option value="">Select a product</option>
                   {products
                     .filter(p => !formCategory || p.category === formCategory)
+                    .slice()
+                    .sort((a, b) => b.id - a.id)
                     .map((product) => (
                       <option key={product.id} value={product.id}>
-                        {product.brand} {product.model} - Size {product.size} ({product.color}) - ${product.selling_price}
+                        {productSalePickerLabel(product)}
                       </option>
                     ))}
                 </select>
               </div>
-              {formData.product && (() => {
-                const cat = products.find(p => p.id === parseInt(formData.product))?.category;
-                return cat ? (
-                  <div className="form-group">
-                    <label>Category</label>
-                    <input type="text" value={cat} readOnly style={{ background: '#f5f5f5', color: '#666', cursor: 'default' }} />
-                  </div>
-                ) : null;
-              })()}
               <div className="form-group">
                 <label>In Inventory</label>
                 <input
@@ -1397,12 +1537,13 @@ const Sales = () => {
                 <select
                   value={formData.package_type === 'custom' ? 'custom' : (packages.find(p => p.package_type === formData.package_type) ? formData.package_type : (formData.package_type ? 'custom' : ''))}
                   onChange={(e) => {
+                    const itemQty = parseInt(String(formData.quantity), 10) || 1;
                     if (e.target.value === 'custom') {
-                      setFormData({ ...formData, package_type: '' });
+                      setFormData({ ...formData, package_type: '', package_quantity: '' });
                     } else if (e.target.value === '') {
-                      setFormData({ ...formData, package_type: '' });
+                      setFormData({ ...formData, package_type: '', package_quantity: '' });
                     } else {
-                      setFormData({ ...formData, package_type: e.target.value });
+                      setFormData({ ...formData, package_type: e.target.value, package_quantity: String(itemQty) });
                     }
                   }}
                 >
@@ -1419,11 +1560,31 @@ const Sales = () => {
                     type="text"
                     placeholder="Enter package type name (e.g., M, L, Small Box, etc.)"
                     value={formData.package_type}
-                    onChange={(e) => setFormData({ ...formData, package_type: e.target.value })}
+                    onChange={(e) => {
+                      const t = e.target.value;
+                      const def = String(parseInt(String(formData.quantity), 10) || 1);
+                      setFormData({
+                        ...formData,
+                        package_type: t,
+                        package_quantity: formData.package_quantity || def,
+                      });
+                    }}
                     style={{ marginTop: '10px' }}
                   />
                 )}
               </div>
+              {formData.package_type && (
+                <div className="form-group">
+                  <label>Number of packages</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formData.package_quantity}
+                    onChange={(e) => setFormData({ ...formData, package_quantity: e.target.value })}
+                    required
+                  />
+                </div>
+              )}
               {/* Deposit fields for Reserved sales */}
               {formData.sale_type === 'reserved' && (
                 <>
@@ -1520,6 +1681,7 @@ const Sales = () => {
                     sale_currency: 'USD',
                     sale_type: 'bought_from_shop',
                     package_type: '',
+                    package_quantity: '',
                     customer: '',
                     status: 'pending',
                     deposit_received: false,
@@ -1530,6 +1692,226 @@ const Sales = () => {
                 }}
               >
                 Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showBatchForm && (
+        <div className="form-card" style={{ marginBottom: 20 }}>
+          <h2>Multi-item sale (one customer)</h2>
+          <p style={{ color: '#555', fontSize: '0.9em', marginTop: 0, marginBottom: 16 }}>
+            Add one line per product. The customer and the sale type and currency below apply to every line. Each line becomes a separate sale (status: pending — update in the list as usual).
+          </p>
+          <form onSubmit={handleBatchSubmit}>
+            <div className="form-grid">
+              <div className="form-group">
+                <label>Filter by category (product list)</label>
+                <select
+                  value={batchFormCategory}
+                  onChange={(e) => setBatchFormCategory(e.target.value)}
+                >
+                  <option value="">All categories</option>
+                  {[...new Set(products.map((p) => p.category).filter(Boolean))].sort().map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>Customer *</label>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                  <select
+                    value={batchCustomer}
+                    onChange={(e) => setBatchCustomer(e.target.value)}
+                    style={{ flex: 1, borderColor: !batchCustomer ? '#f44336' : undefined }}
+                    required
+                  >
+                    <option value="">— Select customer (required) —</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.telephone ? `(${c.telephone})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn-edit"
+                    onClick={() => setShowCustomerForm(true)}
+                    style={{ whiteSpace: 'nowrap' }}
+                  >
+                    + New
+                  </button>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Sale type (all lines)</label>
+                <select
+                  value={batchDefaults.sale_type}
+                  onChange={(e) => setBatchDefaults({ ...batchDefaults, sale_type: e.target.value })}
+                >
+                  <option value="bought_from_shop">Bought from shop</option>
+                  <option value="delivery">Delivery</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Currency (all lines)</label>
+                <select
+                  value={batchDefaults.sale_currency}
+                  onChange={(e) => setBatchDefaults({ ...batchDefaults, sale_currency: e.target.value })}
+                >
+                  <option value="USD">USD</option>
+                  <option value="UZS">UZS</option>
+                </select>
+              </div>
+            </div>
+            <div className="batch-sale-lines-block">
+              <div className="batch-sale-lines-block__label" id="batch-line-items-label">
+                Line items
+              </div>
+              <div className="batch-sale-lines-wrap batch-sale-lines-wrap--scroll">
+                <table
+                  className="batch-sale-lines"
+                  role="table"
+                  aria-labelledby="batch-line-items-label"
+                >
+                  <colgroup>
+                    <col className="batch-col-product" />
+                    <col className="batch-col-stock" />
+                    <col className="batch-col-qty" />
+                    <col className="batch-col-price" />
+                    <col className="batch-col-package" />
+                    <col className="batch-col-pkgs" />
+                    <col className="batch-col-row" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th className="batch-sale-lines__th--num" title="In inventory">
+                        Stock
+                      </th>
+                      <th className="batch-sale-lines__th--num">Qty</th>
+                      <th className="batch-sale-lines__th--num">Selling price</th>
+                      <th>Package</th>
+                      <th className="batch-sale-lines__th--num"># Pkgs</th>
+                      <th className="batch-sale-lines__th--action" aria-label="Remove line" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {batchLines.map((line) => {
+                      const pid = line.product ? parseInt(line.product, 10) : null;
+                      const stock = pid
+                        ? inventory
+                            .filter((x) => x.product === pid && x.status === 'in_inventory')
+                            .reduce((s, it) => s + (it.quantity || 0), 0)
+                        : null;
+                      return (
+                        <tr key={line.key}>
+                          <td>
+                            <select
+                              className="batch-sale-lines__control"
+                              value={line.product}
+                              onChange={(e) => updateBatchLine(line.key, 'product', e.target.value)}
+                              aria-label="Product"
+                            >
+                              <option value="">— Product —</option>
+                              {products
+                                .filter((p) => !batchFormCategory || p.category === batchFormCategory)
+                                .sort((a, b) => b.id - a.id)
+                                .map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {productSalePickerLabel(p)}
+                                  </option>
+                                ))}
+                            </select>
+                          </td>
+                          <td className="batch-sale-lines__td--num">
+                            {pid ? stock : <span className="batch-sale-lines__empty" aria-hidden>—</span>}
+                          </td>
+                          <td className="batch-sale-lines__td--num">
+                            <input
+                              className="batch-sale-lines__control"
+                              type="number"
+                              min="1"
+                              value={line.quantity}
+                              onChange={(e) => updateBatchLine(line.key, 'quantity', e.target.value)}
+                              title="Quantity"
+                              aria-label="Quantity"
+                            />
+                          </td>
+                          <td className="batch-sale-lines__td--num">
+                            <input
+                              className="batch-sale-lines__control"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={line.selling_price}
+                              onChange={(e) => updateBatchLine(line.key, 'selling_price', e.target.value)}
+                              title="Selling price"
+                              placeholder="0.00"
+                              aria-label="Selling price"
+                            />
+                          </td>
+                          <td>
+                            <select
+                              className="batch-sale-lines__control"
+                              value={line.package_type}
+                              onChange={(e) => updateBatchLine(line.key, 'package_type', e.target.value)}
+                              aria-label="Package"
+                            >
+                              <option value="">None</option>
+                              {packages.map((p) => (
+                                <option key={p.id} value={p.package_type}>
+                                  {p.package_type} (stock {p.quantity})
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="batch-sale-lines__td--num">
+                            {line.package_type ? (
+                              <input
+                                className="batch-sale-lines__control"
+                                type="number"
+                                min="1"
+                                value={line.package_quantity}
+                                onChange={(e) => updateBatchLine(line.key, 'package_quantity', e.target.value)}
+                                title="Number of packages"
+                                aria-label="Number of packages"
+                              />
+                            ) : (
+                              <span className="batch-sale-lines__empty" aria-hidden>
+                                —
+                              </span>
+                            )}
+                          </td>
+                          <td className="batch-sale-lines__td--action">
+                            {batchLines.length > 1 ? (
+                              <button
+                                type="button"
+                                className="batch-sale-lines__remove"
+                                onClick={() => removeBatchLine(line.key)}
+                                title="Remove line"
+                                aria-label="Remove line"
+                              >
+                                ×
+                              </button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="form-actions batch-sale-lines-actions">
+              <button type="button" className="btn-edit" onClick={addBatchLine}>
+                + Add line
+              </button>
+              <button type="submit" className="btn-primary">
+                Create {batchLines.filter((l) => l.product).length} sale(s)
               </button>
             </div>
           </form>
@@ -1580,11 +1962,12 @@ const Sales = () => {
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes</label>
+                <label>Notes *</label>
                 <textarea
                   value={newCustomerData.notes}
                   onChange={(e) => setNewCustomerData({ ...newCustomerData, notes: e.target.value })}
                   rows="3"
+                  required
                 />
               </div>
             </div>
@@ -1608,11 +1991,11 @@ const Sales = () => {
       )}
 
       {/* Filters */}
-      {!showForm && !showCustomerForm && !showDispatchForm && !showPaymentForm && !showCompleteFromOrderForm && !showSellReservedForm && (
-        <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h3>Filters</h3>
-        <div className="form-grid">
-          <div className="form-group">
+      {!showForm && !showBatchForm && !showCustomerForm && !showDispatchForm && !completePaySale && !showCompleteFromOrderForm && !showSellReservedForm && (
+        <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
+          <h3 className="filter-card__title">Filters</h3>
+        <div className="filter-toolbar">
+          <div className="filter-field">
             <label>Category</label>
             <select
               value={filters.category}
@@ -1624,7 +2007,7 @@ const Sales = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Brand</label>
             <select
               value={filters.brand}
@@ -1638,7 +2021,7 @@ const Sales = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Model</label>
             <select
               value={filters.model}
@@ -1652,7 +2035,7 @@ const Sales = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Size</label>
             <select
               value={filters.size}
@@ -1666,7 +2049,7 @@ const Sales = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Color</label>
             <select
               value={filters.color}
@@ -1680,7 +2063,7 @@ const Sales = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Status</label>
             <select
               value={filters.status}
@@ -1695,7 +2078,7 @@ const Sales = () => {
               <option value="cancelled">Cancelled</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Year</label>
             <select
               value={filters.year}
@@ -1712,7 +2095,7 @@ const Sales = () => {
               })}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Month</label>
             <select
               value={filters.month}
@@ -1733,13 +2116,13 @@ const Sales = () => {
               <option value="12">December</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-toolbar__actions">
             <button
               type="button"
               className="btn-edit"
               onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', status: '', year: '', month: '' })}
             >
-              Clear Filters
+              Clear all
             </button>
           </div>
         </div>
@@ -1747,6 +2130,7 @@ const Sales = () => {
       )}
 
       <div className="table-card">
+        <div className="data-table-scroll">
         <table className="data-table">
           <thead>
             <tr>
@@ -1764,6 +2148,7 @@ const Sales = () => {
               <th>Quantity</th>
               <th>Price</th>
               <th>Total</th>
+              <th>Discount / credit</th>
               <th>UZS Cash</th>
               <th>UZS Card</th>
               <th>USD Cash</th>
@@ -1778,13 +2163,23 @@ const Sales = () => {
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan="22" style={{ textAlign: 'center' }}>
+                <td colSpan="23" style={{ textAlign: 'center' }}>
                   No sales found
                 </td>
               </tr>
             ) : (
               filteredSales.map((sale) => (
-                <tr key={sale.id}>
+                <tr
+                  key={sale.id}
+                  style={{
+                    backgroundColor:
+                      sale.balance_shortfall_type === 'on_credit'
+                        ? '#ffebee'
+                        : sale.balance_shortfall_type === 'discount'
+                          ? '#fff3e0'
+                          : undefined,
+                  }}
+                >
                   <td>#{sale.id}</td>
                   <td>
                     {sale.status === 'pending' && sale.sale_type === 'delivery' && (
@@ -1838,7 +2233,8 @@ const Sales = () => {
                         </button>
                         {sale.deposit_received && (
                           <span style={{ fontSize: '0.85em', color: '#666', display: 'block', marginTop: '5px' }}>
-                            Deposit: ${sale.deposit_amount} ({sale.deposit_currency})
+                            Deposit:{' '}
+                            {formatDisplayAmount(sale.deposit_amount, sale.deposit_currency || 'USD')}
                           </span>
                         )}
                       </>
@@ -1864,13 +2260,26 @@ const Sales = () => {
                   <td>
                     {sale.package_type ? (
                       <span>
-                        {sale.package_type} {sale.package_cost_per_unit ? `($${sale.package_cost_per_unit.toFixed(2)})` : ''}
+                        {sale.package_type} (×{sale.package_quantity != null ? sale.package_quantity : sale.quantity})
+                        {sale.package_cost_per_unit_usd != null && sale.package_cost_per_unit_usd > 0
+                          ? ` $${Number(sale.package_cost_per_unit_usd).toFixed(2)}`
+                          : ''}
+                        {sale.package_cost_per_unit_uzs > 0
+                          ? ` ${Number(sale.package_cost_per_unit_uzs).toLocaleString()} UZS`
+                          : ''}
                       </span>
                     ) : '-'}
                   </td>
                   <td>{sale.quantity}</td>
-                  <td>${sale.selling_price}</td>
-                  <td>${sale.total_amount}</td>
+                  <td>{formatDisplayAmount(sale.selling_price, sale.sale_currency || 'USD')}</td>
+                  <td>{formatDisplayAmount(sale.total_amount, sale.sale_currency || 'USD')}</td>
+                  <td style={{ fontSize: '0.9em' }}>
+                    {sale.balance_shortfall_type === 'discount' && sale.balance_shortfall_amount
+                      ? `Discount: ${formatDisplayAmount(sale.balance_shortfall_amount, sale.balance_shortfall_currency || 'USD')}`
+                      : sale.balance_shortfall_type === 'on_credit' && sale.balance_shortfall_amount
+                        ? `On credit: ${formatDisplayAmount(sale.balance_shortfall_amount, sale.balance_shortfall_currency || 'USD')}`
+                        : '—'}
+                  </td>
                   <td>
                     {parseFloat(sale.payment_uzs_cash) > 0
                       ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>{parseFloat(sale.payment_uzs_cash).toLocaleString()} UZS</span>
@@ -1904,7 +2313,45 @@ const Sales = () => {
               ))
             )}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="11" style={{ textAlign: 'right' }}>
+                Total
+              </td>
+              <td style={{ fontWeight: 600 }}>{salesColumnTotals.quantity.toLocaleString()}</td>
+              <td>—</td>
+              <td style={{ fontWeight: 600 }}>
+                {!filteredSales.length
+                  ? '—'
+                  : salesColumnTotals.totalAmountCurrency
+                    ? formatDisplayAmount(
+                        salesColumnTotals.totalAmount,
+                        salesColumnTotals.totalAmountCurrency,
+                      )
+                    : formatPlainAmount(salesColumnTotals.totalAmount)}
+              </td>
+              <td>—</td>
+              <td>
+                {salesColumnTotals.uzsCash > 0
+                  ? `${salesColumnTotals.uzsCash.toLocaleString()} UZS`
+                  : '—'}
+              </td>
+              <td>
+                {salesColumnTotals.uzsCard > 0
+                  ? `${salesColumnTotals.uzsCard.toLocaleString()} UZS`
+                  : '—'}
+              </td>
+              <td>
+                {salesColumnTotals.usdCash > 0 ? `$${salesColumnTotals.usdCash.toFixed(2)}` : '—'}
+              </td>
+              <td>
+                {salesColumnTotals.usdCard > 0 ? `$${salesColumnTotals.usdCard.toFixed(2)}` : '—'}
+              </td>
+              <td colSpan="4">—</td>
+            </tr>
+          </tfoot>
         </table>
+        </div>
       </div>
     </div>
   );

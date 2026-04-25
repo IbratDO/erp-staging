@@ -1,7 +1,139 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  sumAmountsByCurrency,
+  formatMultiCurrencyAmounts,
+  signedFinanceAmountsByLeg,
+  BALANCE_FOUR_LEGS,
+  financeRecordLegKey,
+} from '../utils/tableTotals';
 import './TablePage.css';
+
+const SALE_TYPE_LABELS = {
+  bought_from_shop: 'Shop',
+  delivery: 'Delivery',
+  from_order: 'From order',
+  reserved: 'Reserved',
+};
+
+function receivableDispatchLabel(saleDetail) {
+  const d = saleDetail?.dispatch_info;
+  if (!d) return '—';
+  if (d.dispatch_type === 'bts') {
+    return d.dispatcher_name ? `BTS · ${d.dispatcher_name}` : 'BTS';
+  }
+  if (d.dispatch_type === 'dostavshik') {
+    return d.dispatcher_name ? `Dostavshik · ${d.dispatcher_name}` : 'Dostavshik';
+  }
+  return d.dispatcher_name || d.dispatch_type || '—';
+}
+
+function payableCustomerName(p) {
+  if (p.order_detail?.customer_detail?.name) return p.order_detail.customer_detail.name;
+  if (p.dispatch_detail?.sale_detail?.customer_detail?.name) {
+    return p.dispatch_detail.sale_detail.customer_detail.name;
+  }
+  return '—';
+}
+
+function payableKind(p) {
+  if (p.order) return { kind: 'Order', ref: `#${p.order}` };
+  if (p.dispatch) return { kind: 'Dispatch', ref: `#${p.dispatch} (Sale #${p.dispatch_detail?.sale || '—'})` };
+  if (p.package_history) return { kind: 'Package', ref: `History #${p.package_history}` };
+  return { kind: '—', ref: '—' };
+}
+
+function payableContext(p) {
+  if (p.dispatch) {
+    const d = p.dispatch_detail;
+    if (!d) return '—';
+    if (d.dispatch_type === 'bts') {
+      return d.dispatcher_detail?.name ? `BTS · ${d.dispatcher_detail.name}` : 'BTS';
+    }
+    if (d.dispatch_type === 'dostavshik') {
+      return d.dispatcher_detail?.name ? `Dostavshik · ${d.dispatcher_detail.name}` : 'Dostavshik';
+    }
+    return d.dispatcher_detail?.name || d.dispatch_type || '—';
+  }
+  if (p.order) {
+    if (p.order_detail?.order_type === 'on_demand') {
+      return 'On-demand (supplier order)';
+    }
+    if (p.order_detail?.order_type === 'stock') {
+      return 'Stock order (inventory)';
+    }
+  }
+  if (p.package_history_detail?.package_detail) {
+    const t = p.package_history_detail.package_detail.package_type;
+    return t ? `Package type ${t}` : 'Package purchase';
+  }
+  return '—';
+}
+
+function financeLegHeader(leg) {
+  if (leg === 'uzs_cash') return 'UZS — Cash';
+  if (leg === 'uzs_card') return 'UZS — Card';
+  if (leg === 'usd_card') return 'USD — Card';
+  if (leg === 'usd_cash') return 'USD — Cash';
+  return leg;
+}
+
+/** Signed value for the leg that matches this record, or null if not applicable. */
+function signedForFinanceRecordLeg(record, leg) {
+  if (financeRecordLegKey(record) !== leg) return null;
+  const raw = parseFloat(record.amount) || 0;
+  if (raw === 0) return 0;
+  return record.record_type === 'income' ? raw : -raw;
+}
+
+function FinanceLegCell({ record, leg }) {
+  const v = signedForFinanceRecordLeg(record, leg);
+  if (v === null) {
+    return <span style={{ color: '#ced4da' }}>—</span>;
+  }
+  const isUzs = leg.startsWith('uzs');
+  if (v === 0) {
+    return <span style={{ color: '#adb5bd' }}>0</span>;
+  }
+  const color = v > 0 ? '#27ae60' : '#e74c3c';
+  if (isUzs) {
+    return (
+      <span style={{ color, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+        {v > 0 ? '+' : '−'}
+        {Math.abs(v).toLocaleString()}
+      </span>
+    );
+  }
+  return (
+    <span style={{ color, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+      {v > 0 ? '+$' : v < 0 ? '−$' : '$'}
+      {Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    </span>
+  );
+}
+
+function FinanceLegTotal({ value, leg }) {
+  const isUzs = leg.startsWith('uzs');
+  if (value === 0) {
+    return <span style={{ color: '#adb5bd' }}>0</span>;
+  }
+  const color = value > 0 ? '#1e5f2a' : '#a71d2a';
+  if (isUzs) {
+    return (
+      <span style={{ color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+        {value > 0 ? '+' : '−'}
+        {Math.abs(value).toLocaleString()}
+      </span>
+    );
+  }
+  return (
+    <span style={{ color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+      {value > 0 ? '+$' : '−$'}
+      {Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    </span>
+  );
+}
 
 const Finance = () => {
   const { isAdmin } = useAuth();
@@ -206,6 +338,10 @@ const Finance = () => {
 
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
+    if (!String(expenseFormData.notes || '').trim()) {
+      alert('Please enter notes for this expense.');
+      return;
+    }
     try {
       const payload = {
         record_type: 'expense',
@@ -214,7 +350,7 @@ const Finance = () => {
         currency: expenseFormData.currency,
         payment_type: expenseFormData.payment_type,
         recipient: expenseFormData.recipient || null,
-        notes: expenseFormData.notes,
+        notes: String(expenseFormData.notes).trim(),
         status: 'completed',
       };
 
@@ -241,6 +377,28 @@ const Finance = () => {
     }
   };
 
+  /* Footer totals: completed only, four-way legs; rows with no payment/currency leg show — and are excluded from these sums. */
+  const recordSignedLegTotals = useMemo(
+    () => signedFinanceAmountsByLeg(records, { status: 'completed' }),
+    [records]
+  );
+  const receivableAmountTotals = useMemo(
+    () => sumAmountsByCurrency(receivables),
+    [receivables]
+  );
+  const payableAmountTotals = useMemo(
+    () => sumAmountsByCurrency(payables),
+    [payables]
+  );
+  const receivablePendingByCurrency = useMemo(
+    () => sumAmountsByCurrency(receivables.filter((r) => r.status === 'pending')),
+    [receivables]
+  );
+  const payablePendingByCurrency = useMemo(
+    () => sumAmountsByCurrency(payables.filter((p) => p.status === 'pending')),
+    [payables]
+  );
+
   if (loading) {
     return <div className="page-container">Loading...</div>;
   }
@@ -264,14 +422,6 @@ const Finance = () => {
 
   const netProfitUSD = totalIncomeUSD - totalExpenseUSD;
   const netProfitUZS = totalIncomeUZS - totalExpenseUZS;
-
-  const totalReceivables = receivables
-    .filter((r) => r.status === 'pending')
-    .reduce((sum, r) => sum + parseFloat(r.amount), 0);
-
-  const totalPayables = payables
-    .filter((p) => p.status === 'pending')
-    .reduce((sum, p) => sum + parseFloat(p.amount), 0);
 
   return (
     <div className="page-container">
@@ -418,11 +568,12 @@ const Finance = () => {
                 </div>
               )}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes (Optional)</label>
+                <label>Notes *</label>
                 <textarea
                   value={expenseFormData.notes}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, notes: e.target.value })}
                   rows="2"
+                  required
                   placeholder={expenseFormData.expense_type === 'salary' ? 'e.g., Prepayment, Monthly salary, etc.' : ''}
                 />
               </div>
@@ -478,37 +629,93 @@ const Finance = () => {
         </div>
       )}
 
-      {/* Receivables Summary */}
+      {/* Receivables Summary (by currency; do not mix UZS and USD in one number) */}
       {activeTab === 'receivables' && (
         <div className="metrics-grid" style={{ marginBottom: '20px' }}>
           <div className="metric-card" style={{ border: '2px solid #28a745' }}>
-            <div className="metric-label">Total Receivables (Pending)</div>
-            <div className="metric-value" style={{ color: '#28a745', fontSize: '2em' }}>
-              ${totalReceivables.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div className="metric-label">Receivables — Pending (USD)</div>
+            <div className="metric-value" style={{ color: '#28a745', fontSize: '1.75em' }}>
+              {(receivablePendingByCurrency.USD || 0).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              USD
+            </div>
+          </div>
+          <div className="metric-card" style={{ border: '2px solid #28a745' }}>
+            <div className="metric-label">Receivables — Pending (UZS)</div>
+            <div className="metric-value" style={{ color: '#28a745', fontSize: '1.75em' }}>
+              {(receivablePendingByCurrency.UZS || 0).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              UZS
             </div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Total Receivables (All)</div>
+            <div className="metric-label">Receivables — All (USD)</div>
             <div className="metric-value">
-              ${receivables.reduce((sum, r) => sum + parseFloat(r.amount), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {(receivableAmountTotals.USD || 0).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              USD
+            </div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Receivables — All (UZS)</div>
+            <div className="metric-value">
+              {(receivableAmountTotals.UZS || 0).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              UZS
             </div>
           </div>
         </div>
       )}
 
-      {/* Payables Summary */}
+      {/* Payables Summary (by currency) */}
       {activeTab === 'payables' && (
         <div className="metrics-grid" style={{ marginBottom: '20px' }}>
           <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-            <div className="metric-label">Total Payables (Pending)</div>
-            <div className="metric-value" style={{ color: '#dc3545', fontSize: '2em' }}>
-              ${totalPayables.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <div className="metric-label">Payables — Pending (USD)</div>
+            <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.75em' }}>
+              {(payablePendingByCurrency.USD || 0).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              USD
+            </div>
+          </div>
+          <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
+            <div className="metric-label">Payables — Pending (UZS)</div>
+            <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.75em' }}>
+              {(payablePendingByCurrency.UZS || 0).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              UZS
             </div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Total Payables (All)</div>
+            <div className="metric-label">Payables — All (USD)</div>
             <div className="metric-value">
-              ${payables.reduce((sum, p) => sum + parseFloat(p.amount), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {(payableAmountTotals.USD || 0).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              USD
+            </div>
+          </div>
+          <div className="metric-card">
+            <div className="metric-label">Payables — All (UZS)</div>
+            <div className="metric-value">
+              {(payableAmountTotals.UZS || 0).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              UZS
             </div>
           </div>
         </div>
@@ -516,11 +723,12 @@ const Finance = () => {
 
       {/* Filters */}
       {!showExpenseForm && (
-        <div className="form-card" style={{ marginBottom: '20px' }}>
-          <div className="form-grid">
+        <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
+          <h3 className="filter-card__title" style={{ marginBottom: '8px' }}>Filters</h3>
+          <div className="filter-toolbar">
           {activeTab === 'records' && (
             <>
-              <div className="form-group">
+              <div className="filter-field">
                 <label>Type</label>
                 <select
                   value={filter.type}
@@ -539,7 +747,7 @@ const Finance = () => {
                 </select>
               </div>
               {(filter.type === 'expense' || filter.type === '') && (
-                <div className="form-group">
+                <div className="filter-field">
                   <label>Expense Type</label>
                   <select
                     value={filter.expense_type}
@@ -561,7 +769,7 @@ const Finance = () => {
             </>
           )}
           {(activeTab === 'receivables' || activeTab === 'payables') && (
-            <div className="form-group">
+            <div className="filter-field">
               <label>Status</label>
               <select
                 value={filter.status}
@@ -576,7 +784,7 @@ const Finance = () => {
             </div>
           )}
           {activeTab === 'records' && (
-            <div className="form-group">
+            <div className="filter-field">
               <label>Status</label>
               <select
                 value={filter.status}
@@ -589,7 +797,7 @@ const Finance = () => {
               </select>
             </div>
           )}
-          <div className="form-group">
+          <div className="filter-field">
             <label>Year</label>
             <select
               value={filter.year}
@@ -606,7 +814,7 @@ const Finance = () => {
               })}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Month</label>
             <select
               value={filter.month}
@@ -627,13 +835,13 @@ const Finance = () => {
               <option value="12">December</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-toolbar__actions">
             <button
               type="button"
               className="btn-edit"
               onClick={() => setFilter({ type: '', status: '', expense_type: '', currency: '', payment_type: '', year: '', month: '' })}
             >
-              Clear Filters
+              Clear all
             </button>
           </div>
         </div>
@@ -643,15 +851,16 @@ const Finance = () => {
       {/* Financial Records Table */}
       {activeTab === 'records' && (
         <div className="table-card">
+          <div className="data-table-scroll">
           <table className="data-table">
             <thead>
               <tr>
                 <th>ID</th>
                 <th>Type</th>
                 <th>Expense Type</th>
-                <th>Amount</th>
-                <th>Currency</th>
-                <th>Payment Type</th>
+                {BALANCE_FOUR_LEGS.map((leg) => (
+                  <th key={leg}>{financeLegHeader(leg)}</th>
+                ))}
                 <th>Status</th>
                 <th>Related Order</th>
                 <th>Related Sale</th>
@@ -664,7 +873,7 @@ const Finance = () => {
             <tbody>
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan="13" style={{ textAlign: 'center' }}>
+                  <td colSpan="14" style={{ textAlign: 'center' }}>
                     No finance records found
                   </td>
                 </tr>
@@ -684,22 +893,11 @@ const Finance = () => {
                     <td>
                       {record.expense_type ? record.expense_type.replace('_', ' ') : '-'}
                     </td>
-                    <td
-                      style={{
-                        color: record.record_type === 'income' ? '#27ae60' : '#e74c3c',
-                        fontWeight: '600',
-                      }}
-                    >
-                      {record.record_type === 'income' ? '+' : '-'}{parseFloat(record.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td>{record.currency || 'USD'}</td>
-                    <td>
-                      {record.payment_type ? (
-                        <span className={`status-badge ${record.payment_type === 'cash' ? 'confirmed' : 'pending'}`}>
-                          {record.payment_type === 'cash' ? 'Cash' : 'Card'}
-                        </span>
-                      ) : '-'}
-                    </td>
+                    {BALANCE_FOUR_LEGS.map((leg) => (
+                      <td key={leg}>
+                        <FinanceLegCell record={record} leg={leg} />
+                      </td>
+                    ))}
                     <td>
                       <span className={`status-badge ${record.status}`}>
                         {record.status}
@@ -719,19 +917,49 @@ const Finance = () => {
                         `${record.recipient_detail.username}${record.recipient_detail.first_name || record.recipient_detail.last_name ? ` (${record.recipient_detail.first_name} ${record.recipient_detail.last_name})`.trim() : ''}`
                       ) : '-'}
                     </td>
-                    <td style={{ fontSize: '0.9em', maxWidth: '200px' }}>
-                      {record.notes ? (
-                        <span title={record.notes}>
-                          {record.notes.length > 50 ? `${record.notes.substring(0, 50)}...` : record.notes}
-                        </span>
-                      ) : '-'}
+                    <td style={{ fontSize: '0.9em', maxWidth: '240px' }}>
+                      {(() => {
+                        const idLabel = `Record #${record.id}`;
+                        const text = record.notes && String(record.notes).trim() ? String(record.notes).trim() : '';
+                        const full = text ? `${idLabel} — ${text}` : idLabel;
+                        return (
+                          <span title={full}>
+                            {full.length > 58 ? `${full.slice(0, 58)}…` : full}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td>{new Date(record.transaction_date).toLocaleString()}</td>
                   </tr>
                 ))
               )}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan="3" style={{ textAlign: 'right' }}>
+                  Net (completed)
+                </td>
+                {BALANCE_FOUR_LEGS.map((leg) => (
+                  <td key={leg}>
+                    {records.length > 0 ? (
+                      <FinanceLegTotal value={recordSignedLegTotals[leg] || 0} leg={leg} />
+                    ) : (
+                      <span style={{ color: '#adb5bd' }}>—</span>
+                    )}
+                  </td>
+                ))}
+                <td
+                  colSpan="7"
+                  style={{ fontSize: '0.85em', color: '#666', textAlign: 'right' }}
+                >
+                  {records.length > 0
+                    ? 'Net (completed) per leg: only rows with currency and cash or card. Same sign as Type (income +, expense −).'
+                    : ' '}
+                </td>
+              </tr>
+            </tfoot>
           </table>
+          </div>
         </div>
       )}
 
@@ -739,56 +967,96 @@ const Finance = () => {
       {activeTab === 'receivables' && (
         <div className="table-card">
           <h2>Accounts Receivable</h2>
+          <div className="data-table-scroll">
           <table className="data-table">
             <thead>
               <tr>
                 <th>ID</th>
+                <th>Customer</th>
                 <th>Sale</th>
                 <th>Product</th>
+                <th>Sale type</th>
+                <th>From order</th>
+                <th>Delivery (BTS / Dostavshik)</th>
                 <th>Amount</th>
                 <th>Currency</th>
                 <th>Status</th>
                 <th>Created</th>
-                <th>Paid Date</th>
+                <th>Paid date</th>
               </tr>
             </thead>
             <tbody>
               {receivables.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center' }}>
+                  <td colSpan="12" style={{ textAlign: 'center' }}>
                     No receivables found
                   </td>
                 </tr>
               ) : (
-                receivables.map((receivable) => (
-                  <tr key={receivable.id}>
-                    <td>#{receivable.id}</td>
-                    <td>Sale #{receivable.sale}</td>
-                    <td>
-                      {receivable.sale_detail?.product_detail
-                        ? `${receivable.sale_detail.product_detail.brand} ${receivable.sale_detail.product_detail.model}`
-                        : '-'}
-                    </td>
-                    <td style={{ fontWeight: '600', color: '#28a745' }}>
-                      {parseFloat(receivable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td>{receivable.currency || 'USD'}</td>
-                    <td>
-                      <span className={`status-badge ${receivable.status}`}>
-                        {receivable.status}
-                      </span>
-                    </td>
-                    <td>{new Date(receivable.created_at).toLocaleString()}</td>
-                    <td>
-                      {receivable.paid_date
-                        ? new Date(receivable.paid_date).toLocaleString()
-                        : '-'}
-                    </td>
-                  </tr>
-                ))
+                receivables.map((receivable) => {
+                  const sd = receivable.sale_detail;
+                  return (
+                    <tr key={receivable.id}>
+                      <td>#{receivable.id}</td>
+                      <td>{sd?.customer_detail?.name || '—'}</td>
+                      <td>#{receivable.sale}</td>
+                      <td>
+                        {sd?.product_detail
+                          ? `${sd.product_detail.brand} ${sd.product_detail.model}`
+                          : '—'}
+                      </td>
+                      <td>
+                        {sd?.sale_type ? (SALE_TYPE_LABELS[sd.sale_type] || sd.sale_type) : '—'}
+                      </td>
+                      <td>
+                        {sd?.order ? (
+                          <span>Order #{sd.order}</span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td
+                        style={{ fontSize: '0.9rem', maxWidth: '200px' }}
+                        title={sd?.dispatch_info?.logistics_notes || undefined}
+                      >
+                        {receivableDispatchLabel(sd)}
+                      </td>
+                      <td style={{ fontWeight: '600', color: '#28a745' }}>
+                        {parseFloat(receivable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td>{receivable.currency || 'USD'}</td>
+                      <td>
+                        <span className={`status-badge ${receivable.status}`}>
+                          {receivable.status}
+                        </span>
+                      </td>
+                      <td>{new Date(receivable.created_at).toLocaleString()}</td>
+                      <td>
+                        {receivable.paid_date
+                          ? new Date(receivable.paid_date).toLocaleString()
+                          : '—'}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan="7" style={{ textAlign: 'right' }}>
+                  Total
+                </td>
+                <td style={{ fontWeight: 600, color: '#28a745' }}>
+                  {formatMultiCurrencyAmounts(receivableAmountTotals)}
+                </td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+              </tr>
+            </tfoot>
           </table>
+          </div>
         </div>
       )}
 
@@ -796,62 +1064,92 @@ const Finance = () => {
       {activeTab === 'payables' && (
         <div className="table-card">
           <h2>Accounts Payable</h2>
+          <div className="data-table-scroll">
           <table className="data-table">
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Order/Dispatch</th>
+                <th>Payable type</th>
+                <th>Ref</th>
+                <th>Customer</th>
                 <th>Product</th>
+                <th>Context</th>
                 <th>Amount</th>
                 <th>Currency</th>
                 <th>Status</th>
                 <th>Created</th>
-                <th>Paid Date</th>
+                <th>Paid date</th>
               </tr>
             </thead>
             <tbody>
               {payables.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center' }}>
+                  <td colSpan="11" style={{ textAlign: 'center' }}>
                     No payables found
                   </td>
                 </tr>
               ) : (
-                payables.map((payable) => (
-                  <tr key={payable.id}>
-                    <td>#{payable.id}</td>
-                    <td>
-                      {payable.order ? `Order #${payable.order}` : 
-                       payable.dispatch ? `Dispatch #${payable.dispatch} (Sale #${payable.dispatch_detail?.sale || 'N/A'})` : 
-                       '-'}
-                    </td>
-                    <td>
-                      {payable.order_detail?.product_detail
-                        ? `${payable.order_detail.product_detail.brand} ${payable.order_detail.product_detail.model}`
-                        : payable.dispatch_detail?.sale_detail?.product_detail
-                        ? `${payable.dispatch_detail.sale_detail.product_detail.brand} ${payable.dispatch_detail.sale_detail.product_detail.model}`
-                        : '-'}
-                    </td>
-                    <td style={{ fontWeight: '600', color: '#dc3545' }}>
-                      {parseFloat(payable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td>{payable.currency || 'USD'}</td>
-                    <td>
-                      <span className={`status-badge ${payable.status}`}>
-                        {payable.status}
-                      </span>
-                    </td>
-                    <td>{new Date(payable.created_at).toLocaleString()}</td>
-                    <td>
-                      {payable.paid_date
-                        ? new Date(payable.paid_date).toLocaleString()
-                        : '-'}
-                    </td>
-                  </tr>
-                ))
+                payables.map((payable) => {
+                  const { kind, ref } = payableKind(payable);
+                  return (
+                    <tr key={payable.id}>
+                      <td>#{payable.id}</td>
+                      <td>
+                        <span
+                          className="status-badge"
+                          style={{ background: '#6c757d', fontSize: '0.75rem' }}
+                        >
+                          {kind}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: '0.9rem' }}>{ref}</td>
+                      <td>{payableCustomerName(payable)}</td>
+                      <td>
+                        {payable.order_detail?.product_detail
+                          ? `${payable.order_detail.product_detail.brand} ${payable.order_detail.product_detail.model}`
+                          : payable.dispatch_detail?.sale_detail?.product_detail
+                            ? `${payable.dispatch_detail.sale_detail.product_detail.brand} ${payable.dispatch_detail.sale_detail.product_detail.model}`
+                            : payable.package_history_detail?.package_detail
+                              ? `Packages · type ${payable.package_history_detail.package_detail.package_type}`
+                              : '—'}
+                      </td>
+                      <td style={{ fontSize: '0.9rem', maxWidth: '220px' }}>{payableContext(payable)}</td>
+                      <td style={{ fontWeight: '600', color: '#dc3545' }}>
+                        {parseFloat(payable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td>{payable.currency || 'USD'}</td>
+                      <td>
+                        <span className={`status-badge ${payable.status}`}>
+                          {payable.status}
+                        </span>
+                      </td>
+                      <td>{new Date(payable.created_at).toLocaleString()}</td>
+                      <td>
+                        {payable.paid_date
+                          ? new Date(payable.paid_date).toLocaleString()
+                          : '—'}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan="6" style={{ textAlign: 'right' }}>
+                  Total
+                </td>
+                <td style={{ fontWeight: 600, color: '#dc3545' }}>
+                  {formatMultiCurrencyAmounts(payableAmountTotals)}
+                </td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+              </tr>
+            </tfoot>
           </table>
+          </div>
         </div>
       )}
 
@@ -901,6 +1199,7 @@ const Finance = () => {
 
               <div className="table-card" style={{ marginBottom: '20px' }}>
                 <h3>Sales Profit/Loss Analysis (All amounts in USD)</h3>
+                <div className="data-table-scroll">
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -960,10 +1259,12 @@ const Finance = () => {
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               </div>
 
               <div className="table-card">
                 <h3>Operating Expenses (All amounts in USD)</h3>
+                <div className="data-table-scroll">
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -995,6 +1296,7 @@ const Finance = () => {
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               </div>
             </div>
           ) : (

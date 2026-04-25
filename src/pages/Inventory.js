@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
+import { productCostCells, productCostPickerLabel } from '../utils/productCost';
 import './TablePage.css';
 
 const Inventory = () => {
@@ -107,6 +108,24 @@ const Inventory = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
+  const inventoryColumnTotals = useMemo(() => {
+    let quantity = 0;
+    let uzsC = 0;
+    let uzsCard = 0;
+    let usdC = 0;
+    let usdCard = 0;
+    for (const item of filteredInventory) {
+      const q = parseInt(item.quantity, 10) || 0;
+      const p = item.product_detail || {};
+      quantity += q;
+      uzsC += (parseFloat(p.cost_uzs_cash) || 0) * q;
+      uzsCard += (parseFloat(p.cost_uzs_card) || 0) * q;
+      usdC += (parseFloat(p.cost_usd_cash) || 0) * q;
+      usdCard += (parseFloat(p.cost_usd_card) || 0) * q;
+    }
+    return { quantity, uzsC, uzsCard, usdC, usdCard };
+  }, [filteredInventory]);
+
   const fetchProducts = async () => {
     try {
       const response = await api.get('/products/');
@@ -175,9 +194,11 @@ const Inventory = () => {
                   <option value="">Select a product</option>
                   {products
                     .filter(p => !formCategory || p.category === formCategory)
+                    .slice()
+                    .sort((a, b) => b.id - a.id)
                     .map((product) => (
                       <option key={product.id} value={product.id}>
-                        {product.brand} {product.model} - Size {product.size} ({product.color})
+                        {productCostPickerLabel(product)}
                       </option>
                     ))}
                 </select>
@@ -225,10 +246,10 @@ const Inventory = () => {
 
       {/* Filters */}
       {!showForm && (
-        <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h3>Filters</h3>
-        <div className="form-grid">
-          <div className="form-group">
+        <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
+          <h3 className="filter-card__title">Filters</h3>
+        <div className="filter-toolbar">
+          <div className="filter-field">
             <label>Category</label>
             <select
               value={filters.category}
@@ -240,7 +261,7 @@ const Inventory = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Brand</label>
             <select
               value={filters.brand}
@@ -254,7 +275,7 @@ const Inventory = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Model</label>
             <select
               value={filters.model}
@@ -268,7 +289,7 @@ const Inventory = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Size</label>
             <select
               value={filters.size}
@@ -282,7 +303,7 @@ const Inventory = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Color</label>
             <select
               value={filters.color}
@@ -296,7 +317,7 @@ const Inventory = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Status</label>
             <select
               value={filters.status}
@@ -309,7 +330,7 @@ const Inventory = () => {
               <option value="returned">Returned</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Year</label>
             <select
               value={filters.year}
@@ -326,7 +347,7 @@ const Inventory = () => {
               })}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Month</label>
             <select
               value={filters.month}
@@ -347,13 +368,13 @@ const Inventory = () => {
               <option value="12">December</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-toolbar__actions">
             <button
               type="button"
               className="btn-edit"
               onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', status: '', year: '', month: '' })}
             >
-              Clear Filters
+              Clear all
             </button>
           </div>
         </div>
@@ -361,16 +382,22 @@ const Inventory = () => {
       )}
 
       <div className="table-card">
+        <div className="data-table-scroll">
         <table className="data-table">
           <thead>
             <tr>
               <th>Category</th>
               <th>Name</th>
+              <th>Rec #</th>
               <th>Product</th>
               <th>Brand</th>
               <th>Model</th>
               <th>Size</th>
               <th>Color</th>
+              <th>Cost-UZS (cash)</th>
+              <th>Cost-UZS (card)</th>
+              <th>Cost-USD (cash)</th>
+              <th>Cost-USD (card)</th>
               <th>Quantity</th>
               <th>Status</th>
               <th>Location</th>
@@ -380,15 +407,18 @@ const Inventory = () => {
           <tbody>
             {filteredInventory.length === 0 ? (
               <tr>
-                <td colSpan="10" style={{ textAlign: 'center' }}>
+                <td colSpan="16" style={{ textAlign: 'center' }}>
                   No inventory items found
                 </td>
               </tr>
             ) : (
-              filteredInventory.map((item) => (
+              filteredInventory.map((item) => {
+                const cost = productCostCells(item.product_detail || {});
+                return (
                 <tr key={item.id}>
                   <td>{item.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>{item.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
+                  <td><strong>#{item.product_detail?.id ?? item.product}</strong></td>
                   <td>
                     {item.product_detail
                       ? `${item.product_detail.brand} ${item.product_detail.model}`
@@ -398,6 +428,10 @@ const Inventory = () => {
                   <td>{item.product_detail?.model || '-'}</td>
                   <td><strong>{item.product_detail?.size || '-'}</strong></td>
                   <td><strong>{item.product_detail?.color || '-'}</strong></td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.uzsCash}</td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.uzsCard}</td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.usdCash}</td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.usdCard}</td>
                   <td>{item.quantity}</td>
                   <td>
                     <span className={`status-badge ${item.status}`}>
@@ -407,10 +441,41 @@ const Inventory = () => {
                   <td>{item.location || '-'}</td>
                   <td>{new Date(item.updated_at).toLocaleString()}</td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="8" style={{ textAlign: 'right' }}>
+                Total
+              </td>
+              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
+                {inventoryColumnTotals.uzsC > 0
+                  ? inventoryColumnTotals.uzsC.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                  : '—'}
+              </td>
+              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
+                {inventoryColumnTotals.uzsCard > 0
+                  ? inventoryColumnTotals.uzsCard.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                  : '—'}
+              </td>
+              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
+                {inventoryColumnTotals.usdC > 0
+                  ? `$${inventoryColumnTotals.usdC.toFixed(2)}`
+                  : '—'}
+              </td>
+              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
+                {inventoryColumnTotals.usdCard > 0
+                  ? `$${inventoryColumnTotals.usdCard.toFixed(2)}`
+                  : '—'}
+              </td>
+              <td style={{ fontWeight: 600 }}>{inventoryColumnTotals.quantity.toLocaleString()}</td>
+              <td colSpan="3">—</td>
+            </tr>
+          </tfoot>
         </table>
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
+import { productCostPickerLabel, productCostUsdEquivalent } from '../utils/productCost';
+import { formatDisplayAmount } from '../utils/currencyFormat';
 import './TablePage.css';
+
+/** Order has a recorded cargo amount that must be paid (backend: cargo_cost_uzs or cargo_cost_usd > 0). */
+function orderHasCargoCost(o) {
+  if (!o) return false;
+  const u = parseFloat(o.cargo_cost_uzs) || 0;
+  const d = parseFloat(o.cargo_cost_usd) || 0;
+  return u > 0 || d > 0;
+}
 
 const Orders = () => {
   const [orders, setOrders] = useState([]);
@@ -46,6 +56,7 @@ const Orders = () => {
     usd_card: '',
     is_pay_order: false,
     is_received_and_pay: false,
+    status_notes: '',
   });
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   
@@ -169,8 +180,12 @@ const Orders = () => {
   
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
+    if (!String(newCustomerData.notes || '').trim()) {
+      showNotification('Please enter customer notes.', 'error');
+      return;
+    }
     try {
-      const response = await api.post('/customers/', newCustomerData);
+      const response = await api.post('/customers/', { ...newCustomerData, notes: String(newCustomerData.notes).trim() });
       await fetchCustomers();
       setFormData({ ...formData, customer: response.data.id });
       setShowCustomerForm(false);
@@ -259,6 +274,60 @@ const Orders = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
+  const orderColumnTotals = useMemo(() => {
+    const list = filteredOrders;
+    if (!list.length) {
+      return {
+        quantity: 0,
+        costTotal: 0,
+        avgCostPerUnit: 0,
+        orderUzsCash: 0,
+        orderUzsCard: 0,
+        orderUsdCash: 0,
+        orderUsdCard: 0,
+        cargoUzsCash: 0,
+        cargoUzsCard: 0,
+        cargoUsdCash: 0,
+        cargoUsdCard: 0,
+      };
+    }
+    let quantity = 0;
+    let costTotal = 0;
+    let orderUzsCash = 0;
+    let orderUzsCard = 0;
+    let orderUsdCash = 0;
+    let orderUsdCard = 0;
+    let cargoUzsCash = 0;
+    let cargoUzsCard = 0;
+    let cargoUsdCash = 0;
+    let cargoUsdCard = 0;
+    for (const o of list) {
+      quantity += parseInt(o.ordered_quantity, 10) || 0;
+      costTotal += parseFloat(o.cost_total) || 0;
+      orderUzsCash += parseFloat(o.order_payment_uzs_cash) || 0;
+      orderUzsCard += parseFloat(o.order_payment_uzs_card) || 0;
+      orderUsdCash += parseFloat(o.order_payment_usd_cash) || 0;
+      orderUsdCard += parseFloat(o.order_payment_usd_card) || 0;
+      cargoUzsCash += parseFloat(o.cargo_payment_uzs_cash) || 0;
+      cargoUzsCard += parseFloat(o.cargo_payment_uzs_card) || 0;
+      cargoUsdCash += parseFloat(o.cargo_payment_usd_cash) || 0;
+      cargoUsdCard += parseFloat(o.cargo_payment_usd_card) || 0;
+    }
+    return {
+      quantity,
+      costTotal,
+      avgCostPerUnit: quantity > 0 ? costTotal / quantity : 0,
+      orderUzsCash,
+      orderUzsCard,
+      orderUsdCash,
+      orderUsdCard,
+      cargoUzsCash,
+      cargoUzsCard,
+      cargoUsdCash,
+      cargoUsdCard,
+    };
+  }, [filteredOrders]);
+
   const fetchProducts = async () => {
     try {
       const response = await api.get('/products/');
@@ -289,7 +358,7 @@ const Orders = () => {
           return;
         }
       }
-      
+
       // Prepare order data for API
       const orderData = {
         ...formData,
@@ -323,15 +392,27 @@ const Orders = () => {
       showNotification('Order created successfully!', 'success');
     } catch (error) {
       console.error('Error creating order:', error);
-      showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error creating order', 'error');
+      const d = error.response?.data;
+      const advErr = d?.advance_payment_amount;
+      const advMsg = Array.isArray(advErr) ? advErr[0] : typeof advErr === 'string' ? advErr : null;
+      showNotification(
+        advMsg || d?.error || d?.detail || (typeof d === 'string' ? d : null) || 'Error creating order',
+        'error'
+      );
     }
   };
 
   const handleStatusUpdate = async (orderId, newStatus) => {
+    const n = window.prompt('Enter notes (required) for this order status change:');
+    if (n === null) return;
+    if (!String(n).trim()) {
+      showNotification('Notes are required for status changes.', 'error');
+      return;
+    }
     try {
       // Just update status - payment should be done separately
       // Don't send cargo_is_paid to preserve existing payment status
-      await api.post(`/orders/${orderId}/update_status/`, { status: newStatus });
+      await api.post(`/orders/${orderId}/update_status/`, { status: newStatus, notes: String(n).trim() });
       // Refresh orders to get updated data
       await fetchOrders();
       showNotification('Order status updated successfully!', 'success');
@@ -352,6 +433,7 @@ const Orders = () => {
       usd_card: '',
       is_pay_order: true,
       is_received_and_pay: false,
+      status_notes: '',
     });
     setShowPaymentForm(true);
     setTimeout(() => paymentFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -375,6 +457,10 @@ const Orders = () => {
 
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
+    if (!paymentFormData.is_pay_order && !String(paymentFormData.status_notes || '').trim()) {
+      showNotification('Please enter notes for this order update.', 'error');
+      return;
+    }
     try {
       // Check if this is for paying order separately
       if (paymentFormData.is_pay_order) {
@@ -403,7 +489,16 @@ const Orders = () => {
         }
         await api.post(`/orders/${paymentFormData.orderId}/pay_order/`, { uzs_cash, uzs_card, usd_cash, usd_card });
         setShowPaymentForm(false);
-        setPaymentFormData({ orderId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '', is_pay_order: false, is_received_and_pay: false });
+        setPaymentFormData({
+          orderId: null,
+          uzs_cash: '',
+          uzs_card: '',
+          usd_cash: '',
+          usd_card: '',
+          is_pay_order: false,
+          is_received_and_pay: false,
+          status_notes: '',
+        });
         fetchOrders();
         showNotification('Order payment completed successfully!', 'success');
         return;
@@ -446,6 +541,7 @@ const Orders = () => {
       // Build update payload
       const updatePayload = {
         status: targetStatus,
+        notes: String(paymentFormData.status_notes).trim(),
       };
       
       // Only send payment info if order is not already paid
@@ -466,11 +562,16 @@ const Orders = () => {
       setShowPaymentForm(false);
       setPaymentFormData({
         orderId: null,
+        uzs_cash: '',
+        uzs_card: '',
+        usd_cash: '',
+        usd_card: '',
         order_payment_amount: '',
         order_payment_currency: 'USD',
         order_payment_type: 'card',
         is_pay_order: false,
         is_received_and_pay: false,
+        status_notes: '',
       });
       showNotification('Payment processed successfully!', 'success');
     } catch (error) {
@@ -487,12 +588,7 @@ const Orders = () => {
       const usd_cash = parseFloat(cargoFormData.usd_cash) || 0;
       const usd_card = parseFloat(cargoFormData.usd_card) || 0;
 
-      if (uzs_cash + uzs_card + usd_cash + usd_card === 0) {
-        showNotification('Please enter at least one payment amount.', 'error');
-        return;
-      }
-
-      // Client-side balance checks
+      // Client-side balance checks (all zeros = free cargo; no balance check)
       const checks = [
         { amount: uzs_cash, currency: 'UZS', type: 'cash' },
         { amount: uzs_card, currency: 'UZS', type: 'card' },
@@ -512,13 +608,13 @@ const Orders = () => {
         }
       }
 
-      await api.post(`/orders/${cargoFormData.orderId}/pay_cargo/`, {
+      const res = await api.post(`/orders/${cargoFormData.orderId}/pay_cargo/`, {
         uzs_cash, uzs_card, usd_cash, usd_card,
       });
       setShowCargoForm(false);
       setCargoFormData({ orderId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' });
       await fetchOrders();
-      showNotification('Cargo payment processed successfully!', 'success');
+      showNotification(res.data?.message || 'Cargo payment processed successfully.', 'success');
     } catch (error) {
       console.error('Error paying cargo:', error);
       showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error paying cargo', 'error');
@@ -528,8 +624,7 @@ const Orders = () => {
   const handleSellProduct = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
     
-    // Check if cargo payment has not been made
-    if (!order?.cargo_is_paid) {
+    if (orderHasCargoCost(order) && !order?.cargo_is_paid) {
       showNotification('Cannot sell product: Cargo payment must be completed first. Please pay for the cargo before selling the product.', 'error');
       return;
     }
@@ -553,8 +648,7 @@ const Orders = () => {
       return;
     }
 
-    // Check if cargo payment has not been made
-    if (!order?.cargo_is_paid) {
+    if (orderHasCargoCost(order) && !order?.cargo_is_paid) {
       showNotification('Cannot move to inventory: Cargo payment must be completed first. Please pay for the cargo before moving to inventory.', 'error');
       return;
     }
@@ -698,6 +792,17 @@ const Orders = () => {
                   value={paymentFormData.usd_card}
                   onChange={(e) => setPaymentFormData({ ...paymentFormData, usd_card: e.target.value })} />
               </div>
+              {!paymentFormData.is_pay_order && (
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Notes *</label>
+                  <textarea
+                    rows={3}
+                    value={paymentFormData.status_notes}
+                    onChange={(e) => setPaymentFormData({ ...paymentFormData, status_notes: e.target.value })}
+                    required
+                  />
+                </div>
+              )}
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -706,7 +811,16 @@ const Orders = () => {
               <button type="button" className="btn-edit"
                 onClick={() => {
                   setShowPaymentForm(false);
-                  setPaymentFormData({ orderId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '', is_pay_order: false, is_received_and_pay: false });
+                  setPaymentFormData({
+                    orderId: null,
+                    uzs_cash: '',
+                    uzs_card: '',
+                    usd_cash: '',
+                    usd_card: '',
+                    is_pay_order: false,
+                    is_received_and_pay: false,
+                    status_notes: '',
+                  });
                 }}>
                 Cancel
               </button>
@@ -771,7 +885,8 @@ const Orders = () => {
         <div className="form-card" style={{ marginBottom: '20px' }} ref={cargoFormRef}>
           <h2>Pay for Cargo - Order #{cargoFormData.orderId}</h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Fill in any combination of payment methods. Leave a field empty or 0 if not used.
+            Fill in any combination of payment methods. Leave a field empty or 0 if not used. If cargo was{' '}
+            <strong>free</strong>, enter <strong>0</strong> in all four fields and submit — that records cargo as paid with no charge.
           </p>
           <form onSubmit={handleCargoPaymentSubmit}>
             <div className="form-grid">
@@ -875,7 +990,7 @@ const Orders = () => {
                   const searchLower = productSearch.toLowerCase();
                   const filteredProducts = filteredByCategory.filter(p =>
                     !productSearch ||
-                    `${p.brand} ${p.model} ${p.size} ${p.color} ${p.cost_price}`.toLowerCase().includes(searchLower)
+                    `${p.id} ${p.brand} ${p.model} ${p.size} ${p.color} ${p.cost_uzs_cash} ${p.cost_uzs_card} ${p.cost_usd_cash} ${p.cost_usd_card}`.toLowerCase().includes(searchLower)
                   );
                   return (
                     <>
@@ -896,7 +1011,7 @@ const Orders = () => {
                       >
                         <span style={{ color: selectedProduct ? '#333' : '#999' }}>
                           {selectedProduct
-                            ? `${selectedProduct.brand} ${selectedProduct.model} - Size ${selectedProduct.size} (${selectedProduct.color}) - $${selectedProduct.cost_price}`
+                            ? productCostPickerLabel(selectedProduct)
                             : 'Select a product'}
                         </span>
                         <span style={{ color: '#666', fontSize: '0.8em' }}>{productDropdownOpen ? '▲' : '▼'}</span>
@@ -946,7 +1061,7 @@ const Orders = () => {
                                     setFormData({
                                       ...formData,
                                       product: String(product.id),
-                                      cost_per_unit: product.cost_price,
+                                      cost_per_unit: String(productCostUsdEquivalent(product).toFixed(2)),
                                       supplier_country: product.supplier_country || '',
                                     });
                                     setProductDropdownOpen(false);
@@ -963,7 +1078,7 @@ const Orders = () => {
                                   onMouseEnter={(e) => { if (formData.product !== String(product.id)) e.currentTarget.style.background = '#f5f5f5'; }}
                                   onMouseLeave={(e) => { if (formData.product !== String(product.id)) e.currentTarget.style.background = 'white'; }}
                                 >
-                                  {product.brand} {product.model} — Size {product.size} ({product.color}) — ${product.cost_price}
+                                  {productCostPickerLabel(product)}
                                 </div>
                               ))
                             )}
@@ -1334,11 +1449,12 @@ const Orders = () => {
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes</label>
+                <label>Notes *</label>
                 <textarea
                   value={newCustomerData.notes}
                   onChange={(e) => setNewCustomerData({ ...newCustomerData, notes: e.target.value })}
                   rows="3"
+                  required
                 />
               </div>
             </div>
@@ -1363,10 +1479,10 @@ const Orders = () => {
 
       {/* Filters */}
       {!showForm && !showPaymentForm && !showCargoForm && !showMoveToInventoryForm && !showCustomerForm && (
-        <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h3>Filters</h3>
-        <div className="form-grid">
-          <div className="form-group">
+        <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
+          <h3 className="filter-card__title">Filters</h3>
+        <div className="filter-toolbar">
+          <div className="filter-field">
             <label>Category</label>
             <select
               value={filters.category}
@@ -1378,7 +1494,7 @@ const Orders = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Brand</label>
             <select
               value={filters.brand}
@@ -1392,7 +1508,7 @@ const Orders = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Model</label>
             <select
               value={filters.model}
@@ -1406,7 +1522,7 @@ const Orders = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Size</label>
             <select
               value={filters.size}
@@ -1420,7 +1536,7 @@ const Orders = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Color</label>
             <select
               value={filters.color}
@@ -1434,7 +1550,7 @@ const Orders = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Order Type</label>
             <select
               value={filters.order_type}
@@ -1445,7 +1561,7 @@ const Orders = () => {
               <option value="on_demand">On-Demand</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Status</label>
             <select
               value={filters.status}
@@ -1458,7 +1574,7 @@ const Orders = () => {
               <option value="cancelled">Cancelled</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Year</label>
             <select
               value={filters.year}
@@ -1475,7 +1591,7 @@ const Orders = () => {
               })}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Month</label>
             <select
               value={filters.month}
@@ -1496,13 +1612,13 @@ const Orders = () => {
               <option value="12">December</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-toolbar__actions">
             <button
               type="button"
               className="btn-edit"
               onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', order_type: '', status: '', year: '', month: '' })}
             >
-              Clear Filters
+              Clear all
             </button>
           </div>
         </div>
@@ -1510,6 +1626,7 @@ const Orders = () => {
       )}
 
       <div className="table-card">
+        <div className="data-table-scroll">
         <table className="data-table">
           <thead>
             <tr>
@@ -1570,7 +1687,7 @@ const Orders = () => {
                             showNotification('Cannot move to inventory: Order payment must be completed first. Please pay for the order before moving to inventory.', 'error');
                             return;
                           }
-                          if (!order.cargo_is_paid) {
+                          if (orderHasCargoCost(order) && !order.cargo_is_paid) {
                             showNotification('Cannot move to inventory: Cargo payment must be completed first. Please pay for the cargo before moving to inventory.', 'error');
                             return;
                           }
@@ -1646,7 +1763,11 @@ const Orders = () => {
                           )}
                           {order.advance_payment_amount > 0 && (
                             <div style={{ fontSize: '0.82em', color: '#4caf50' }}>
-                              Advance: ${order.advance_payment_amount}
+                              Advance:{' '}
+                              {formatDisplayAmount(
+                                order.advance_payment_amount,
+                                order.advance_payment_currency || 'USD',
+                              )}
                             </div>
                           )}
                         </div>
@@ -1711,7 +1832,65 @@ const Orders = () => {
               ))
             )}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="11" style={{ textAlign: 'right' }}>
+                Total
+              </td>
+              <td style={{ fontWeight: 600 }}>{orderColumnTotals.quantity.toLocaleString()}</td>
+              <td style={{ fontWeight: 600 }}>
+                {orderColumnTotals.quantity > 0
+                  ? `$${orderColumnTotals.avgCostPerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : '—'}
+              </td>
+              <td style={{ fontWeight: 600 }}>
+                ${orderColumnTotals.costTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </td>
+              <td>
+                {orderColumnTotals.orderUzsCash > 0
+                  ? `${orderColumnTotals.orderUzsCash.toLocaleString()} UZS`
+                  : '—'}
+              </td>
+              <td>
+                {orderColumnTotals.orderUzsCard > 0
+                  ? `${orderColumnTotals.orderUzsCard.toLocaleString()} UZS`
+                  : '—'}
+              </td>
+              <td>
+                {orderColumnTotals.orderUsdCash > 0
+                  ? `$${orderColumnTotals.orderUsdCash.toFixed(2)}`
+                  : '—'}
+              </td>
+              <td>
+                {orderColumnTotals.orderUsdCard > 0
+                  ? `$${orderColumnTotals.orderUsdCard.toFixed(2)}`
+                  : '—'}
+              </td>
+              <td>
+                {orderColumnTotals.cargoUzsCash > 0
+                  ? `${orderColumnTotals.cargoUzsCash.toLocaleString()} UZS`
+                  : '—'}
+              </td>
+              <td>
+                {orderColumnTotals.cargoUzsCard > 0
+                  ? `${orderColumnTotals.cargoUzsCard.toLocaleString()} UZS`
+                  : '—'}
+              </td>
+              <td>
+                {orderColumnTotals.cargoUsdCash > 0
+                  ? `$${orderColumnTotals.cargoUsdCash.toFixed(2)}`
+                  : '—'}
+              </td>
+              <td>
+                {orderColumnTotals.cargoUsdCard > 0
+                  ? `$${orderColumnTotals.cargoUsdCard.toFixed(2)}`
+                  : '—'}
+              </td>
+              <td colSpan="3">—</td>
+            </tr>
+          </tfoot>
         </table>
+        </div>
       </div>
     </div>
   );

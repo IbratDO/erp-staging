@@ -43,10 +43,11 @@ const AuditLogs = () => {
       </div>
 
       {/* Filters */}
-      <div className="form-card" style={{ marginBottom: '20px' }}>
-        <div className="form-grid">
-          <div className="form-group">
-            <label>Object Type</label>
+      <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
+        <h3 className="filter-card__title">Filters</h3>
+        <div className="filter-toolbar">
+          <div className="filter-field">
+            <label>Type</label>
             <select
               value={filter.object_type}
               onChange={(e) => setFilter({ ...filter, object_type: e.target.value })}
@@ -58,19 +59,20 @@ const AuditLogs = () => {
               <option value="dispatch">Dispatch</option>
             </select>
           </div>
-          <div className="form-group">
-            <label>Object ID</label>
+          <div className="filter-field">
+            <label>ID</label>
             <input
               type="number"
               value={filter.object_id}
               onChange={(e) => setFilter({ ...filter, object_id: e.target.value })}
-              placeholder="Enter object ID"
+              placeholder="Object #"
             />
           </div>
         </div>
       </div>
 
       <div className="table-card">
+        <div className="data-table-scroll">
         <table className="data-table">
           <thead>
             <tr>
@@ -110,7 +112,19 @@ const AuditLogs = () => {
               ))
             )}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="3" style={{ textAlign: 'right' }}>
+                Total
+              </td>
+              <td colSpan="3" style={{ textAlign: 'right' }}>
+                {logs.length} {logs.length === 1 ? 'entry' : 'entries'}
+              </td>
+              <td colSpan="2">—</td>
+            </tr>
+          </tfoot>
         </table>
+        </div>
       </div>
     </div>
   );

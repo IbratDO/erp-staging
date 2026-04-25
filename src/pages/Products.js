@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
+import { productCostCells } from '../utils/productCost';
 import './TablePage.css';
 
 const Products = () => {
@@ -33,7 +34,10 @@ const Products = () => {
     size: '',
     color: '',
     supplier_country: '',
-    cost_price: '',
+    cost_uzs_cash: '',
+    cost_uzs_card: '',
+    cost_usd_cash: '',
+    cost_usd_card: '',
     selling_price: '',
   });
   const [isNewBrand, setIsNewBrand] = useState(false);
@@ -150,10 +154,32 @@ const Products = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, products]);
 
+  const toNum = (v) => (v === '' || v == null ? 0 : parseFloat(v) || 0);
+
+  const productColumnTotals = useMemo(() => {
+    let uzsC = 0;
+    let uzsCard = 0;
+    let usdC = 0;
+    let usdCard = 0;
+    let sell = 0;
+    for (const p of filteredProducts) {
+      uzsC += toNum(p.cost_uzs_cash);
+      uzsCard += toNum(p.cost_uzs_card);
+      usdC += toNum(p.cost_usd_cash);
+      usdCard += toNum(p.cost_usd_card);
+      sell += toNum(p.selling_price);
+    }
+    return { uzsC, uzsCard, usdC, usdCard, sell };
+  }, [filteredProducts]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const payload = {
       ...formData,
+      cost_uzs_cash: toNum(formData.cost_uzs_cash),
+      cost_uzs_card: toNum(formData.cost_uzs_card),
+      cost_usd_cash: toNum(formData.cost_usd_cash),
+      cost_usd_card: toNum(formData.cost_usd_card),
       selling_price: formData.selling_price === '' ? null : formData.selling_price,
     };
     try {
@@ -184,7 +210,10 @@ const Products = () => {
         size: '',
         color: '',
         supplier_country: '',
-        cost_price: '',
+        cost_uzs_cash: '',
+        cost_uzs_card: '',
+        cost_usd_cash: '',
+        cost_usd_card: '',
         selling_price: '',
       });
       fetchProducts();
@@ -210,7 +239,10 @@ const Products = () => {
       size: product.size,
       color: product.color,
       supplier_country: product.supplier_country,
-      cost_price: product.cost_price,
+      cost_uzs_cash: product.cost_uzs_cash ?? '',
+      cost_uzs_card: product.cost_uzs_card ?? '',
+      cost_usd_cash: product.cost_usd_cash ?? '',
+      cost_usd_card: product.cost_usd_card ?? '',
       selling_price: product.selling_price,
     });
     setShowForm(true);
@@ -265,7 +297,10 @@ const Products = () => {
               size: '',
               color: '',
               supplier_country: '',
-              cost_price: '',
+              cost_uzs_cash: '',
+              cost_uzs_card: '',
+              cost_usd_cash: '',
+              cost_usd_card: '',
               selling_price: '',
             });
           }
@@ -576,14 +611,69 @@ const Products = () => {
                   </div>
                 )}
               </div>
+              <div
+                className="form-group"
+                style={{ gridColumn: "1 / -1", marginBottom: "4px" }}
+              >
+                <p style={{ margin: 0, fontSize: "0.9em", color: "#555" }}>
+                  Cost (all four below) is optional. Leave blank if the unit cost is not known yet; values are stored
+                  as 0 until you edit the product.
+                </p>
+              </div>
               <div className="form-group">
-                <label>Cost Price</label>
+                <label>
+                  Cost-UZS (cash){" "}
+                  <span style={{ color: "#888", fontWeight: 400, fontSize: "0.85em" }}>(optional)</span>
+                </label>
                 <input
                   type="number"
                   step="0.01"
-                  value={formData.cost_price}
-                  onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
-                  required
+                  min="0"
+                  placeholder="Optional"
+                  value={formData.cost_uzs_cash}
+                  onChange={(e) => setFormData({ ...formData, cost_uzs_cash: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  Cost-UZS (card){" "}
+                  <span style={{ color: "#888", fontWeight: 400, fontSize: "0.85em" }}>(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Optional"
+                  value={formData.cost_uzs_card}
+                  onChange={(e) => setFormData({ ...formData, cost_uzs_card: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  Cost-USD (cash){" "}
+                  <span style={{ color: "#888", fontWeight: 400, fontSize: "0.85em" }}>(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Optional"
+                  value={formData.cost_usd_cash}
+                  onChange={(e) => setFormData({ ...formData, cost_usd_cash: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  Cost-USD (card){" "}
+                  <span style={{ color: "#888", fontWeight: 400, fontSize: "0.85em" }}>(optional)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Optional"
+                  value={formData.cost_usd_card}
+                  onChange={(e) => setFormData({ ...formData, cost_usd_card: e.target.value })}
                 />
               </div>
               <div className="form-group">
@@ -609,10 +699,10 @@ const Products = () => {
 
       {/* Filters */}
       {!showForm && (
-        <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h3>Filters</h3>
-        <div className="form-grid">
-          <div className="form-group">
+        <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
+          <h3 className="filter-card__title">Filters</h3>
+        <div className="filter-toolbar">
+          <div className="filter-field">
             <label>Category</label>
             <select
               value={filters.category}
@@ -624,7 +714,7 @@ const Products = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Brand</label>
             <select
               value={filters.brand}
@@ -638,7 +728,7 @@ const Products = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Model</label>
             <select
               value={filters.model}
@@ -652,7 +742,7 @@ const Products = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Size</label>
             <select
               value={filters.size}
@@ -666,7 +756,7 @@ const Products = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Color</label>
             <select
               value={filters.color}
@@ -680,7 +770,7 @@ const Products = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Supplier Country</label>
             <select
               value={filters.supplier_country}
@@ -692,7 +782,7 @@ const Products = () => {
               ))}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Year</label>
             <select
               value={filters.year}
@@ -709,7 +799,7 @@ const Products = () => {
               })}
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-field">
             <label>Month</label>
             <select
               value={filters.month}
@@ -730,13 +820,13 @@ const Products = () => {
               <option value="12">December</option>
             </select>
           </div>
-          <div className="form-group">
+          <div className="filter-toolbar__actions">
             <button
               type="button"
               className="btn-edit"
               onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', supplier_country: '', year: '', month: '' })}
             >
-              Clear Filters
+              Clear all
             </button>
           </div>
         </div>
@@ -744,6 +834,7 @@ const Products = () => {
       )}
 
       <div className="table-card">
+        <div className="data-table-scroll">
         <table className="data-table">
           <thead>
             <tr>
@@ -755,7 +846,10 @@ const Products = () => {
               <th>Size</th>
               <th>Color</th>
               <th>Supplier</th>
-              <th>Cost Price</th>
+              <th>Cost-UZS (cash)</th>
+              <th>Cost-UZS (card)</th>
+              <th>Cost-USD (cash)</th>
+              <th>Cost-USD (card)</th>
               <th>Selling Price</th>
               <th>Actions</th>
             </tr>
@@ -763,12 +857,14 @@ const Products = () => {
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
-                <td colSpan="10" style={{ textAlign: 'center' }}>
+                <td colSpan="14" style={{ textAlign: 'center' }}>
                   No products found
                 </td>
               </tr>
             ) : (
-              filteredProducts.map((product) => (
+              filteredProducts.map((product) => {
+                const cost = productCostCells(product);
+                return (
                 <tr key={product.id}>
                   <td>#{product.id}</td>
                   <td>{product.category || <span style={{ color: '#999' }}>—</span>}</td>
@@ -778,7 +874,10 @@ const Products = () => {
                   <td><strong>{product.size}</strong></td>
                   <td><strong>{product.color}</strong></td>
                   <td>{product.supplier_country}</td>
-                  <td>${product.cost_price}</td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.uzsCash}</td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.uzsCard}</td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.usdCash}</td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.usdCard}</td>
                   <td>{product.selling_price ? `$${product.selling_price}` : <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
                     <button
@@ -795,10 +894,41 @@ const Products = () => {
                     </button>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan="8" style={{ textAlign: 'right' }}>
+                Total
+              </td>
+              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
+                {productColumnTotals.uzsC > 0
+                  ? productColumnTotals.uzsC.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                  : '—'}
+              </td>
+              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
+                {productColumnTotals.uzsCard > 0
+                  ? productColumnTotals.uzsCard.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                  : '—'}
+              </td>
+              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
+                {productColumnTotals.usdC > 0 ? `$${productColumnTotals.usdC.toFixed(2)}` : '—'}
+              </td>
+              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
+                {productColumnTotals.usdCard > 0 ? `$${productColumnTotals.usdCard.toFixed(2)}` : '—'}
+              </td>
+              <td style={{ fontWeight: 600 }}>
+                {productColumnTotals.sell > 0
+                  ? `$${productColumnTotals.sell.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : '—'}
+              </td>
+              <td>—</td>
+            </tr>
+          </tfoot>
         </table>
+        </div>
       </div>
     </div>
   );
