@@ -1,10 +1,150 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
-import { productCostPickerLabel, productCostUsdEquivalent } from '../utils/productCost';
 import { formatDisplayAmount } from '../utils/currencyFormat';
+import { uniqueSupplierCountriesForProductLine } from '../utils/supplierCountries';
+import { prefillPayOrderFromSupplier } from '../utils/orderPayPrefill';
 import './TablePage.css';
 
-/** Order has a recorded cargo amount that must be paid (backend: cargo_cost_uzs or cargo_cost_usd > 0). */
+function numOrZero(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return n > 0 && !Number.isNaN(n) ? n : 0;
+}
+
+/** Selling price per unit: total stored in DB divided by quantity, or legacy selling_price. */
+function plannedSellingSummary(order) {
+  const qi = Math.max(parseInt(order.ordered_quantity, 10) || 1, 1);
+  const uzsTotal = numOrZero(order.selling_uzs_cash) + numOrZero(order.selling_uzs_card);
+  const usdTotal = numOrZero(order.selling_usd_cash) + numOrZero(order.selling_usd_card);
+  const bits = [];
+  if (uzsTotal > 0) {
+    const pu = uzsTotal / qi;
+    bits.push(`${pu.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS/u`);
+  }
+  if (usdTotal > 0) {
+    const pu = usdTotal / qi;
+    bits.push(`$${pu.toFixed(2)}/u`);
+  }
+  if (bits.length) return bits.join(' · ');
+  const pu = parseFloat(order.selling_price);
+  if (order.selling_price != null && order.selling_price !== '' && !Number.isNaN(pu) && pu > 0) {
+    return `$${pu.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/u`;
+  }
+  return '';
+}
+
+function plannedSupplierPerUnit(order) {
+  const qi = parseInt(order.ordered_quantity, 10) || 1;
+  const uzs = numOrZero(order.supplier_cost_uzs_cash) + numOrZero(order.supplier_cost_uzs_card);
+  const usdTot = parseFloat(order.cost_total) || 0;
+  const usdPu = parseFloat(order.cost_per_unit) || 0;
+  if (usdTot > 0 && uzs <= 0 && !Number.isNaN(usdPu)) return `$${usdPu.toFixed(2)}`;
+  if (uzs > 0 && usdTot <= 0) {
+    const per = uzs / qi;
+    return `${per.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS/u`;
+  }
+  return '—';
+}
+
+function plannedSupplierTotal(order) {
+  const uzs = numOrZero(order.supplier_cost_uzs_cash) + numOrZero(order.supplier_cost_uzs_card);
+  const usdTot = parseFloat(order.cost_total) || 0;
+  const bits = [];
+  if (usdTot > 0 && !Number.isNaN(usdTot)) bits.push(`$${usdTot.toFixed(2)}`);
+  if (uzs > 0) bits.push(`${uzs.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`);
+  if (bits.length) return bits.join(' · ');
+  return '';
+}
+
+/**
+ * Planned supplier payment legs at order creation (UZS buckets + USD buckets or legacy cost_total).
+ */
+function plannedSupplierPaymentTotals(order) {
+  if (!order) return { uzs: 0, usd: 0 };
+  const uzs =
+    numOrZero(order.supplier_cost_uzs_cash) + numOrZero(order.supplier_cost_uzs_card);
+  const usdBuckets =
+    numOrZero(order.supplier_cost_usd_cash) + numOrZero(order.supplier_cost_usd_card);
+  const fromCostTotal = parseFloat(order.cost_total) || 0;
+  const usd = usdBuckets > 0 ? usdBuckets : fromCostTotal;
+  return { uzs, usd };
+}
+
+function payTotalsMatchPlanned(expUzs, expUsd, uzsCash, uzsCard, usdCash, usdCard) {
+  const inUzs = (uzsCash || 0) + (uzsCard || 0);
+  const inUsd = (usdCash || 0) + (usdCard || 0);
+  const tolUzs = 0.501;
+  const tolUsd = 0.015;
+  return (
+    Math.abs(expUzs - inUzs) <= tolUzs && Math.abs(expUsd - inUsd) <= tolUsd
+  );
+}
+
+/** Planned cargo amounts on the order (before this payment). */
+function plannedCargoPaymentTotals(order) {
+  if (!order) return { uzs: 0, usd: 0 };
+  const uzs = numOrZero(order.cargo_cost_uzs);
+  const usd = numOrZero(order.cargo_cost_usd);
+  return { uzs, usd };
+}
+
+/**
+ * Returns false if user cancels confirmation (zero-payment, mismatch vs planned cargo, etc.).
+ */
+function confirmCargoPaymentIfNeeded(order, uzsCash, uzsCard, usdCash, usdCard) {
+  const { uzs: expZ, usd: expD } = plannedCargoPaymentTotals(order);
+  const inZ = (uzsCash || 0) + (uzsCard || 0);
+  const inD = (usdCash || 0) + (usdCard || 0);
+
+  if (inZ + inD === 0) {
+    const hadPlannedCargo = expZ + expD > 0;
+    const msg = hadPlannedCargo
+      ? 'This order shows cargo amounts on record:\n' +
+        `UZS: ${formatDisplayAmount(expZ, 'UZS')}; USD: ${formatDisplayAmount(expD, 'USD')}\n\n` +
+        'You submitted 0 everywhere — cargo will be recorded as FREE and those cargo amounts cleared.\n\nProceed?'
+      : `Record cargo as paid with no freight charge (all amounts zero)?`;
+
+    return window.confirm(msg);
+  }
+
+  if (payTotalsMatchPlanned(expZ, expD, uzsCash, uzsCard, usdCash, usdCard)) {
+    return true;
+  }
+
+  const msg =
+    'The cargo payment totals you entered differ from the cargo amount on this order.\n\n' +
+    `On order — UZS: ${formatDisplayAmount(expZ, 'UZS')}; USD: ${formatDisplayAmount(expD, 'USD')}\n` +
+    `Entered — UZS: ${formatDisplayAmount(inZ, 'UZS')}; USD: ${formatDisplayAmount(inD, 'USD')}\n\n` +
+    'Proceed anyway with this cargo payment?';
+
+  return window.confirm(msg);
+}
+
+/**
+ * Returns false if user cancels confirmation when totals differ from planned supplier.
+ */
+function confirmOrderPayTotalsIfMismatch(order, uzsCash, uzsCard, usdCash, usdCard) {
+  const { uzs: expZ, usd: expD } = plannedSupplierPaymentTotals(order);
+  if (payTotalsMatchPlanned(expZ, expD, uzsCash, uzsCard, usdCash, usdCard)) {
+    return true;
+  }
+
+  const inZ = (uzsCash || 0) + (uzsCard || 0);
+  const inD = (usdCash || 0) + (usdCard || 0);
+
+  const msg =
+    "The payment totals you entered differ from this order's planned supplier cost (from when the order was created).\n\n" +
+    `Planned — UZS: ${formatDisplayAmount(expZ, 'UZS')}; USD: ${formatDisplayAmount(expD, 'USD')}\n` +
+    `Entered — UZS: ${formatDisplayAmount(inZ, 'UZS')}; USD: ${formatDisplayAmount(inD, 'USD')}\n\n` +
+    'Proceed anyway with this payment?';
+
+  return window.confirm(msg);
+}
+
+function productOrderPickerLabel(p) {
+  if (!p) return '';
+  const bits = [p.brand, p.model, p.size ? `size ${p.size}` : null, p.color].filter(Boolean);
+  return bits.join(' · ');
+}
 function orderHasCargoCost(o) {
   if (!o) return false;
   const u = parseFloat(o.cargo_cost_uzs) || 0;
@@ -36,8 +176,10 @@ const Orders = () => {
     supplier_country: '',
     eshop: '',
     ordered_quantity: '',
-    cost_per_unit: '',
-    cost_total: '',
+    selling_usd_per_unit: '',
+    selling_uzs_per_unit: '',
+    cost_usd_per_unit: '',
+    cost_uzs_per_unit: '',
     order_is_paid: false,
     order_payment_currency: 'USD',
     order_payment_type: 'card',
@@ -281,6 +423,7 @@ const Orders = () => {
         quantity: 0,
         costTotal: 0,
         avgCostPerUnit: 0,
+        avgSellingPerUnitOrdered: 0,
         orderUzsCash: 0,
         orderUzsCard: 0,
         orderUsdCash: 0,
@@ -301,9 +444,23 @@ const Orders = () => {
     let cargoUzsCard = 0;
     let cargoUsdCash = 0;
     let cargoUsdCard = 0;
+    let qtyUsdSelling = 0;
+    let sumUsdPlannedSelling = 0;
     for (const o of list) {
-      quantity += parseInt(o.ordered_quantity, 10) || 0;
+      const qi = parseInt(o.ordered_quantity, 10) || 0;
+      quantity += qi;
       costTotal += parseFloat(o.cost_total) || 0;
+      const ud = numOrZero(o.selling_usd_cash) + numOrZero(o.selling_usd_card);
+      const uz = numOrZero(o.selling_uzs_cash) + numOrZero(o.selling_uzs_card);
+      const legacyPu = parseFloat(o.selling_price);
+      const hasLegacy = o.selling_price != null && o.selling_price !== '' && !Number.isNaN(legacyPu) && legacyPu > 0;
+      if (qi > 0 && ud > 0) {
+        sumUsdPlannedSelling += ud;
+        qtyUsdSelling += qi;
+      } else if (qi > 0 && !(uz > 0) && hasLegacy) {
+        sumUsdPlannedSelling += legacyPu * qi;
+        qtyUsdSelling += qi;
+      }
       orderUzsCash += parseFloat(o.order_payment_uzs_cash) || 0;
       orderUzsCard += parseFloat(o.order_payment_uzs_card) || 0;
       orderUsdCash += parseFloat(o.order_payment_usd_cash) || 0;
@@ -317,6 +474,8 @@ const Orders = () => {
       quantity,
       costTotal,
       avgCostPerUnit: quantity > 0 ? costTotal / quantity : 0,
+      avgSellingPerUnitOrdered:
+        qtyUsdSelling > 0 && sumUsdPlannedSelling > 0 ? sumUsdPlannedSelling / qtyUsdSelling : 0,
       orderUzsCash,
       orderUzsCard,
       orderUsdCash,
@@ -340,30 +499,93 @@ const Orders = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Validate cost_total is calculated
-      if (!formData.cost_total || parseFloat(formData.cost_total) <= 0) {
-        showNotification('Please enter both quantity and cost per unit to calculate total cost', 'error');
+      const qty = parseInt(formData.ordered_quantity, 10) || 0;
+      if (!formData.product || qty < 1) {
+        showNotification('Please select a product and enter a valid quantity.', 'error');
         return;
       }
 
-      // If paying immediately, check balance before creating the order
+      const uzsS = numOrZero(formData.selling_uzs_per_unit);
+      const usdS = numOrZero(formData.selling_usd_per_unit);
+      if (!(uzsS > 0 || usdS > 0)) {
+        showNotification(
+          'Enter a selling price per unit in USD and/or UZS. Amounts are not converted between currencies.',
+          'error',
+        );
+        return;
+      }
+
+      const uzsSup = numOrZero(formData.cost_uzs_per_unit);
+      const usdSup = numOrZero(formData.cost_usd_per_unit);
+
+      if (uzsSup > 0 && usdSup > 0) {
+        showNotification(
+          'Cost per unit cannot mix UZS and USD on one order line. Use one currency only, or split the purchase.',
+          'error',
+        );
+        return;
+      }
+
+      if (formData.order_is_paid && !(usdSup > 0)) {
+        showNotification(
+          uzsSup > 0
+            ? '“Already paid” here only deducts USD cash/card balances. For cost in UZS, leave unpaid and use “Pay for the Order”.'
+            : 'To mark the order as already paid, enter a USD cost per unit, or leave unpaid and record cost later.',
+          'error',
+        );
+        return;
+      }
+
       if (formData.order_is_paid) {
-        const required = parseFloat(formData.cost_total);
-        const available = getAvailableBalance(formData.order_payment_currency, formData.order_payment_type);
+        if (formData.order_payment_currency !== 'USD') {
+          showNotification(
+            'Recording “already paid” from this form is USD-only. Leave the order unpaid and split UZS/USD in “Pay for the Order”.',
+            'error',
+          );
+          return;
+        }
+        const required = usdSup;
+        const available = getAvailableBalance('USD', formData.order_payment_type);
         if (available < required) {
           showNotification(
-            `Insufficient balance. Available: ${available.toFixed(2)} ${formData.order_payment_currency} (${formData.order_payment_type}), Required: ${required.toFixed(2)} ${formData.order_payment_currency}. Please top up your balance first or uncheck "Order payment is already made".`,
-            'error'
+            `Insufficient balance. Available: ${available.toFixed(2)} USD (${formData.order_payment_type}), required: ${required.toFixed(2)} USD cost.`,
+            'error',
           );
           return;
         }
       }
 
-      // Prepare order data for API
+      const toNum = (v) => parseFloat(v) || 0;
+      const customerRaw = formData.customer;
+      const customerParsed = parseInt(customerRaw, 10);
+      const customer =
+        customerRaw === '' || customerRaw == null || Number.isNaN(customerParsed)
+          ? null
+          : customerParsed;
       const orderData = {
-        ...formData,
+        order_type: formData.order_type,
+        product: parseInt(formData.product, 10),
+        supplier_country: formData.supplier_country || null,
+        eshop: formData.eshop || '',
+        ordered_quantity: qty,
+        selling_uzs_cash: toNum(formData.selling_uzs_per_unit) * qty,
+        selling_uzs_card: 0,
+        selling_usd_cash: toNum(formData.selling_usd_per_unit) * qty,
+        selling_usd_card: 0,
+        supplier_cost_uzs_cash: toNum(formData.cost_uzs_per_unit) * qty,
+        supplier_cost_uzs_card: 0,
+        supplier_cost_usd_cash: toNum(formData.cost_usd_per_unit) * qty,
+        supplier_cost_usd_card: 0,
+        order_is_paid: formData.order_is_paid,
+        order_payment_currency: formData.order_payment_currency,
+        order_payment_type: formData.order_payment_type,
+        customer,
+        advance_payment_amount: toNum(formData.advance_payment_amount),
+        advance_payment_currency: formData.advance_payment_currency,
+        advance_payment_type: formData.advance_payment_type,
+        status: formData.status,
       };
-      
+
       await api.post('/orders/', orderData);
       setShowForm(false);
       setIsNewEshop(false);
@@ -374,11 +596,13 @@ const Orders = () => {
       setFormData({
         order_type: 'stock',
         product: '',
-        supplier_country: 'germany',
+        supplier_country: '',
         eshop: '',
         ordered_quantity: '',
-        cost_per_unit: '',
-        cost_total: '',
+        selling_usd_per_unit: '',
+        selling_uzs_per_unit: '',
+        cost_usd_per_unit: '',
+        cost_uzs_per_unit: '',
         order_is_paid: false,
         order_payment_currency: 'USD',
         order_payment_type: 'card',
@@ -403,17 +627,11 @@ const Orders = () => {
   };
 
   const handleStatusUpdate = async (orderId, newStatus) => {
-    const n = window.prompt('Enter notes (required) for this order status change:');
-    if (n === null) return;
-    if (!String(n).trim()) {
-      showNotification('Notes are required for status changes.', 'error');
-      return;
-    }
     try {
-      // Just update status - payment should be done separately
-      // Don't send cargo_is_paid to preserve existing payment status
-      await api.post(`/orders/${orderId}/update_status/`, { status: newStatus, notes: String(n).trim() });
-      // Refresh orders to get updated data
+      await api.post(`/orders/${orderId}/update_status/`, {
+        status: newStatus,
+        notes: '',
+      });
       await fetchOrders();
       showNotification('Order status updated successfully!', 'success');
     } catch (error) {
@@ -423,14 +641,14 @@ const Orders = () => {
   };
 
   const handlePayOrder = async (orderId) => {
-    // Show form to enter order payment details
     const order = orders.find(o => o.id === orderId);
+    const pref = prefillPayOrderFromSupplier(order);
     setPaymentFormData({
       orderId: orderId,
-      uzs_cash: '',
-      uzs_card: '',
-      usd_cash: order?.cost_total || '',
-      usd_card: '',
+      uzs_cash: pref.uzs_cash,
+      uzs_card: pref.uzs_card,
+      usd_cash: pref.usd_cash,
+      usd_card: pref.usd_card,
       is_pay_order: true,
       is_received_and_pay: false,
       status_notes: '',
@@ -486,6 +704,13 @@ const Orders = () => {
               return;
             }
           }
+        }
+        const orderForPay = orders.find((o) => o.id === paymentFormData.orderId);
+        if (
+          orderForPay &&
+          !confirmOrderPayTotalsIfMismatch(orderForPay, uzs_cash, uzs_card, usd_cash, usd_card)
+        ) {
+          return;
         }
         await api.post(`/orders/${paymentFormData.orderId}/pay_order/`, { uzs_cash, uzs_card, usd_cash, usd_card });
         setShowPaymentForm(false);
@@ -606,6 +831,11 @@ const Orders = () => {
             return;
           }
         }
+      }
+
+      const cargoOrder = orders.find((o) => o.id === cargoFormData.orderId);
+      if (!confirmCargoPaymentIfNeeded(cargoOrder, uzs_cash, uzs_card, usd_cash, usd_card)) {
+        return;
       }
 
       const res = await api.post(`/orders/${cargoFormData.orderId}/pay_cargo/`, {
@@ -974,7 +1204,7 @@ const Orders = () => {
                 <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
                 <select
                   value={formCategory}
-                  onChange={(e) => { setFormCategory(e.target.value); setProductSearch(''); setProductDropdownOpen(false); setFormData({ ...formData, product: '', cost_per_unit: '', supplier_country: '' }); }}
+                  onChange={(e) => { setFormCategory(e.target.value); setProductSearch(''); setProductDropdownOpen(false); setFormData({ ...formData, product: '', supplier_country: '', selling_usd_per_unit: '', selling_uzs_per_unit: '', cost_usd_per_unit: '', cost_uzs_per_unit: '' }); }}
                 >
                   <option value="">All Categories</option>
                   {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
@@ -990,7 +1220,7 @@ const Orders = () => {
                   const searchLower = productSearch.toLowerCase();
                   const filteredProducts = filteredByCategory.filter(p =>
                     !productSearch ||
-                    `${p.id} ${p.brand} ${p.model} ${p.size} ${p.color} ${p.cost_uzs_cash} ${p.cost_uzs_card} ${p.cost_usd_cash} ${p.cost_usd_card}`.toLowerCase().includes(searchLower)
+                    `${p.id} ${p.brand} ${p.model} ${p.size} ${p.color}`.toLowerCase().includes(searchLower)
                   );
                   return (
                     <>
@@ -1011,7 +1241,7 @@ const Orders = () => {
                       >
                         <span style={{ color: selectedProduct ? '#333' : '#999' }}>
                           {selectedProduct
-                            ? productCostPickerLabel(selectedProduct)
+                            ? productOrderPickerLabel(selectedProduct)
                             : 'Select a product'}
                         </span>
                         <span style={{ color: '#666', fontSize: '0.8em' }}>{productDropdownOpen ? '▲' : '▼'}</span>
@@ -1058,11 +1288,16 @@ const Orders = () => {
                                   key={product.id}
                                   onClick={() => {
                                     setIsNewCountry(false);
+                                    const psp = parseFloat(product.selling_price);
+                                    const sellingUsd = psp > 0 && !Number.isNaN(psp) ? psp.toFixed(2) : '';
                                     setFormData({
                                       ...formData,
                                       product: String(product.id),
-                                      cost_per_unit: String(productCostUsdEquivalent(product).toFixed(2)),
                                       supplier_country: product.supplier_country || '',
+                                      selling_usd_per_unit: sellingUsd,
+                                      selling_uzs_per_unit: '',
+                                      cost_usd_per_unit: '',
+                                      cost_uzs_per_unit: '',
                                     });
                                     setProductDropdownOpen(false);
                                     setProductSearch('');
@@ -1078,7 +1313,7 @@ const Orders = () => {
                                   onMouseEnter={(e) => { if (formData.product !== String(product.id)) e.currentTarget.style.background = '#f5f5f5'; }}
                                   onMouseLeave={(e) => { if (formData.product !== String(product.id)) e.currentTarget.style.background = 'white'; }}
                                 >
-                                  {productCostPickerLabel(product)}
+                                  {productOrderPickerLabel(product)}
                                 </div>
                               ))
                             )}
@@ -1105,22 +1340,14 @@ const Orders = () => {
                     required
                   >
                     <option value="">Select a country</option>
-                    {(() => {
-                      const selectedProduct = products.find(p => p.id === parseInt(formData.product));
-                      const countryList = selectedProduct
-                        ? [...new Set(
-                            products
-                              .filter(p => p.brand === selectedProduct.brand && p.model === selectedProduct.model)
-                              .map(p => p.supplier_country)
-                              .filter(Boolean)
-                          )].sort()
-                        : [...new Set(products.map(p => p.supplier_country).filter(Boolean))].sort();
-                      return countryList.map(country => (
+                    {uniqueSupplierCountriesForProductLine(
+                      products,
+                      products.find((p) => p.id === parseInt(formData.product, 10)),
+                    ).map((country) => (
                         <option key={country} value={country}>
                           {country.charAt(0).toUpperCase() + country.slice(1)}
                         </option>
-                      ));
-                    })()}
+                      ))}
                     <option value="__new__">+ Add new country...</option>
                   </select>
                 ) : (
@@ -1223,44 +1450,94 @@ const Orders = () => {
                   type="number"
                   min="1"
                   value={formData.ordered_quantity}
-                  onChange={(e) => {
-                    const quantity = e.target.value;
-                    const costPerUnit = parseFloat(formData.cost_per_unit) || 0;
-                    const total = quantity && costPerUnit ? (parseFloat(quantity) * costPerUnit).toFixed(2) : '';
-                    setFormData({ ...formData, ordered_quantity: quantity, cost_total: total });
-                  }}
+                  onChange={(e) => setFormData({ ...formData, ordered_quantity: e.target.value })}
                   required
                 />
               </div>
-              <div className="form-group">
-                <label>Cost Per Unit (USD)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.cost_per_unit}
-                  onChange={(e) => {
-                    const costPerUnit = e.target.value;
-                    const quantity = parseFloat(formData.ordered_quantity) || 0;
-                    const total = costPerUnit && quantity ? (parseFloat(costPerUnit) * quantity).toFixed(2) : '';
-                    setFormData({ ...formData, cost_per_unit: costPerUnit, cost_total: total });
-                  }}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Cost Total (USD)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.cost_total}
-                  readOnly
-                  style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
-                />
-                <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
-                  Auto-calculated from quantity × cost per unit
-                </small>
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                <div style={{ display: 'flex', gap: '20px' }}>
+                  {/* Selling price per unit */}
+                  <div style={{ flex: 1 }}>
+                    <label style={{ marginBottom: '6px', display: 'block' }}>
+                      Selling price per unit <span style={{ color: '#e53e3e', fontWeight: 400 }}>*</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="USD / unit"
+                          value={formData.selling_usd_per_unit}
+                          onChange={(e) => setFormData({ ...formData, selling_usd_per_unit: e.target.value })}
+                          style={{ width: '100%' }}
+                        />
+                        {numOrZero(formData.selling_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
+                          <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
+                            = ${(parseFloat(formData.selling_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} total
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          placeholder="UZS / unit"
+                          value={formData.selling_uzs_per_unit}
+                          onChange={(e) => setFormData({ ...formData, selling_uzs_per_unit: e.target.value })}
+                          style={{ width: '100%' }}
+                        />
+                        {numOrZero(formData.selling_uzs_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
+                          <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
+                            = {(parseFloat(formData.selling_uzs_per_unit) * parseInt(formData.ordered_quantity, 10)).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS total
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Cost per unit */}
+                  <div style={{ flex: 1 }}>
+                    <label style={{ marginBottom: '6px', display: 'block' }}>
+                      Cost per unit{' '}
+                      <span style={{ color: '#999', fontWeight: 400, fontSize: '11px' }}>optional</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="USD / unit"
+                          value={formData.cost_usd_per_unit}
+                          onChange={(e) => setFormData({ ...formData, cost_usd_per_unit: e.target.value })}
+                          style={{ width: '100%' }}
+                        />
+                        {numOrZero(formData.cost_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
+                          <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
+                            = ${(parseFloat(formData.cost_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} total
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          placeholder="UZS / unit"
+                          value={formData.cost_uzs_per_unit}
+                          onChange={(e) => setFormData({ ...formData, cost_uzs_per_unit: e.target.value })}
+                          style={{ width: '100%' }}
+                        />
+                        {numOrZero(formData.cost_uzs_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
+                          <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
+                            = {(parseFloat(formData.cost_uzs_per_unit) * parseInt(formData.ordered_quantity, 10)).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS total
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="form-group">
                 <label>
@@ -1269,7 +1546,7 @@ const Orders = () => {
                     checked={formData.order_is_paid}
                     onChange={(e) => setFormData({ ...formData, order_is_paid: e.target.checked })}
                   />
-                  {' '}Order payment is already made
+                  {' '}Order payment is already made <span style={{ color: '#666', fontWeight: 400 }}>(USD only)</span>
                 </label>
               </div>
               {formData.order_is_paid && (
@@ -1282,7 +1559,6 @@ const Orders = () => {
                       required
                     >
                       <option value="USD">USD</option>
-                      <option value="UZS">UZS</option>
                     </select>
                   </div>
                   <div className="form-group">
@@ -1382,11 +1658,13 @@ const Orders = () => {
                   setFormData({
                     order_type: 'stock',
                     product: '',
-                    supplier_country: 'germany',
+                    supplier_country: '',
                     eshop: '',
                     ordered_quantity: '',
-                    cost_per_unit: '',
-                    cost_total: '',
+                    selling_usd_per_unit: '',
+                    selling_uzs_per_unit: '',
+                    cost_usd_per_unit: '',
+                    cost_uzs_per_unit: '',
                     order_is_paid: false,
                     order_payment_currency: 'USD',
                     order_payment_type: 'card',
@@ -1641,7 +1919,8 @@ const Orders = () => {
               <th>Color</th>
               <th>Order Type</th>
               <th>Customer</th>
-              <th>Quantity</th>
+              <th>Qty</th>
+              <th>Selling price/unit</th>
               <th>Cost Per Unit</th>
               <th>Total Cost</th>
               <th>Order UZS Cash</th>
@@ -1660,12 +1939,15 @@ const Orders = () => {
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="25" style={{ textAlign: 'center' }}>
+                <td colSpan="26" style={{ textAlign: 'center' }}>
                   No orders found
                 </td>
               </tr>
             ) : (
-              filteredOrders.map((order) => (
+              filteredOrders.map((order) => {
+                const plannedSellingLabel = plannedSellingSummary(order);
+                const plannedSupplierTotalLabel = plannedSupplierTotal(order);
+                return (
                 <tr key={order.id}>
                   <td>#{order.id}</td>
                   <td>
@@ -1779,8 +2061,21 @@ const Orders = () => {
                     )}
                   </td>
                   <td>{order.ordered_quantity}</td>
-                  <td>${order.cost_per_unit}</td>
-                  <td>${order.cost_total}</td>
+                  <td title={plannedSellingLabel || ''}>
+                    {plannedSellingLabel ? (
+                      <span>{plannedSellingLabel}</span>
+                    ) : (
+                      <span style={{ color: '#bbb' }}>—</span>
+                    )}
+                  </td>
+                  <td>{plannedSupplierPerUnit(order)}</td>
+                  <td title={plannedSupplierTotalLabel || ''}>
+                    {plannedSupplierTotalLabel ? (
+                      <span>{plannedSupplierTotalLabel}</span>
+                    ) : (
+                      <span style={{ color: '#bbb' }}>—</span>
+                    )}
+                  </td>
                   <td>
                     {parseFloat(order.order_payment_uzs_cash) > 0
                       ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>{parseFloat(order.order_payment_uzs_cash).toLocaleString()} UZS</span>
@@ -1829,7 +2124,8 @@ const Orders = () => {
                   <td>{order.created_by_detail?.username || '-'}</td>
                   <td>{new Date(order.order_date || order.created_at).toLocaleString()}</td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
           <tfoot>
@@ -1838,6 +2134,14 @@ const Orders = () => {
                 Total
               </td>
               <td style={{ fontWeight: 600 }}>{orderColumnTotals.quantity.toLocaleString()}</td>
+              <td
+                style={{ fontWeight: 600 }}
+                title="Weighted average planned USD-only line totals per unit ordered (UZS-only lines excluded; no FX)"
+              >
+                {orderColumnTotals.avgSellingPerUnitOrdered > 0
+                  ? `$${orderColumnTotals.avgSellingPerUnitOrdered.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : '—'}
+              </td>
               <td style={{ fontWeight: 600 }}>
                 {orderColumnTotals.quantity > 0
                   ? `$${orderColumnTotals.avgCostPerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

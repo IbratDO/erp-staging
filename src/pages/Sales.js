@@ -5,6 +5,81 @@ import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat'
 import SaleCompletePayForm from '../components/SaleCompletePayForm';
 import './TablePage.css';
 
+// ----- PackageLinesSelector: compact multi-package row editor -----
+function PackageLinesSelector({ lines, onChange, packages: pkgList }) {
+  const addLine = () =>
+    onChange([...lines, { key: `${Date.now()}-${Math.random()}`, package_type: '', quantity: 1 }]);
+  const removeLine = (key) => onChange(lines.filter((l) => l.key !== key));
+  const updateLine = (key, field, value) =>
+    onChange(lines.map((l) => (l.key === key ? { ...l, [field]: value } : l)));
+
+  const fieldH = { padding: '10px', border: '1px solid #ddd', borderRadius: '5px', fontSize: '14px', boxSizing: 'border-box' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+      {lines.map((line, idx) => {
+        const pkg = pkgList.find((p) => p.package_type === line.package_type);
+        const isLow = pkg && pkg.quantity < line.quantity;
+        const isLast = idx === lines.length - 1;
+        return (
+          <div key={line.key} style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
+            {/* Type */}
+            <select
+              value={line.package_type}
+              onChange={(e) => updateLine(line.key, 'package_type', e.target.value)}
+              style={{ ...fieldH, flex: '1 1 0', minWidth: 0, background: 'white',
+                       borderColor: isLow ? '#fc8181' : '#ddd' }}
+            >
+              <option value="">— type —</option>
+              {pkgList.map((p) => (
+                <option key={p.id} value={p.package_type}>
+                  {p.package_type} ({p.quantity})
+                </option>
+              ))}
+            </select>
+
+            {/* Qty */}
+            <input
+              type="number"
+              min="1"
+              value={line.quantity}
+              onChange={(e) => updateLine(line.key, 'quantity', parseInt(e.target.value, 10) || 1)}
+              style={{ ...fieldH, width: '62px', textAlign: 'center', flexShrink: 0,
+                       borderColor: isLow ? '#fc8181' : '#ddd' }}
+            />
+
+            {/* "+ Add type" on last row, remove button on extra rows */}
+            {isLast ? (
+              <button type="button" onClick={addLine}
+                style={{ ...fieldH, border: '1px dashed #90cdf4', background: 'none',
+                         color: '#3182ce', cursor: 'pointer', whiteSpace: 'nowrap',
+                         flexShrink: 0, transition: 'background 0.15s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#ebf8ff'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+              >
+                + Add type
+              </button>
+            ) : (
+              <button type="button" onClick={() => removeLine(line.key)}
+                title="Remove"
+                style={{ ...fieldH, border: '1px solid #fed7d7', background: '#fff5f5',
+                         color: '#e53e3e', cursor: 'pointer', flexShrink: 0,
+                         transition: 'background 0.15s' }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#fed7d7'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#fff5f5'; }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const EMPTY_PKG_LINES = () => [{ key: `${Date.now()}`, package_type: '', quantity: 1 }];
+
 const Sales = () => {
   const [sales, setSales] = useState([]);
   const [filteredSales, setFilteredSales] = useState([]);
@@ -12,6 +87,9 @@ const Sales = () => {
   const [inventory, setInventory] = useState([]);
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Multi-package lines for the new-sale form
+  const [formPackageLines, setFormPackageLines] = useState(EMPTY_PKG_LINES());
   const [showForm, setShowForm] = useState(false);
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [batchFormCategory, setBatchFormCategory] = useState('');
@@ -38,8 +116,6 @@ const Sales = () => {
     selling_price: '',
     sale_currency: 'USD',
     sale_type: 'bought_from_shop',
-    package_type: '',
-    package_quantity: '',
     customer: '',
     status: 'pending',
     deposit_received: false,
@@ -297,41 +373,42 @@ const Sales = () => {
         }
       }
       
-      // Check package stock if package_type is selected
-      if (formData.package_type) {
-        const selectedPackage = packages.find(p => p.package_type === formData.package_type);
-        if (!selectedPackage) {
-          showNotification(`Package type "${formData.package_type}" does not exist. Please add it to inventory first.`, 'error');
+      // Validate multi-package lines
+      const activeLines = formPackageLines.filter((l) => l.package_type && l.quantity > 0);
+      for (const line of activeLines) {
+        const pkg = packages.find((p) => p.package_type === line.package_type);
+        if (!pkg) {
+          showNotification(`Package type "${line.package_type}" does not exist.`, 'error');
           return;
         }
-        const packagesNeeded = parseInt(String(formData.package_quantity), 10) || itemQty;
-        if (selectedPackage.quantity < packagesNeeded) {
-          showNotification(`Insufficient package stock! Available: ${selectedPackage.quantity}, Required: ${packagesNeeded} package(s).`, 'error');
+        const totalNeeded = activeLines
+          .filter((l) => l.package_type === line.package_type)
+          .reduce((s, l) => s + l.quantity, 0);
+        if (pkg.quantity < totalNeeded) {
+          showNotification(`Insufficient stock for package "${line.package_type}": need ${totalNeeded}, have ${pkg.quantity}.`, 'error');
           return;
         }
       }
-      
+
       const salePayload = {
         ...formData,
         product: parseInt(formData.product, 10),
         quantity: itemQty,
         customer: parseInt(formData.customer, 10),
-        package_type: formData.package_type || null,
-        package_quantity: formData.package_type
-          ? (parseInt(String(formData.package_quantity), 10) || itemQty)
-          : null,
+        package_type: null,
+        package_quantity: null,
+        ...(activeLines.length > 0 ? { package_lines: activeLines.map(({ package_type, quantity }) => ({ package_type, quantity })) } : {}),
       };
       await api.post('/sales/', salePayload);
       setShowForm(false);
       setFormCategory('');
+      setFormPackageLines(EMPTY_PKG_LINES());
       setFormData({
         product: '',
         quantity: '',
         selling_price: '',
         sale_currency: 'USD',
         sale_type: 'bought_from_shop',
-        package_type: '',
-        package_quantity: '',
         customer: '',
         status: 'pending',
         deposit_received: false,
@@ -360,17 +437,9 @@ const Sales = () => {
           }
           if (!value) {
             next.selling_price = '';
-            next.package_type = '';
-            next.package_quantity = '';
+            next.packageLines = EMPTY_PKG_LINES();
           }
           return next;
-        }
-        if (field === 'package_type') {
-          if (!value) {
-            return { ...l, package_type: '', package_quantity: '' };
-          }
-          const iq = parseInt(String(l.quantity), 10) || 1;
-          return { ...l, package_type: value, package_quantity: String(iq) };
         }
         return { ...l, [field]: value };
       })
@@ -385,8 +454,7 @@ const Sales = () => {
         product: '',
         quantity: '1',
         selling_price: '',
-        package_type: '',
-        package_quantity: '',
+        packageLines: EMPTY_PKG_LINES(),
       },
     ]);
   };
@@ -412,16 +480,23 @@ const Sales = () => {
         return;
       }
     }
+    // Aggregate package need across all lines for stock check
+    const needPkg = new Map();
     const items = withProduct.map((l) => {
       const itemQty = parseInt(String(l.quantity), 10) || 1;
+      const activeLines = (l.packageLines || []).filter((pl) => pl.package_type && pl.quantity > 0);
       const row = {
         product: parseInt(l.product, 10),
         quantity: itemQty,
         selling_price: l.selling_price,
+        package_type: null,
+        package_quantity: null,
       };
-      if (l.package_type) {
-        row.package_type = l.package_type;
-        row.package_quantity = parseInt(String(l.package_quantity), 10) || itemQty;
+      if (activeLines.length > 0) {
+        row.package_lines = activeLines.map(({ package_type, quantity }) => ({ package_type, quantity }));
+        for (const pl of activeLines) {
+          needPkg.set(pl.package_type, (needPkg.get(pl.package_type) || 0) + pl.quantity);
+        }
       }
       return row;
     });
@@ -443,13 +518,6 @@ const Sales = () => {
         );
         return;
       }
-    }
-    const needPkg = new Map();
-    for (const l of withProduct) {
-      if (!l.package_type) continue;
-      const itemQty = parseInt(l.quantity, 10) || 1;
-      const pk = parseInt(String(l.package_quantity), 10) || itemQty;
-      needPkg.set(l.package_type, (needPkg.get(l.package_type) || 0) + pk);
     }
     for (const [pt, n] of needPkg) {
       const pkg = packages.find((p) => p.package_type === pt);
@@ -528,13 +596,12 @@ const Sales = () => {
   const [completePaySale, setCompletePaySale] = useState(null);
   
   const [showCompleteFromOrderForm, setShowCompleteFromOrderForm] = useState(false);
+  const [completeFromOrderPackageLines, setCompleteFromOrderPackageLines] = useState(EMPTY_PKG_LINES());
   const [completeFromOrderData, setCompleteFromOrderData] = useState({
     saleId: null,
     customer: '',
     selling_price: '',
     sale_type: 'bought_from_shop',
-    package_type: '',
-    package_quantity: '',
     now_uzs_cash: '',
     now_uzs_card: '',
     now_usd_cash: '',
@@ -569,13 +636,7 @@ const Sales = () => {
         }
         setCompletePaySale(sale);
       } else {
-        const n = window.prompt('Enter notes (required) for this sale status change:');
-        if (n === null) return;
-        if (!String(n).trim()) {
-          showNotification('Notes are required for status changes.', 'error');
-          return;
-        }
-        await api.post(`/sales/${saleId}/update_status/`, { status: newStatus, notes: String(n).trim() });
+        await api.post(`/sales/${saleId}/update_status/`, { status: newStatus, notes: '' });
         fetchSales();
         showNotification(`Sale status updated to ${newStatus}`, 'success');
       }
@@ -684,13 +745,12 @@ const Sales = () => {
       const totalAmount = parseFloat(sale.selling_price) * sale.quantity;
       const advancePayment = sale.advance_payment_received || 0;
       const nowPaidAmount = totalAmount - advancePayment;
+      setCompleteFromOrderPackageLines(EMPTY_PKG_LINES());
       setCompleteFromOrderData({
         saleId: saleId,
         customer: sale.customer || sale.order_detail?.customer || '',
         selling_price: sale.selling_price || '',
         sale_type: 'bought_from_shop',
-        package_type: '',
-        package_quantity: String(sale.quantity || 1),
         now_uzs_cash: '',
         now_uzs_card: '',
         now_usd_cash: nowPaidAmount > 0 ? nowPaidAmount.toFixed(2) : '0',
@@ -714,35 +774,36 @@ const Sales = () => {
         return;
       }
       
-      if (completeFromOrderData.package_type) {
-        const fromOrderSaleForStock = sales.find(s => s.id === completeFromOrderData.saleId);
-        const orderItemQty = fromOrderSaleForStock ? (parseInt(fromOrderSaleForStock.quantity, 10) || 1) : 1;
-        const packagesNeeded = parseInt(String(completeFromOrderData.package_quantity), 10) || orderItemQty;
-        const selectedPackage = packages.find(p => p.package_type === completeFromOrderData.package_type);
-        if (!selectedPackage) {
-          showNotification(`Package type "${completeFromOrderData.package_type}" does not exist. Please add it to inventory first.`, 'error');
+      // Validate multi-package lines for complete-from-order
+      const cfoActiveLines = completeFromOrderPackageLines.filter((l) => l.package_type && l.quantity > 0);
+      for (const line of cfoActiveLines) {
+        const pkg = packages.find((p) => p.package_type === line.package_type);
+        if (!pkg) {
+          showNotification(`Package type "${line.package_type}" does not exist.`, 'error');
           return;
         }
-        if (selectedPackage.quantity < packagesNeeded) {
-          showNotification(`Insufficient package stock! Available: ${selectedPackage.quantity}, Required: ${packagesNeeded} package(s).`, 'error');
+        const totalNeeded = cfoActiveLines
+          .filter((l) => l.package_type === line.package_type)
+          .reduce((s, l) => s + l.quantity, 0);
+        if (pkg.quantity < totalNeeded) {
+          showNotification(`Insufficient stock for package "${line.package_type}": need ${totalNeeded}, have ${pkg.quantity}.`, 'error');
           return;
         }
       }
-      
-      const fromOrderSale = sales.find(s => s.id === completeFromOrderData.saleId);
-      const orderItemQty = fromOrderSale ? (parseInt(fromOrderSale.quantity, 10) || 1) : 1;
+
       const requestData = {
         customer: completeFromOrderData.customer,
         selling_price: sellingPrice,
         sale_type: completeFromOrderData.sale_type,
-        package_type: completeFromOrderData.package_type || null,
-        package_quantity: completeFromOrderData.package_type
-          ? (parseInt(String(completeFromOrderData.package_quantity), 10) || orderItemQty)
-          : null,
+        package_type: null,
+        package_quantity: null,
         uzs_cash: parseFloat(completeFromOrderData.now_uzs_cash) || 0,
         uzs_card: parseFloat(completeFromOrderData.now_uzs_card) || 0,
         usd_cash: parseFloat(completeFromOrderData.now_usd_cash) || 0,
         usd_card: parseFloat(completeFromOrderData.now_usd_card) || 0,
+        ...(cfoActiveLines.length > 0 ? {
+          package_lines: cfoActiveLines.map(({ package_type, quantity }) => ({ package_type, quantity })),
+        } : {}),
       };
       
       // Add deposit fields if reserved sale
@@ -772,13 +833,12 @@ const Sales = () => {
           dispatch_notes: '',
         });
         setShowDispatchForm(true);
+        setCompleteFromOrderPackageLines(EMPTY_PKG_LINES());
         setCompleteFromOrderData({
           saleId: null,
           customer: '',
           selling_price: '',
           sale_type: 'bought_from_shop',
-          package_type: '',
-          package_quantity: '',
           now_uzs_cash: '',
           now_uzs_card: '',
           now_usd_cash: '',
@@ -792,13 +852,12 @@ const Sales = () => {
         showNotification('Sale completed! Please enter dispatch information.', 'success');
       } else {
         setShowCompleteFromOrderForm(false);
+        setCompleteFromOrderPackageLines(EMPTY_PKG_LINES());
         setCompleteFromOrderData({
           saleId: null,
           customer: '',
           selling_price: '',
           sale_type: 'bought_from_shop',
-          package_type: '',
-          package_quantity: '',
           now_uzs_cash: '',
           now_uzs_card: '',
           now_usd_cash: '',
@@ -1254,37 +1313,13 @@ const Sales = () => {
                 </>
               )}
               <div className="form-group">
-                <label>Package Type (Optional)</label>
-                <select
-                  value={completeFromOrderData.package_type || ''}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    const so = sales.find(s => s.id === completeFromOrderData.saleId);
-                    const q = so ? (parseInt(so.quantity, 10) || 1) : 1;
-                    if (!v) {
-                      setCompleteFromOrderData({ ...completeFromOrderData, package_type: '', package_quantity: '' });
-                    } else {
-                      setCompleteFromOrderData({ ...completeFromOrderData, package_type: v, package_quantity: String(q) });
-                    }
-                  }}
-                >
-                  <option value="">No Package</option>
-                  <option value="M">M</option>
-                  <option value="L">L</option>
-                </select>
+                <label>Packages <span style={{ fontWeight: 400, color: '#a0aec0', fontSize: '12px' }}>(optional)</span></label>
+                <PackageLinesSelector
+                  lines={completeFromOrderPackageLines}
+                  onChange={setCompleteFromOrderPackageLines}
+                  packages={packages}
+                />
               </div>
-              {completeFromOrderData.package_type && (
-                <div className="form-group">
-                  <label>Number of packages</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={completeFromOrderData.package_quantity}
-                    onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, package_quantity: e.target.value })}
-                    required
-                  />
-                </div>
-              )}
               <div className="form-group" style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', paddingTop: '12px', marginTop: '4px' }}>
                 <p style={{ margin: '0 0 10px 0', color: '#555', fontSize: '0.9em', fontWeight: 600 }}>
                   Payment — fill any combination:
@@ -1324,13 +1359,12 @@ const Sales = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowCompleteFromOrderForm(false);
+                  setCompleteFromOrderPackageLines(EMPTY_PKG_LINES());
                   setCompleteFromOrderData({
                     saleId: null,
                     customer: '',
                     selling_price: '',
                     sale_type: 'bought_from_shop',
-                    package_type: '',
-                    package_quantity: '',
                     now_uzs_cash: '',
                     now_uzs_card: '',
                     now_usd_cash: '',
@@ -1533,58 +1567,13 @@ const Sales = () => {
                 </select>
               </div>
               <div className="form-group">
-                <label>Package Type</label>
-                <select
-                  value={formData.package_type === 'custom' ? 'custom' : (packages.find(p => p.package_type === formData.package_type) ? formData.package_type : (formData.package_type ? 'custom' : ''))}
-                  onChange={(e) => {
-                    const itemQty = parseInt(String(formData.quantity), 10) || 1;
-                    if (e.target.value === 'custom') {
-                      setFormData({ ...formData, package_type: '', package_quantity: '' });
-                    } else if (e.target.value === '') {
-                      setFormData({ ...formData, package_type: '', package_quantity: '' });
-                    } else {
-                      setFormData({ ...formData, package_type: e.target.value, package_quantity: String(itemQty) });
-                    }
-                  }}
-                >
-                  <option value="">No Package</option>
-                  <option value="custom">+ Add New Package Type</option>
-                  {packages.map(pkg => (
-                    <option key={pkg.id} value={pkg.package_type}>
-                      {pkg.package_type} (Stock: {pkg.quantity})
-                    </option>
-                  ))}
-                </select>
-                {formData.package_type && !packages.find(p => p.package_type === formData.package_type) && (
-                  <input
-                    type="text"
-                    placeholder="Enter package type name (e.g., M, L, Small Box, etc.)"
-                    value={formData.package_type}
-                    onChange={(e) => {
-                      const t = e.target.value;
-                      const def = String(parseInt(String(formData.quantity), 10) || 1);
-                      setFormData({
-                        ...formData,
-                        package_type: t,
-                        package_quantity: formData.package_quantity || def,
-                      });
-                    }}
-                    style={{ marginTop: '10px' }}
-                  />
-                )}
+                <label>Packages <span style={{ fontWeight: 400, color: '#a0aec0', fontSize: '12px' }}>(optional)</span></label>
+                <PackageLinesSelector
+                  lines={formPackageLines}
+                  onChange={setFormPackageLines}
+                  packages={packages}
+                />
               </div>
-              {formData.package_type && (
-                <div className="form-group">
-                  <label>Number of packages</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={formData.package_quantity}
-                    onChange={(e) => setFormData({ ...formData, package_quantity: e.target.value })}
-                    required
-                  />
-                </div>
-              )}
               {/* Deposit fields for Reserved sales */}
               {formData.sale_type === 'reserved' && (
                 <>
@@ -1657,7 +1646,7 @@ const Sales = () => {
                     type="button"
                     className="btn-edit"
                     onClick={() => setShowCustomerForm(true)}
-                    style={{ whiteSpace: 'nowrap' }}
+                    style={{ whiteSpace: 'nowrap', padding: '10px 14px', fontSize: '14px', borderRadius: '5px' }}
                   >
                     + New
                   </button>
@@ -1740,7 +1729,7 @@ const Sales = () => {
                     type="button"
                     className="btn-edit"
                     onClick={() => setShowCustomerForm(true)}
-                    style={{ whiteSpace: 'nowrap' }}
+                    style={{ whiteSpace: 'nowrap', padding: '10px 14px', fontSize: '14px', borderRadius: '5px' }}
                   >
                     + New
                   </button>
@@ -1783,7 +1772,6 @@ const Sales = () => {
                     <col className="batch-col-qty" />
                     <col className="batch-col-price" />
                     <col className="batch-col-package" />
-                    <col className="batch-col-pkgs" />
                     <col className="batch-col-row" />
                   </colgroup>
                   <thead>
@@ -1794,8 +1782,7 @@ const Sales = () => {
                       </th>
                       <th className="batch-sale-lines__th--num">Qty</th>
                       <th className="batch-sale-lines__th--num">Selling price</th>
-                      <th>Package</th>
-                      <th className="batch-sale-lines__th--num"># Pkgs</th>
+                      <th>Packages</th>
                       <th className="batch-sale-lines__th--action" aria-label="Remove line" />
                     </tr>
                   </thead>
@@ -1854,37 +1841,12 @@ const Sales = () => {
                               aria-label="Selling price"
                             />
                           </td>
-                          <td>
-                            <select
-                              className="batch-sale-lines__control"
-                              value={line.package_type}
-                              onChange={(e) => updateBatchLine(line.key, 'package_type', e.target.value)}
-                              aria-label="Package"
-                            >
-                              <option value="">None</option>
-                              {packages.map((p) => (
-                                <option key={p.id} value={p.package_type}>
-                                  {p.package_type} (stock {p.quantity})
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="batch-sale-lines__td--num">
-                            {line.package_type ? (
-                              <input
-                                className="batch-sale-lines__control"
-                                type="number"
-                                min="1"
-                                value={line.package_quantity}
-                                onChange={(e) => updateBatchLine(line.key, 'package_quantity', e.target.value)}
-                                title="Number of packages"
-                                aria-label="Number of packages"
-                              />
-                            ) : (
-                              <span className="batch-sale-lines__empty" aria-hidden>
-                                —
-                              </span>
-                            )}
+                          <td style={{ minWidth: '260px', verticalAlign: 'top', paddingTop: '6px' }}>
+                            <PackageLinesSelector
+                              lines={line.packageLines || EMPTY_PKG_LINES()}
+                              onChange={(newLines) => updateBatchLine(line.key, 'packageLines', newLines)}
+                              packages={packages}
+                            />
                           </td>
                           <td className="batch-sale-lines__td--action">
                             {batchLines.length > 1 ? (
@@ -2258,17 +2220,28 @@ const Sales = () => {
                   <td><strong>{sale.product_detail?.color || '-'}</strong></td>
                   <td>{sale.sale_type === 'bought_from_shop' ? 'Shop' : sale.sale_type === 'from_order' ? 'From Order' : sale.sale_type === 'reserved' ? 'Reserved' : 'Delivery'}</td>
                   <td>
-                    {sale.package_type ? (
-                      <span>
-                        {sale.package_type} (×{sale.package_quantity != null ? sale.package_quantity : sale.quantity})
-                        {sale.package_cost_per_unit_usd != null && sale.package_cost_per_unit_usd > 0
-                          ? ` $${Number(sale.package_cost_per_unit_usd).toFixed(2)}`
-                          : ''}
-                        {sale.package_cost_per_unit_uzs > 0
-                          ? ` ${Number(sale.package_cost_per_unit_uzs).toLocaleString()} UZS`
-                          : ''}
+                    {sale.package_lines && sale.package_lines.length > 0 ? (
+                      <span style={{ fontSize: '0.85em' }}>
+                        {sale.package_lines.map((pl, i) => {
+                          const pkg = packages.find(p => p.package_type === pl.package_type);
+                          const costUsd = pkg ? Number(pkg.cost_per_unit_usd) * pl.quantity : 0;
+                          const costUzs = pkg ? Number(pkg.cost_per_unit_uzs) * pl.quantity : 0;
+                          return (
+                            <span key={pl.id ?? i} style={{ display: 'block', whiteSpace: 'nowrap' }}>
+                              {pl.package_type} ×{pl.quantity}
+                              {costUsd > 0 ? ` $${costUsd.toFixed(2)}` : ''}
+                              {costUzs > 0 ? ` ${costUzs.toLocaleString()} UZS` : ''}
+                            </span>
+                          );
+                        })}
                       </span>
-                    ) : '-'}
+                    ) : sale.package_type ? (
+                      <span>
+                        {sale.package_type} ×{sale.package_quantity != null ? sale.package_quantity : sale.quantity}
+                        {sale.package_cost_per_unit_usd > 0 ? ` $${Number(sale.package_cost_per_unit_usd).toFixed(2)}` : ''}
+                        {sale.package_cost_per_unit_uzs > 0 ? ` ${Number(sale.package_cost_per_unit_uzs).toLocaleString()} UZS` : ''}
+                      </span>
+                    ) : <span style={{ color: '#bbb' }}>—</span>}
                   </td>
                   <td>{sale.quantity}</td>
                   <td>{formatDisplayAmount(sale.selling_price, sale.sale_currency || 'USD')}</td>

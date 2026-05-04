@@ -1,11 +1,13 @@
-export const UZS_PER_USD = 12000;
-
-/** Per-unit cost in USD (same formula as backend Product.cost_per_unit_usd_equivalent). */
-export function productCostUsdEquivalent(p) {
+/** Per-unit USD cost buckets only (cash + card; no UZS conversion). Mirrors backend Product.cost_per_unit_usd_equivalent. */
+export function productCostUsdPortion(p) {
   if (!p) return 0;
-  const uzs = (parseFloat(p.cost_uzs_cash) || 0) + (parseFloat(p.cost_uzs_card) || 0);
-  const usd = (parseFloat(p.cost_usd_cash) || 0) + (parseFloat(p.cost_usd_card) || 0);
-  return usd + uzs / UZS_PER_USD;
+  return (parseFloat(p.cost_usd_cash) || 0) + (parseFloat(p.cost_usd_card) || 0);
+}
+
+/** Per-unit UZS cost buckets only (cash + card). Mirrors backend Product.cost_per_unit_uzs_total. */
+export function productCostUzsPortion(p) {
+  if (!p) return 0;
+  return (parseFloat(p.cost_uzs_cash) || 0) + (parseFloat(p.cost_uzs_card) || 0);
 }
 
 function fmtUzs(n) {

@@ -66,8 +66,20 @@ const Dashboard = () => {
           <div className="metric-value">{business_metrics.total_sales_units}</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Total Revenue</div>
-          <div className="metric-value">${business_metrics.total_sales_revenue.toLocaleString()}</div>
+          <div className="metric-label">Revenue (USD booked)</div>
+          <div className="metric-value">${(business_metrics.sales_revenue_usd ?? business_metrics.total_sales_revenue ?? 0).toLocaleString()}</div>
+          <div className="metric-subvalue" style={{ fontSize: '0.82em', color: '#777' }}>
+            Confirmed · dispatched · completed
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Revenue (UZS booked)</div>
+          <div className="metric-value">
+            {(business_metrics.sales_revenue_uzs ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
+          </div>
+          <div className="metric-subvalue" style={{ fontSize: '0.82em', color: '#777' }}>
+            Same pipeline
+          </div>
         </div>
         <div className="metric-card">
           <div className="metric-label">Total Orders</div>
@@ -78,19 +90,59 @@ const Dashboard = () => {
           <div className="metric-value">{business_metrics.total_returns}</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Inventory Value</div>
-          <div className="metric-value">${business_metrics.inventory_value.toLocaleString()}</div>
+          <div className="metric-label">Inventory cost (USD legs)</div>
+          <div className="metric-value">${(business_metrics.inventory_value_usd ?? business_metrics.inventory_value).toLocaleString()}</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Total Expenses</div>
-          <div className="metric-value" style={{ color: '#e74c3c' }}>
-            ${(business_metrics.total_expenses || 0).toLocaleString()}
+          <div className="metric-label">Inventory cost (UZS legs)</div>
+          <div className="metric-value">
+            {(business_metrics.inventory_value_uzs ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
           </div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Profit Estimation</div>
-          <div className="metric-value" style={{ color: business_metrics.profit_estimation >= 0 ? '#27ae60' : '#e74c3c' }}>
-            ${business_metrics.profit_estimation.toLocaleString()}
+          <div className="metric-label">Expenses (USD)</div>
+          <div className="metric-value" style={{ color: '#e74c3c' }}>
+            ${(business_metrics.total_expenses_usd ?? business_metrics.total_expenses ?? 0).toLocaleString()}
+          </div>
+          <div className="metric-subvalue" style={{ fontSize: '0.82em', color: '#777' }}>
+            All completed expense records (USD‑denominated)
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Expenses (UZS)</div>
+          <div className="metric-value" style={{ color: '#e74c3c' }}>
+            {(business_metrics.total_expenses_uzs ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Profit estimate (USD)</div>
+          <div
+            className="metric-value"
+            style={{
+              color: (business_metrics.profit_estimation_usd ?? business_metrics.profit_estimation ?? 0) >= 0
+                ? '#27ae60'
+                : '#e74c3c',
+            }}
+          >
+            ${(business_metrics.profit_estimation_usd ?? business_metrics.profit_estimation ?? 0).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </div>
+          <div className="metric-subvalue" style={{ fontSize: '0.82em', color: '#777' }}>
+            USD revenue − USD order COGS − USD expenses (no FX)
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Profit estimate (UZS)</div>
+          <div
+            className="metric-value"
+            style={{ color: (business_metrics.profit_estimation_uzs ?? 0) >= 0 ? '#27ae60' : '#e74c3c' }}
+          >
+            {(business_metrics.profit_estimation_uzs ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
+          </div>
+          <div className="metric-subvalue" style={{ fontSize: '0.82em', color: '#777' }}>
+            UZS revenue − supplier UZS (paid or planned) − UZS expenses
           </div>
         </div>
       </div>
@@ -101,21 +153,39 @@ const Dashboard = () => {
           <h2>Expense Breakdown</h2>
           <div className="metrics-grid">
             <div className="metric-card">
-              <div className="metric-label">Delivery Costs</div>
+              <div className="metric-label">Delivery (USD)</div>
               <div className="metric-value" style={{ color: '#e74c3c' }}>
-                ${(expense_metrics.delivery_costs || 0).toLocaleString()}
+                ${(expense_metrics.delivery_costs_usd ?? expense_metrics.delivery_costs ?? 0).toLocaleString()}
               </div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Manual Expenses</div>
+              <div className="metric-label">Delivery (UZS)</div>
               <div className="metric-value" style={{ color: '#e74c3c' }}>
-                ${(expense_metrics.manual_expenses || 0).toLocaleString()}
+                {(expense_metrics.delivery_costs_uzs ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
               </div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Order Costs</div>
+              <div className="metric-label">Manual (USD)</div>
+              <div className="metric-value" style={{ color: '#e74c3c' }}>
+                ${(expense_metrics.manual_expenses_usd ?? expense_metrics.manual_expenses ?? 0).toLocaleString()}
+              </div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Manual (UZS)</div>
+              <div className="metric-value" style={{ color: '#e74c3c' }}>
+                {(expense_metrics.manual_expenses_uzs ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
+              </div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Order COGS (USD)</div>
               <div className="metric-value" style={{ color: '#e74c3c' }}>
                 ${(business_metrics.total_cost || 0).toLocaleString()}
+              </div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Order COGS (UZS)</div>
+              <div className="metric-value" style={{ color: '#e74c3c' }}>
+                {(business_metrics.total_order_cost_uzs ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
               </div>
             </div>
           </div>

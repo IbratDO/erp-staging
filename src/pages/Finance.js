@@ -17,6 +17,13 @@ const SALE_TYPE_LABELS = {
   reserved: 'Reserved',
 };
 
+/** Pending receivable on a completed sale (e.g. on-credit remainder) — can record follow-up payment. */
+function canCollectReceivable(receivable) {
+  if (!receivable || receivable.status !== 'pending') return false;
+  const sd = receivable.sale_detail;
+  return !!(sd && sd.status === 'completed');
+}
+
 function receivableDispatchLabel(saleDetail) {
   const d = saleDetail?.dispatch_info;
   if (!d) return '—';
@@ -143,6 +150,14 @@ const Finance = () => {
   const [payables, setPayables] = useState([]);
   const [profitLoss, setProfitLoss] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [collectTarget, setCollectTarget] = useState(null);
+  const [collectForm, setCollectForm] = useState({
+    uzs_cash: '',
+    uzs_card: '',
+    usd_cash: '',
+    usd_card: '',
+    notes: '',
+  });
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [expenseFormData, setExpenseFormData] = useState({
     expense_type: 'lunch',
@@ -305,6 +320,95 @@ const Finance = () => {
     }
   };
 
+  const beginCollectReceivable = (receivable) => {
+    setCollectTarget(receivable);
+    const ccy = String(receivable.currency || receivable.sale_detail?.sale_currency || 'USD').toUpperCase();
+    const rem = parseFloat(receivable.amount) || 0;
+    const defUzsCash = ccy === 'UZS' && rem > 0 ? String(Math.round(rem)) : '';
+    const defUsdCash = ccy === 'USD' && rem > 0 ? rem.toFixed(2) : '';
+    setCollectForm({
+      uzs_cash: defUzsCash,
+      uzs_card: '',
+      usd_cash: defUsdCash,
+      usd_card: '',
+      notes: '',
+    });
+  };
+
+  const handleCollectReceivableSubmit = async (e) => {
+    e.preventDefault();
+    if (!collectTarget) return;
+    const ccy = String(collectTarget.currency || collectTarget.sale_detail?.sale_currency || 'USD').toUpperCase();
+    const uzs_cash = parseFloat(collectForm.uzs_cash) || 0;
+    const uzs_card = parseFloat(collectForm.uzs_card) || 0;
+    const usd_cash = parseFloat(collectForm.usd_cash) || 0;
+    const usd_card = parseFloat(collectForm.usd_card) || 0;
+    const rem = parseFloat(collectTarget.amount) || 0;
+    const tol = 0.02;
+
+    let paySum;
+    if (ccy === 'USD') {
+      if (uzs_cash > 0 || uzs_card > 0) {
+        alert('This receivable is in USD — use USD cash/card fields only.');
+        return;
+      }
+      paySum = usd_cash + usd_card;
+    } else {
+      if (usd_cash > 0 || usd_card > 0) {
+        alert('This receivable is in UZS — use UZS cash/card fields only.');
+        return;
+      }
+      paySum = uzs_cash + uzs_card;
+    }
+
+    if (paySum <= 0) {
+      alert('Enter the amount collected (greater than zero).');
+      return;
+    }
+    if (paySum > rem + tol) {
+      alert(
+        `Collected amount cannot exceed remaining balance (${rem.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${ccy}).`,
+      );
+      return;
+    }
+
+    try {
+      const res = await api.post(`/receivables/${collectTarget.id}/collect_payment/`, {
+        uzs_cash,
+        uzs_card,
+        usd_cash,
+        usd_card,
+        notes: String(collectForm.notes || '').trim(),
+      });
+      alert(res.data?.message || 'Payment recorded.');
+      setCollectTarget(null);
+      setCollectForm({
+        uzs_cash: '',
+        uzs_card: '',
+        usd_cash: '',
+        usd_card: '',
+        notes: '',
+      });
+      await fetchReceivables();
+      await fetchRecords();
+    } catch (error) {
+      console.error('Error collecting receivable:', error);
+      const d = error.response?.data;
+      const msg =
+        d?.detail ||
+        d?.error ||
+        (typeof d?.detail === 'string' ? d.detail : null) ||
+        (Array.isArray(d) ? d[0] : null) ||
+        (typeof d === 'object' && d !== null
+          ? Object.entries(d)
+              .map(([k, v]) => `${k}: ${Array.isArray(v) ? v[0] : String(v)}`)
+              .join(' ')
+          : null) ||
+        'Error recording payment';
+      alert(Array.isArray(msg) ? msg[0] : msg);
+    }
+  };
+
   const fetchProfitLoss = async () => {
     setLoading(true);
     try {
@@ -338,8 +442,11 @@ const Finance = () => {
 
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
-    if (!String(expenseFormData.notes || '').trim()) {
-      alert('Please enter notes for this expense.');
+    if (
+      expenseFormData.expense_type === 'other' &&
+      !String(expenseFormData.notes || '').trim()
+    ) {
+      alert('Please enter notes when expense type is Other.');
       return;
     }
     try {
@@ -350,7 +457,7 @@ const Finance = () => {
         currency: expenseFormData.currency,
         payment_type: expenseFormData.payment_type,
         recipient: expenseFormData.recipient || null,
-        notes: String(expenseFormData.notes).trim(),
+        notes: String(expenseFormData.notes || '').trim(),
         status: 'completed',
       };
 
@@ -568,13 +675,19 @@ const Finance = () => {
                 </div>
               )}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes *</label>
+                <label>Notes{expenseFormData.expense_type === 'other' ? ' *' : ''}</label>
                 <textarea
                   value={expenseFormData.notes}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, notes: e.target.value })}
                   rows="2"
-                  required
-                  placeholder={expenseFormData.expense_type === 'salary' ? 'e.g., Prepayment, Monthly salary, etc.' : ''}
+                  required={expenseFormData.expense_type === 'other'}
+                  placeholder={
+                    expenseFormData.expense_type === 'salary'
+                      ? 'e.g., Prepayment, Monthly salary, etc.'
+                      : expenseFormData.expense_type === 'other'
+                        ? 'Describe this expense'
+                        : 'Optional unless type is Other'
+                  }
                 />
               </div>
             </div>
@@ -953,7 +1066,7 @@ const Finance = () => {
                   style={{ fontSize: '0.85em', color: '#666', textAlign: 'right' }}
                 >
                   {records.length > 0
-                    ? 'Net (completed) per leg: only rows with currency and cash or card. Same sign as Type (income +, expense −).'
+                    ? 'Net (completed) per leg: only rows with currency and cash or card. Same sign as Type (income +, expense −). If cash and card were both used on one receipt, Notes show the split; Money Balance sums each bucket accurately.'
                     : ' '}
                 </td>
               </tr>
@@ -965,7 +1078,65 @@ const Finance = () => {
 
       {/* Receivables Table */}
       {activeTab === 'receivables' && (
-        <div className="table-card">
+        <>
+          {collectTarget && (
+            <div className="form-card" style={{ marginBottom: '20px' }}>
+              <h2>
+                Collect payment — receivable #{collectTarget.id}{' '}
+                <small style={{ color: '#555', fontWeight: 400 }}>(Sale #{collectTarget.sale})</small>
+              </h2>
+              <p style={{ color: '#666', marginBottom: '12px', fontSize: '0.92rem' }}>
+                Enter what the customer paid now toward this open balance. Remaining{' '}
+                <strong>{parseFloat(collectTarget.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
+                {(collectTarget.currency || collectTarget.sale_detail?.sale_currency || 'USD').toUpperCase()}</strong>
+                {' — '}you can collect in partial payments until the balance is cleared.
+              </p>
+              <form onSubmit={handleCollectReceivableSubmit}>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>UZS — Cash</label>
+                    <input type="number" step="0.01" min="0" placeholder="0" value={collectForm.uzs_cash} onChange={(e) => setCollectForm({ ...collectForm, uzs_cash: e.target.value })} />
+                  </div>
+                  <div className="form-group">
+                    <label>UZS — Card</label>
+                    <input type="number" step="0.01" min="0" placeholder="0" value={collectForm.uzs_card} onChange={(e) => setCollectForm({ ...collectForm, uzs_card: e.target.value })} />
+                  </div>
+                  <div className="form-group">
+                    <label>USD — Cash</label>
+                    <input type="number" step="0.01" min="0" placeholder="0" value={collectForm.usd_cash} onChange={(e) => setCollectForm({ ...collectForm, usd_cash: e.target.value })} />
+                  </div>
+                  <div className="form-group">
+                    <label>USD — Card</label>
+                    <input type="number" step="0.01" min="0" placeholder="0" value={collectForm.usd_card} onChange={(e) => setCollectForm({ ...collectForm, usd_card: e.target.value })} />
+                  </div>
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>Notes (optional)</label>
+                    <textarea rows={2} value={collectForm.notes} onChange={(e) => setCollectForm({ ...collectForm, notes: e.target.value })} />
+                  </div>
+                </div>
+                <div className="form-actions">
+                  <button type="submit" className="btn-primary">Record collection</button>
+                  <button
+                    type="button"
+                    className="btn-edit"
+                    onClick={() => {
+                      setCollectTarget(null);
+                      setCollectForm({
+                        uzs_cash: '',
+                        uzs_card: '',
+                        usd_cash: '',
+                        usd_card: '',
+                        notes: '',
+                      });
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+          <div className="table-card">
           <h2>Accounts Receivable</h2>
           <div className="data-table-scroll">
           <table className="data-table">
@@ -983,12 +1154,13 @@ const Finance = () => {
                 <th>Status</th>
                 <th>Created</th>
                 <th>Paid date</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {receivables.length === 0 ? (
                 <tr>
-                  <td colSpan="12" style={{ textAlign: 'center' }}>
+                  <td colSpan="13" style={{ textAlign: 'center' }}>
                     No receivables found
                   </td>
                 </tr>
@@ -1036,6 +1208,19 @@ const Finance = () => {
                           ? new Date(receivable.paid_date).toLocaleString()
                           : '—'}
                       </td>
+                      <td>
+                        {canCollectReceivable(receivable) ? (
+                          <button
+                            type="button"
+                            className="btn-edit"
+                            onClick={() => beginCollectReceivable(receivable)}
+                          >
+                            Collect
+                          </button>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                     </tr>
                   );
                 })
@@ -1053,11 +1238,13 @@ const Finance = () => {
                 <td>—</td>
                 <td>—</td>
                 <td>—</td>
+                <td>—</td>
               </tr>
             </tfoot>
           </table>
           </div>
-        </div>
+          </div>
+        </>
       )}
 
       {/* Payables Table */}
@@ -1155,70 +1342,85 @@ const Finance = () => {
 
       {activeTab === 'profit_loss' && (
         <div>
+          <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
+            Amounts stay in their original currency. Net profit is shown separately for USD and for UZS — they are not added together.
+          </p>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px' }}>Loading...</div>
           ) : profitLoss ? (
             <div>
               <div className="metrics-grid" style={{ marginBottom: '20px' }}>
                 <div className="metric-card" style={{ border: '2px solid #28a745' }}>
-                  <div className="metric-label">Total Income (USD)</div>
-                  <div className="metric-value" style={{ color: '#28a745', fontSize: '2em' }}>
-                    ${profitLoss.totals.total_income.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div className="metric-label">Total income (USD)</div>
+                  <div className="metric-value" style={{ color: '#28a745', fontSize: '1.6em' }}>
+                    ${(profitLoss.totals.total_income_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div className="metric-card" style={{ border: '2px solid #28a745' }}>
+                  <div className="metric-label">Total income (UZS)</div>
+                  <div className="metric-value" style={{ color: '#28a745', fontSize: '1.6em' }}>
+                    {(profitLoss.totals.total_income_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
                   </div>
                 </div>
                 <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
                   <div className="metric-label">Total COGS (USD)</div>
-                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '2em' }}>
-                    ${profitLoss.totals.total_cogs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
+                    ${(profitLoss.totals.total_cogs_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
                 <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-                  <div className="metric-label">Total Operating Expenses (USD)</div>
-                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '2em' }}>
-                    ${profitLoss.totals.total_operating_expenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div className="metric-label">Total COGS (UZS)</div>
+                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
+                    {(profitLoss.totals.total_cogs_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
                   </div>
                 </div>
                 <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-                  <div className="metric-label">Total Expenses (USD)</div>
-                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '2em' }}>
-                    ${profitLoss.totals.total_expenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <div className="metric-label">Operating expenses (USD)</div>
+                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
+                    ${(profitLoss.totals.total_operating_expenses_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
-                <div className="metric-card" style={{ 
-                  border: `2px solid ${profitLoss.totals.net_profit_loss >= 0 ? '#28a745' : '#dc3545'}` 
-                }}>
-                  <div className="metric-label">Net Profit/Loss (USD)</div>
-                  <div className="metric-value" style={{ 
-                    color: profitLoss.totals.net_profit_loss >= 0 ? '#28a745' : '#dc3545', 
-                    fontSize: '2em' 
-                  }}>
-                    ${profitLoss.totals.net_profit_loss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
+                  <div className="metric-label">Operating expenses (UZS)</div>
+                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
+                    {(profitLoss.totals.total_operating_expenses_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
+                  </div>
+                </div>
+                <div className="metric-card" style={{ border: `2px solid ${(profitLoss.totals.net_profit_usd || 0) >= 0 ? '#28a745' : '#dc3545'}` }}>
+                  <div className="metric-label">Net profit (USD)</div>
+                  <div className="metric-value" style={{ color: (profitLoss.totals.net_profit_usd || 0) >= 0 ? '#28a745' : '#dc3545', fontSize: '1.6em' }}>
+                    ${(profitLoss.totals.net_profit_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div className="metric-card" style={{ border: `2px solid ${(profitLoss.totals.net_profit_uzs || 0) >= 0 ? '#28a745' : '#dc3545'}` }}>
+                  <div className="metric-label">Net profit (UZS)</div>
+                  <div className="metric-value" style={{ color: (profitLoss.totals.net_profit_uzs || 0) >= 0 ? '#28a745' : '#dc3545', fontSize: '1.6em' }}>
+                    {(profitLoss.totals.net_profit_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
                   </div>
                 </div>
               </div>
 
               <div className="table-card" style={{ marginBottom: '20px' }}>
-                <h3>Sales Profit/Loss Analysis (All amounts in USD)</h3>
+                <h3>Sales (by currency — no conversion)</h3>
                 <div className="data-table-scroll">
                 <table className="data-table">
                   <thead>
                     <tr>
                       <th>Sale ID</th>
                       <th>Product</th>
-                      <th>Quantity</th>
-                      <th>Income (USD)</th>
-                      <th>Purchase Price (USD)</th>
-                      <th>Cargo Cost (USD)</th>
-                      <th>Package Cost (USD)</th>
-                      <th>Delivery Cost (USD)</th>
-                      <th>Total COGS (USD)</th>
-                      <th>Profit (USD)</th>
+                      <th>Qty</th>
+                      <th>Income USD</th>
+                      <th>Income UZS</th>
+                      <th>COGS USD</th>
+                      <th>COGS UZS</th>
+                      <th>Profit USD</th>
+                      <th>Profit UZS</th>
                     </tr>
                   </thead>
                   <tbody>
                     {profitLoss.sales.length === 0 ? (
                       <tr>
-                        <td colSpan="10" style={{ textAlign: 'center' }}>No sales completed in this period</td>
+                        <td colSpan="9" style={{ textAlign: 'center' }}>No sales completed in this period</td>
                       </tr>
                     ) : (
                       profitLoss.sales.map((item, idx) => (
@@ -1226,17 +1428,15 @@ const Finance = () => {
                           <td>#{item.sale_id}</td>
                           <td>{item.product}</td>
                           <td>{item.quantity}</td>
-                          <td>${item.income.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td>${item.purchase_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td>${item.cargo_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td>${item.package_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td>${item.delivery_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td>${item.total_cogs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td style={{ 
-                            color: item.profit >= 0 ? '#28a745' : '#dc3545',
-                            fontWeight: '600'
-                          }}>
-                            ${item.profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <td>${item.income_usd?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td>{(item.income_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                          <td>${item.total_cogs_usd?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td>{(item.total_cogs_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                          <td style={{ color: item.profit_usd >= 0 ? '#28a745' : '#dc3545', fontWeight: '600' }}>
+                            ${item.profit_usd?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td style={{ color: item.profit_uzs >= 0 ? '#28a745' : '#dc3545', fontWeight: '600' }}>
+                            {(item.profit_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </td>
                         </tr>
                       ))
@@ -1244,17 +1444,16 @@ const Finance = () => {
                   </tbody>
                   <tfoot>
                     <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
-                      <td colSpan="3">Total</td>
-                      <td>${profitLoss.totals.total_income.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td>-</td>
-                      <td>-</td>
-                      <td>-</td>
-                      <td>-</td>
-                      <td>${profitLoss.totals.total_cogs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td style={{ 
-                        color: profitLoss.totals.net_profit_loss >= 0 ? '#28a745' : '#dc3545'
-                      }}>
-                        ${profitLoss.totals.net_profit_loss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <td colSpan="3">Totals</td>
+                      <td>${(profitLoss.totals.total_income_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td>{(profitLoss.totals.total_income_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      <td>${(profitLoss.totals.total_cogs_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td>{(profitLoss.totals.total_cogs_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      <td style={{ color: profitLoss.totals.net_profit_usd >= 0 ? '#28a745' : '#dc3545' }}>
+                        ${(profitLoss.totals.net_profit_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ color: profitLoss.totals.net_profit_uzs >= 0 ? '#28a745' : '#dc3545' }}>
+                        {(profitLoss.totals.net_profit_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </td>
                     </tr>
                   </tfoot>
@@ -1263,26 +1462,28 @@ const Finance = () => {
               </div>
 
               <div className="table-card">
-                <h3>Operating Expenses (All amounts in USD)</h3>
+                <h3>Operating expenses</h3>
                 <div className="data-table-scroll">
                 <table className="data-table">
                   <thead>
                     <tr>
                       <th>Type</th>
                       <th>Amount (USD)</th>
+                      <th>Amount (UZS)</th>
                       <th>Date</th>
                     </tr>
                   </thead>
                   <tbody>
                     {profitLoss.operating_expenses.length === 0 ? (
                       <tr>
-                        <td colSpan="3" style={{ textAlign: 'center' }}>No operating expenses in this period</td>
+                        <td colSpan="4" style={{ textAlign: 'center' }}>No operating expenses in this period</td>
                       </tr>
                     ) : (
                       profitLoss.operating_expenses.map((item, idx) => (
                         <tr key={idx}>
                           <td>{item.type}</td>
-                          <td>${item.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td>${(item.amount_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td>{(item.amount_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                           <td>{item.date}</td>
                         </tr>
                       ))
@@ -1290,9 +1491,10 @@ const Finance = () => {
                   </tbody>
                   <tfoot>
                     <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
-                      <td>Total Operating Expenses</td>
-                      <td>${profitLoss.totals.total_operating_expenses.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td>-</td>
+                      <td>Total operating</td>
+                      <td>${(profitLoss.totals.total_operating_expenses_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td>{(profitLoss.totals.total_operating_expenses_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                      <td>—</td>
                     </tr>
                   </tfoot>
                 </table>

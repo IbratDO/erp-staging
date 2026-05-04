@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
 import { productCostCells } from '../utils/productCost';
+import { uniqueSupplierCountriesFromProducts } from '../utils/supplierCountries';
 import './TablePage.css';
 
 const Products = () => {
@@ -34,16 +35,12 @@ const Products = () => {
     size: '',
     color: '',
     supplier_country: '',
-    cost_uzs_cash: '',
-    cost_uzs_card: '',
-    cost_usd_cash: '',
-    cost_usd_card: '',
-    selling_price: '',
   });
   const [isNewBrand, setIsNewBrand] = useState(false);
   const [isNewModel, setIsNewModel] = useState(false);
   const [isNewCountry, setIsNewCountry] = useState(false);
   const [isNewCategory, setIsNewCategory] = useState(false);
+  const [isNewColor, setIsNewColor] = useState(false);
   const [selectedSizes, setSelectedSizes] = useState([]);
   const [sizeDropdownOpen, setSizeDropdownOpen] = useState(false);
   const sizeDropdownRef = useRef(null);
@@ -154,6 +151,13 @@ const Products = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, products]);
 
+  /** Colors from inventory + presets; sorted for the Color dropdown (same idea as supplier country picklist). */
+  const colorOptions = useMemo(() => {
+    const fromDb = [...new Set(products.map((p) => p.color).filter(Boolean))];
+    const set = new Set([...commonColors, ...fromDb]);
+    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [products]);
+
   const toNum = (v) => (v === '' || v == null ? 0 : parseFloat(v) || 0);
 
   const productColumnTotals = useMemo(() => {
@@ -174,14 +178,7 @@ const Products = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const payload = {
-      ...formData,
-      cost_uzs_cash: toNum(formData.cost_uzs_cash),
-      cost_uzs_card: toNum(formData.cost_uzs_card),
-      cost_usd_cash: toNum(formData.cost_usd_cash),
-      cost_usd_card: toNum(formData.cost_usd_card),
-      selling_price: formData.selling_price === '' ? null : formData.selling_price,
-    };
+    const payload = { ...formData };
     try {
       if (editingProduct) {
         await api.put(`/products/${editingProduct.id}/`, payload);
@@ -200,6 +197,7 @@ const Products = () => {
       setIsNewModel(false);
       setIsNewCountry(false);
       setIsNewCategory(false);
+      setIsNewColor(false);
       setSelectedSizes([]);
       setSizeDropdownOpen(false);
       setFormData({
@@ -210,11 +208,6 @@ const Products = () => {
         size: '',
         color: '',
         supplier_country: '',
-        cost_uzs_cash: '',
-        cost_uzs_card: '',
-        cost_usd_cash: '',
-        cost_usd_card: '',
-        selling_price: '',
       });
       fetchProducts();
     } catch (error) {
@@ -229,6 +222,7 @@ const Products = () => {
     setIsNewModel(false);
     setIsNewCountry(false);
     setIsNewCategory(false);
+    setIsNewColor(false);
     setSelectedSizes([]);
     setSizeDropdownOpen(false);
     setFormData({
@@ -239,11 +233,6 @@ const Products = () => {
       size: product.size,
       color: product.color,
       supplier_country: product.supplier_country,
-      cost_uzs_cash: product.cost_uzs_cash ?? '',
-      cost_uzs_card: product.cost_uzs_card ?? '',
-      cost_usd_cash: product.cost_usd_cash ?? '',
-      cost_usd_card: product.cost_usd_card ?? '',
-      selling_price: product.selling_price,
     });
     setShowForm(true);
   };
@@ -287,6 +276,7 @@ const Products = () => {
             setIsNewModel(false);
             setIsNewCountry(false);
             setIsNewCategory(false);
+            setIsNewColor(false);
             setSelectedSizes([]);
             setSizeDropdownOpen(false);
             setFormData({
@@ -297,11 +287,6 @@ const Products = () => {
               size: '',
               color: '',
               supplier_country: '',
-              cost_uzs_cash: '',
-              cost_uzs_card: '',
-              cost_usd_cash: '',
-              cost_usd_card: '',
-              selling_price: '',
             });
           }
         }}>
@@ -544,22 +529,59 @@ const Products = () => {
               </div>
               <div className="form-group">
                 <label>Color</label>
-                <select
-                  value={formData.color}
-                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                  required
-                >
-                  <option value="">Select Color</option>
-                  {commonColors.map((color) => (
-                    <option key={color} value={color}>
-                      {color}
-                    </option>
-                  ))}
-                  {/* Show current color if editing and it's not in the list */}
-                  {editingProduct && formData.color && !commonColors.includes(formData.color) && (
-                    <option value={formData.color}>{formData.color}</option>
-                  )}
-                </select>
+                {!isNewColor ? (
+                  <select
+                    value={formData.color}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setIsNewColor(true);
+                        setFormData({ ...formData, color: '' });
+                      } else {
+                        setFormData({ ...formData, color: e.target.value });
+                      }
+                    }}
+                    required
+                  >
+                    <option value="">Select color</option>
+                    {colorOptions.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    {formData.color && !colorOptions.includes(formData.color) && (
+                      <option value={formData.color}>{formData.color}</option>
+                    )}
+                    <option value="__new__">+ Add new color...</option>
+                  </select>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="e.g. Panda, Bred, Off-White"
+                      value={formData.color}
+                      onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                      required
+                      autoFocus
+                      maxLength={100}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsNewColor(false);
+                        setFormData({ ...formData, color: '' });
+                      }}
+                      style={{
+                        padding: '0 10px',
+                        background: '#eee',
+                        border: '1px solid #ccc',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>Supplier Country <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(optional)</span></label>
@@ -576,7 +598,7 @@ const Products = () => {
                     }}
                   >
                     <option value="">— None —</option>
-                    {[...new Set(products.map(p => p.supplier_country).filter(Boolean))].sort().map(country => (
+                    {uniqueSupplierCountriesFromProducts(products).map(country => (
                       <option key={country} value={country}>{country.charAt(0).toUpperCase() + country.slice(1)}</option>
                     ))}
                     <option value="__new__">+ Add new country...</option>
@@ -610,82 +632,6 @@ const Products = () => {
                     </button>
                   </div>
                 )}
-              </div>
-              <div
-                className="form-group"
-                style={{ gridColumn: "1 / -1", marginBottom: "4px" }}
-              >
-                <p style={{ margin: 0, fontSize: "0.9em", color: "#555" }}>
-                  Cost (all four below) is optional. Leave blank if the unit cost is not known yet; values are stored
-                  as 0 until you edit the product.
-                </p>
-              </div>
-              <div className="form-group">
-                <label>
-                  Cost-UZS (cash){" "}
-                  <span style={{ color: "#888", fontWeight: 400, fontSize: "0.85em" }}>(optional)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Optional"
-                  value={formData.cost_uzs_cash}
-                  onChange={(e) => setFormData({ ...formData, cost_uzs_cash: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>
-                  Cost-UZS (card){" "}
-                  <span style={{ color: "#888", fontWeight: 400, fontSize: "0.85em" }}>(optional)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Optional"
-                  value={formData.cost_uzs_card}
-                  onChange={(e) => setFormData({ ...formData, cost_uzs_card: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>
-                  Cost-USD (cash){" "}
-                  <span style={{ color: "#888", fontWeight: 400, fontSize: "0.85em" }}>(optional)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Optional"
-                  value={formData.cost_usd_cash}
-                  onChange={(e) => setFormData({ ...formData, cost_usd_cash: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>
-                  Cost-USD (card){" "}
-                  <span style={{ color: "#888", fontWeight: 400, fontSize: "0.85em" }}>(optional)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Optional"
-                  value={formData.cost_usd_card}
-                  onChange={(e) => setFormData({ ...formData, cost_usd_card: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Selling Price <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(optional)</span></label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Enter selling price"
-                  value={formData.selling_price}
-                  onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
-                />
               </div>
             </div>
             <div className="form-actions">
@@ -777,7 +723,7 @@ const Products = () => {
               onChange={(e) => setFilters({ ...filters, supplier_country: e.target.value })}
             >
               <option value="">All Countries</option>
-              {[...new Set(products.map(p => p.supplier_country).filter(Boolean))].sort().map(country => (
+              {uniqueSupplierCountriesFromProducts(products).map(country => (
                 <option key={country} value={country}>{country.charAt(0).toUpperCase() + country.slice(1)}</option>
               ))}
             </select>

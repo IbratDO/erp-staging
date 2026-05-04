@@ -49,8 +49,11 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         }
       }
 
-      if (!String(paymentFormData.completion_notes || '').trim()) {
-        showNotification('Please enter notes for this completion.', 'error');
+      if (meta.needs && !String(paymentFormData.completion_notes || '').trim()) {
+        showNotification(
+          'Please enter notes when the payment is less than the amount due (discount or on credit).',
+          'error'
+        );
         return;
       }
 
@@ -273,13 +276,22 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           )}
 
           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label>Notes *</label>
+            <label>Notes{shortfallMeta.needs ? ' *' : ''}</label>
             <textarea
               rows={3}
               value={paymentFormData.completion_notes}
               onChange={(e) => setPaymentFormData({ ...paymentFormData, completion_notes: e.target.value })}
-              required
+              required={shortfallMeta.needs}
             />
+            {!shortfallMeta.needs ? (
+              <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
+                Optional when the entered payment equals or exceeds the amount due.
+              </small>
+            ) : (
+              <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
+                Required when selecting discount or on credit for the unpaid remainder.
+              </small>
+            )}
           </div>
         </div>
         <div className="form-actions">

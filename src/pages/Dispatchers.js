@@ -292,24 +292,16 @@ const Dispatchers = () => {
   };
 
   const postDispatchStatus = async (id, status, notes) => {
-    const t = String(notes ?? '').trim();
-    if (!t) {
-      showNotification('Notes are required for dispatch status changes.', 'error');
-      return;
-    }
-    await api.post(`/dispatches/${id}/update_status/`, { status, notes: t });
+    await api.post(`/dispatches/${id}/update_status/`, {
+      status,
+      notes: String(notes ?? '').trim(),
+    });
     await afterDispatchMutation();
   };
 
-  const promptDispatchStatusChange = async (row, newStatus) => {
-    const n = window.prompt('Enter notes (required) for this status change:');
-    if (n === null) return;
-    if (!String(n).trim()) {
-      showNotification('Notes are required for status changes.', 'error');
-      return;
-    }
+  const applyDispatchRowStatusChange = async (row, newStatus) => {
     try {
-      await postDispatchStatus(row.id, newStatus, n);
+      await postDispatchStatus(row.id, newStatus, '');
     } catch (err) {
       console.error(err);
       showNotification(
@@ -713,7 +705,7 @@ const Dispatchers = () => {
                               <td>
                                 <select
                                   value={row.status}
-                                  onChange={(e) => promptDispatchStatusChange(row, e.target.value)}
+                                  onChange={(e) => applyDispatchRowStatusChange(row, e.target.value)}
                                 >
                                   {statusOptionsRow.map((s) => (
                                     <option key={s.value} value={s.value}>
@@ -917,7 +909,7 @@ const Dispatchers = () => {
                       <td>
                         <select
                           value={row.status}
-                          onChange={(e) => promptDispatchStatusChange(row, e.target.value)}
+                          onChange={(e) => applyDispatchRowStatusChange(row, e.target.value)}
                         >
                           {statusOptionsRow.map((s) => (
                             <option key={s.value} value={s.value}>
