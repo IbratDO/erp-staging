@@ -156,7 +156,7 @@ const Products = () => {
     const fromDb = [...new Set(products.map((p) => p.color).filter(Boolean))];
     const set = new Set([...commonColors, ...fromDb]);
     return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  }, [products]);
+  }, [products, commonColors]);
 
   const toNum = (v) => (v === '' || v == null ? 0 : parseFloat(v) || 0);
 
