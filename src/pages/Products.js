@@ -4,6 +4,10 @@ import { productCostCells } from '../utils/productCost';
 import { uniqueSupplierCountriesFromProducts } from '../utils/supplierCountries';
 import './TablePage.css';
 
+const COMMON_COLORS = [
+  'Black', 'White', 'Grey', 'Navy', 'Red', 'Blue', 'Brown', 'Beige', 'Green', 'Pink',
+];
+
 const Products = () => {
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -65,19 +69,6 @@ const Products = () => {
   // All possible sizes from 36 to 46
   const allSizes = Array.from({ length: 11 }, (_, i) => (36 + i).toString());
   
-  // Common colors list
-  const commonColors = [
-    'Black',
-    'White',
-    'Grey',
-    'Navy',
-    'Red',
-    'Blue',
-    'Brown',
-    'Beige',
-    'Green',
-    'Pink'
-  ];
 
   useEffect(() => {
     fetchProducts();
@@ -154,9 +145,9 @@ const Products = () => {
   /** Colors from inventory + presets; sorted for the Color dropdown (same idea as supplier country picklist). */
   const colorOptions = useMemo(() => {
     const fromDb = [...new Set(products.map((p) => p.color).filter(Boolean))];
-    const set = new Set([...commonColors, ...fromDb]);
+    const set = new Set([...COMMON_COLORS, ...fromDb]);
     return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  }, [products, commonColors]);
+  }, [products]);
 
   const toNum = (v) => (v === '' || v == null ? 0 : parseFloat(v) || 0);
 
