@@ -1912,7 +1912,6 @@ const Orders = () => {
               <th>Actions</th>
               <th>Category</th>
               <th>Name</th>
-              <th>Product</th>
               <th>Brand</th>
               <th>Model</th>
               <th>Size</th>
@@ -2021,11 +2020,6 @@ const Orders = () => {
                   </td>
                   <td>{order.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>{order.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>
-                    {order.product_detail
-                      ? `${order.product_detail.brand} ${order.product_detail.model}`
-                      : `Product #${order.product}`}
-                  </td>
                   <td>{order.product_detail?.brand || '-'}</td>
                   <td>{order.product_detail?.model || '-'}</td>
                   <td><strong>{order.product_detail?.size || '-'}</strong></td>
