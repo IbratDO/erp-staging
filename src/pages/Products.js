@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
-import { productCostCells } from '../utils/productCost';
-import { uniqueSupplierCountriesFromProducts } from '../utils/supplierCountries';
 import './TablePage.css';
 
 const COMMON_COLORS = [
@@ -27,7 +25,6 @@ const Products = () => {
     model: '',
     size: '',
     color: '',
-    supplier_country: '',
     year: '',
     month: '',
   });
@@ -38,11 +35,9 @@ const Products = () => {
     model: '',
     size: '',
     color: '',
-    supplier_country: '',
   });
   const [isNewBrand, setIsNewBrand] = useState(false);
   const [isNewModel, setIsNewModel] = useState(false);
-  const [isNewCountry, setIsNewCountry] = useState(false);
   const [isNewCategory, setIsNewCategory] = useState(false);
   const [isNewColor, setIsNewColor] = useState(false);
   const [selectedSizes, setSelectedSizes] = useState([]);
@@ -116,9 +111,6 @@ const Products = () => {
     if (filters.color) {
       filtered = filtered.filter(p => p.color === filters.color);
     }
-    if (filters.supplier_country) {
-      filtered = filtered.filter(p => p.supplier_country === filters.supplier_country);
-    }
     if (filters.year) {
       filtered = filtered.filter(p => {
         const productYear = new Date(p.created_at || p.updated_at).getFullYear();
@@ -149,24 +141,6 @@ const Products = () => {
     return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [products]);
 
-  const toNum = (v) => (v === '' || v == null ? 0 : parseFloat(v) || 0);
-
-  const productColumnTotals = useMemo(() => {
-    let uzsC = 0;
-    let uzsCard = 0;
-    let usdC = 0;
-    let usdCard = 0;
-    let sell = 0;
-    for (const p of filteredProducts) {
-      uzsC += toNum(p.cost_uzs_cash);
-      uzsCard += toNum(p.cost_uzs_card);
-      usdC += toNum(p.cost_usd_cash);
-      usdCard += toNum(p.cost_usd_card);
-      sell += toNum(p.selling_price);
-    }
-    return { uzsC, uzsCard, usdC, usdCard, sell };
-  }, [filteredProducts]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     const payload = { ...formData };
@@ -186,7 +160,6 @@ const Products = () => {
       setEditingProduct(null);
       setIsNewBrand(false);
       setIsNewModel(false);
-      setIsNewCountry(false);
       setIsNewCategory(false);
       setIsNewColor(false);
       setSelectedSizes([]);
@@ -198,7 +171,6 @@ const Products = () => {
         model: '',
         size: '',
         color: '',
-        supplier_country: '',
       });
       fetchProducts();
     } catch (error) {
@@ -211,7 +183,6 @@ const Products = () => {
     setEditingProduct(product);
     setIsNewBrand(false);
     setIsNewModel(false);
-    setIsNewCountry(false);
     setIsNewCategory(false);
     setIsNewColor(false);
     setSelectedSizes([]);
@@ -223,7 +194,6 @@ const Products = () => {
       model: product.model,
       size: product.size,
       color: product.color,
-      supplier_country: product.supplier_country,
     });
     setShowForm(true);
   };
@@ -265,7 +235,6 @@ const Products = () => {
             setEditingProduct(null);
             setIsNewBrand(false);
             setIsNewModel(false);
-            setIsNewCountry(false);
             setIsNewCategory(false);
             setIsNewColor(false);
             setSelectedSizes([]);
@@ -277,7 +246,6 @@ const Products = () => {
               model: '',
               size: '',
               color: '',
-              supplier_country: '',
             });
           }
         }}>
@@ -290,15 +258,6 @@ const Products = () => {
           <h2>{editingProduct ? 'Edit Product' : 'New Product'}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
-              <div className="form-group">
-                <label>Name</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
               <div className="form-group">
                 <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(optional)</span></label>
                 {!isNewCategory ? (
@@ -574,56 +533,6 @@ const Products = () => {
                   </div>
                 )}
               </div>
-              <div className="form-group">
-                <label>Supplier Country <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(optional)</span></label>
-                {!isNewCountry ? (
-                  <select
-                    value={formData.supplier_country}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setIsNewCountry(true);
-                        setFormData({ ...formData, supplier_country: '' });
-                      } else {
-                        setFormData({ ...formData, supplier_country: e.target.value });
-                      }
-                    }}
-                  >
-                    <option value="">— None —</option>
-                    {uniqueSupplierCountriesFromProducts(products).map(country => (
-                      <option key={country} value={country}>{country.charAt(0).toUpperCase() + country.slice(1)}</option>
-                    ))}
-                    <option value="__new__">+ Add new country...</option>
-                  </select>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder="Enter country name"
-                      value={formData.supplier_country}
-                      onChange={(e) => setFormData({ ...formData, supplier_country: e.target.value })}
-                      autoFocus
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNewCountry(false);
-                        setFormData({ ...formData, supplier_country: '' });
-                      }}
-                      style={{
-                        padding: '0 10px',
-                        background: '#eee',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      ← Back
-                    </button>
-                  </div>
-                )}
-              </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -708,18 +617,6 @@ const Products = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Supplier Country</label>
-            <select
-              value={filters.supplier_country}
-              onChange={(e) => setFilters({ ...filters, supplier_country: e.target.value })}
-            >
-              <option value="">All Countries</option>
-              {uniqueSupplierCountriesFromProducts(products).map(country => (
-                <option key={country} value={country}>{country.charAt(0).toUpperCase() + country.slice(1)}</option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
             <label>Year</label>
             <select
               value={filters.year}
@@ -761,7 +658,7 @@ const Products = () => {
             <button
               type="button"
               className="btn-edit"
-              onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', supplier_country: '', year: '', month: '' })}
+              onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', year: '', month: '' })}
             >
               Clear all
             </button>
@@ -777,45 +674,30 @@ const Products = () => {
             <tr>
               <th>ID</th>
               <th>Category</th>
-              <th>Name</th>
               <th>Brand</th>
               <th>Model</th>
               <th>Size</th>
               <th>Color</th>
-              <th>Supplier</th>
-              <th>Cost-UZS (cash)</th>
-              <th>Cost-UZS (card)</th>
-              <th>Cost-USD (cash)</th>
-              <th>Cost-USD (card)</th>
-              <th>Selling Price</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
-                <td colSpan="14" style={{ textAlign: 'center' }}>
+                <td colSpan="7" style={{ textAlign: 'center' }}>
                   No products found
                 </td>
               </tr>
             ) : (
               filteredProducts.map((product) => {
-                const cost = productCostCells(product);
                 return (
                 <tr key={product.id}>
                   <td>#{product.id}</td>
                   <td>{product.category || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>{product.name}</td>
                   <td>{product.brand}</td>
                   <td>{product.model}</td>
                   <td><strong>{product.size}</strong></td>
                   <td><strong>{product.color}</strong></td>
-                  <td>{product.supplier_country}</td>
-                  <td style={{ fontSize: '0.9em' }}>{cost.uzsCash}</td>
-                  <td style={{ fontSize: '0.9em' }}>{cost.uzsCard}</td>
-                  <td style={{ fontSize: '0.9em' }}>{cost.usdCash}</td>
-                  <td style={{ fontSize: '0.9em' }}>{cost.usdCard}</td>
-                  <td>{product.selling_price ? `$${product.selling_price}` : <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
                     <button
                       className="btn-edit"
@@ -837,31 +719,9 @@ const Products = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="8" style={{ textAlign: 'right' }}>
-                Total
+              <td colSpan="7" style={{ textAlign: 'right', color: '#718096', fontSize: '0.85em' }}>
+                {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
               </td>
-              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
-                {productColumnTotals.uzsC > 0
-                  ? productColumnTotals.uzsC.toLocaleString(undefined, { maximumFractionDigits: 0 })
-                  : '—'}
-              </td>
-              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
-                {productColumnTotals.uzsCard > 0
-                  ? productColumnTotals.uzsCard.toLocaleString(undefined, { maximumFractionDigits: 0 })
-                  : '—'}
-              </td>
-              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
-                {productColumnTotals.usdC > 0 ? `$${productColumnTotals.usdC.toFixed(2)}` : '—'}
-              </td>
-              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
-                {productColumnTotals.usdCard > 0 ? `$${productColumnTotals.usdCard.toFixed(2)}` : '—'}
-              </td>
-              <td style={{ fontWeight: 600 }}>
-                {productColumnTotals.sell > 0
-                  ? `$${productColumnTotals.sell.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : '—'}
-              </td>
-              <td>—</td>
             </tr>
           </tfoot>
         </table>

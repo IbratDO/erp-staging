@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount } from '../utils/currencyFormat';
-import { uniqueSupplierCountriesForProductLine } from '../utils/supplierCountries';
+import { uniqueSupplierCountriesFromOrdersAndProducts } from '../utils/supplierCountries';
 import { prefillPayOrderFromSupplier } from '../utils/orderPayPrefill';
 import './TablePage.css';
 
@@ -10,24 +10,14 @@ function numOrZero(v) {
   return n > 0 && !Number.isNaN(n) ? n : 0;
 }
 
-/** Selling price per unit: total stored in DB divided by quantity, or legacy selling_price. */
+/** Selling price per unit (USD only). */
 function plannedSellingSummary(order) {
   const qi = Math.max(parseInt(order.ordered_quantity, 10) || 1, 1);
-  const uzsTotal = numOrZero(order.selling_uzs_cash) + numOrZero(order.selling_uzs_card);
   const usdTotal = numOrZero(order.selling_usd_cash) + numOrZero(order.selling_usd_card);
-  const bits = [];
-  if (uzsTotal > 0) {
-    const pu = uzsTotal / qi;
-    bits.push(`${pu.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS/u`);
-  }
-  if (usdTotal > 0) {
-    const pu = usdTotal / qi;
-    bits.push(`$${pu.toFixed(2)}/u`);
-  }
-  if (bits.length) return bits.join(' · ');
+  if (usdTotal > 0) return `$${(usdTotal / qi).toFixed(2)}/u`;
   const pu = parseFloat(order.selling_price);
   if (order.selling_price != null && order.selling_price !== '' && !Number.isNaN(pu) && pu > 0) {
-    return `$${pu.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/u`;
+    return `$${pu.toFixed(2)}/u`;
   }
   return '';
 }
@@ -46,12 +36,8 @@ function plannedSupplierPerUnit(order) {
 }
 
 function plannedSupplierTotal(order) {
-  const uzs = numOrZero(order.supplier_cost_uzs_cash) + numOrZero(order.supplier_cost_uzs_card);
   const usdTot = parseFloat(order.cost_total) || 0;
-  const bits = [];
-  if (usdTot > 0 && !Number.isNaN(usdTot)) bits.push(`$${usdTot.toFixed(2)}`);
-  if (uzs > 0) bits.push(`${uzs.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`);
-  if (bits.length) return bits.join(' · ');
+  if (usdTot > 0) return `$${usdTot.toFixed(2)}`;
   return '';
 }
 
@@ -60,13 +46,11 @@ function plannedSupplierTotal(order) {
  */
 function plannedSupplierPaymentTotals(order) {
   if (!order) return { uzs: 0, usd: 0 };
-  const uzs =
-    numOrZero(order.supplier_cost_uzs_cash) + numOrZero(order.supplier_cost_uzs_card);
   const usdBuckets =
     numOrZero(order.supplier_cost_usd_cash) + numOrZero(order.supplier_cost_usd_card);
   const fromCostTotal = parseFloat(order.cost_total) || 0;
   const usd = usdBuckets > 0 ? usdBuckets : fromCostTotal;
-  return { uzs, usd };
+  return { uzs: 0, usd };
 }
 
 function payTotalsMatchPlanned(expUzs, expUsd, uzsCash, uzsCard, usdCash, usdCard) {
@@ -177,9 +161,7 @@ const Orders = () => {
     eshop: '',
     ordered_quantity: '',
     selling_usd_per_unit: '',
-    selling_uzs_per_unit: '',
     cost_usd_per_unit: '',
-    cost_uzs_per_unit: '',
     order_is_paid: false,
     order_payment_currency: 'USD',
     order_payment_type: 'card',
@@ -322,12 +304,8 @@ const Orders = () => {
   
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
-    if (!String(newCustomerData.notes || '').trim()) {
-      showNotification('Please enter customer notes.', 'error');
-      return;
-    }
     try {
-      const response = await api.post('/customers/', { ...newCustomerData, notes: String(newCustomerData.notes).trim() });
+      const response = await api.post('/customers/', { ...newCustomerData });
       await fetchCustomers();
       setFormData({ ...formData, customer: response.data.id });
       setShowCustomerForm(false);
@@ -451,13 +429,12 @@ const Orders = () => {
       quantity += qi;
       costTotal += parseFloat(o.cost_total) || 0;
       const ud = numOrZero(o.selling_usd_cash) + numOrZero(o.selling_usd_card);
-      const uz = numOrZero(o.selling_uzs_cash) + numOrZero(o.selling_uzs_card);
       const legacyPu = parseFloat(o.selling_price);
       const hasLegacy = o.selling_price != null && o.selling_price !== '' && !Number.isNaN(legacyPu) && legacyPu > 0;
       if (qi > 0 && ud > 0) {
         sumUsdPlannedSelling += ud;
         qtyUsdSelling += qi;
-      } else if (qi > 0 && !(uz > 0) && hasLegacy) {
+      } else if (qi > 0 && hasLegacy) {
         sumUsdPlannedSelling += legacyPu * qi;
         qtyUsdSelling += qi;
       }
@@ -504,33 +481,22 @@ const Orders = () => {
         showNotification('Please select a product and enter a valid quantity.', 'error');
         return;
       }
+      if (!formData.supplier_country.trim()) {
+        showNotification('Please select or enter a Supplier Country.', 'error');
+        return;
+      }
 
-      const uzsS = numOrZero(formData.selling_uzs_per_unit);
       const usdS = numOrZero(formData.selling_usd_per_unit);
-      if (!(uzsS > 0 || usdS > 0)) {
-        showNotification(
-          'Enter a selling price per unit in USD and/or UZS. Amounts are not converted between currencies.',
-          'error',
-        );
+      if (!(usdS > 0)) {
+        showNotification('Enter a selling price per unit in USD.', 'error');
         return;
       }
 
-      const uzsSup = numOrZero(formData.cost_uzs_per_unit);
       const usdSup = numOrZero(formData.cost_usd_per_unit);
-
-      if (uzsSup > 0 && usdSup > 0) {
-        showNotification(
-          'Cost per unit cannot mix UZS and USD on one order line. Use one currency only, or split the purchase.',
-          'error',
-        );
-        return;
-      }
 
       if (formData.order_is_paid && !(usdSup > 0)) {
         showNotification(
-          uzsSup > 0
-            ? '“Already paid” here only deducts USD cash/card balances. For cost in UZS, leave unpaid and use “Pay for the Order”.'
-            : 'To mark the order as already paid, enter a USD cost per unit, or leave unpaid and record cost later.',
+          'To mark the order as already paid, enter a USD cost per unit, or leave unpaid and record cost later.',
           'error',
         );
         return;
@@ -568,11 +534,11 @@ const Orders = () => {
         supplier_country: formData.supplier_country || null,
         eshop: formData.eshop || '',
         ordered_quantity: qty,
-        selling_uzs_cash: toNum(formData.selling_uzs_per_unit) * qty,
+        selling_uzs_cash: 0,
         selling_uzs_card: 0,
         selling_usd_cash: toNum(formData.selling_usd_per_unit) * qty,
         selling_usd_card: 0,
-        supplier_cost_uzs_cash: toNum(formData.cost_uzs_per_unit) * qty,
+        supplier_cost_uzs_cash: 0,
         supplier_cost_uzs_card: 0,
         supplier_cost_usd_cash: toNum(formData.cost_usd_per_unit) * qty,
         supplier_cost_usd_card: 0,
@@ -600,9 +566,7 @@ const Orders = () => {
         eshop: '',
         ordered_quantity: '',
         selling_usd_per_unit: '',
-        selling_uzs_per_unit: '',
         cost_usd_per_unit: '',
-        cost_uzs_per_unit: '',
         order_is_paid: false,
         order_payment_currency: 'USD',
         order_payment_type: 'card',
@@ -1295,9 +1259,7 @@ const Orders = () => {
                                       product: String(product.id),
                                       supplier_country: product.supplier_country || '',
                                       selling_usd_per_unit: sellingUsd,
-                                      selling_uzs_per_unit: '',
                                       cost_usd_per_unit: '',
-                                      cost_uzs_per_unit: '',
                                     });
                                     setProductDropdownOpen(false);
                                     setProductSearch('');
@@ -1325,7 +1287,7 @@ const Orders = () => {
                 })()}
               </div>
               <div className="form-group">
-                <label>Supplier Country</label>
+                <label>Supplier Country <span style={{ color: '#e53e3e' }}>*</span></label>
                 {!isNewCountry ? (
                   <select
                     value={formData.supplier_country}
@@ -1340,14 +1302,11 @@ const Orders = () => {
                     required
                   >
                     <option value="">Select a country</option>
-                    {uniqueSupplierCountriesForProductLine(
-                      products,
-                      products.find((p) => p.id === parseInt(formData.product, 10)),
-                    ).map((country) => (
-                        <option key={country} value={country}>
-                          {country.charAt(0).toUpperCase() + country.slice(1)}
-                        </option>
-                      ))}
+                    {uniqueSupplierCountriesFromOrdersAndProducts(orders, products).map((country) => (
+                      <option key={country} value={country}>
+                        {country.charAt(0).toUpperCase() + country.slice(1)}
+                      </option>
+                    ))}
                     <option value="__new__">+ Add new country...</option>
                   </select>
                 ) : (
@@ -1459,83 +1418,43 @@ const Orders = () => {
                   {/* Selling price per unit */}
                   <div style={{ flex: 1 }}>
                     <label style={{ marginBottom: '6px', display: 'block' }}>
-                      Selling price per unit <span style={{ color: '#e53e3e', fontWeight: 400 }}>*</span>
+                      Selling price per unit (USD) <span style={{ color: '#e53e3e', fontWeight: 400 }}>*</span>
                     </label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <div style={{ flex: 1 }}>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="USD / unit"
-                          value={formData.selling_usd_per_unit}
-                          onChange={(e) => setFormData({ ...formData, selling_usd_per_unit: e.target.value })}
-                          style={{ width: '100%' }}
-                        />
-                        {numOrZero(formData.selling_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
-                          <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
-                            = ${(parseFloat(formData.selling_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} total
-                          </div>
-                        )}
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="USD / unit"
+                      value={formData.selling_usd_per_unit}
+                      onChange={(e) => setFormData({ ...formData, selling_usd_per_unit: e.target.value })}
+                      style={{ width: '100%' }}
+                    />
+                    {numOrZero(formData.selling_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
+                      <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
+                        = ${(parseFloat(formData.selling_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} total
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <input
-                          type="number"
-                          step="1"
-                          min="0"
-                          placeholder="UZS / unit"
-                          value={formData.selling_uzs_per_unit}
-                          onChange={(e) => setFormData({ ...formData, selling_uzs_per_unit: e.target.value })}
-                          style={{ width: '100%' }}
-                        />
-                        {numOrZero(formData.selling_uzs_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
-                          <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
-                            = {(parseFloat(formData.selling_uzs_per_unit) * parseInt(formData.ordered_quantity, 10)).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS total
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    )}
                   </div>
                   {/* Cost per unit */}
                   <div style={{ flex: 1 }}>
                     <label style={{ marginBottom: '6px', display: 'block' }}>
-                      Cost per unit{' '}
+                      Cost per unit (USD){' '}
                       <span style={{ color: '#999', fontWeight: 400, fontSize: '11px' }}>optional</span>
                     </label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <div style={{ flex: 1 }}>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="USD / unit"
-                          value={formData.cost_usd_per_unit}
-                          onChange={(e) => setFormData({ ...formData, cost_usd_per_unit: e.target.value })}
-                          style={{ width: '100%' }}
-                        />
-                        {numOrZero(formData.cost_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
-                          <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
-                            = ${(parseFloat(formData.cost_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} total
-                          </div>
-                        )}
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="USD / unit"
+                      value={formData.cost_usd_per_unit}
+                      onChange={(e) => setFormData({ ...formData, cost_usd_per_unit: e.target.value })}
+                      style={{ width: '100%' }}
+                    />
+                    {numOrZero(formData.cost_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
+                      <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
+                        = ${(parseFloat(formData.cost_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} total
                       </div>
-                      <div style={{ flex: 1 }}>
-                        <input
-                          type="number"
-                          step="1"
-                          min="0"
-                          placeholder="UZS / unit"
-                          value={formData.cost_uzs_per_unit}
-                          onChange={(e) => setFormData({ ...formData, cost_uzs_per_unit: e.target.value })}
-                          style={{ width: '100%' }}
-                        />
-                        {numOrZero(formData.cost_uzs_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
-                          <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
-                            = {(parseFloat(formData.cost_uzs_per_unit) * parseInt(formData.ordered_quantity, 10)).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS total
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1662,9 +1581,7 @@ const Orders = () => {
                     eshop: '',
                     ordered_quantity: '',
                     selling_usd_per_unit: '',
-                    selling_uzs_per_unit: '',
                     cost_usd_per_unit: '',
-                    cost_uzs_per_unit: '',
                     order_is_paid: false,
                     order_payment_currency: 'USD',
                     order_payment_type: 'card',
@@ -1725,15 +1642,6 @@ const Orders = () => {
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes *</label>
-                <textarea
-                  value={newCustomerData.notes}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, notes: e.target.value })}
-                  rows="3"
-                  required
-                />
               </div>
             </div>
             <div className="form-actions">
@@ -1916,6 +1824,7 @@ const Orders = () => {
               <th>Model</th>
               <th>Size</th>
               <th>Color</th>
+              <th>Supplier Country</th>
               <th>Order Type</th>
               <th>Customer</th>
               <th>Qty</th>
@@ -2024,6 +1933,7 @@ const Orders = () => {
                   <td>{order.product_detail?.model || '-'}</td>
                   <td><strong>{order.product_detail?.size || '-'}</strong></td>
                   <td><strong>{order.product_detail?.color || '-'}</strong></td>
+                  <td>{order.supplier_country || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
                     <span className={`status-badge ${order.order_type === 'stock' ? 'confirmed' : 'pending'}`}>
                       {order.order_type === 'stock' ? 'Stock' : 'On-Demand'}

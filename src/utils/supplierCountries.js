@@ -20,3 +20,20 @@ export function uniqueSupplierCountriesForProductLine(products, selectedProduct)
   );
   return uniqueSupplierCountriesFromProducts(line);
 }
+
+/**
+ * All unique supplier countries across both orders and products combined.
+ * This ensures any country typed during order creation is available in future dropdowns.
+ */
+export function uniqueSupplierCountriesFromOrdersAndProducts(orders, products) {
+  const set = new Set();
+  for (const o of orders || []) {
+    const v = o.supplier_country == null ? '' : String(o.supplier_country).trim();
+    if (v) set.add(v);
+  }
+  for (const p of products || []) {
+    const v = p.supplier_country == null ? '' : String(p.supplier_country).trim();
+    if (v) set.add(v);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
