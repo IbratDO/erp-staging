@@ -304,6 +304,10 @@ const Orders = () => {
   
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
+    if (!newCustomerData.telephone.trim()) {
+      showNotification('Telephone is required.', 'error');
+      return;
+    }
     try {
       const response = await api.post('/customers/', { ...newCustomerData });
       await fetchCustomers();
@@ -836,14 +840,13 @@ const Orders = () => {
   const handleMoveToInventoryFromOrder = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
 
-    // Check if order payment has not been made
     if (!order?.order_is_paid) {
-      showNotification('Cannot move to inventory: Order payment must be completed first. Please pay for the order before moving to inventory.', 'error');
+      showNotification('Order payment must be completed before moving to inventory.', 'error');
       return;
     }
 
     if (orderHasCargoCost(order) && !order?.cargo_is_paid) {
-      showNotification('Cannot move to inventory: Cargo payment must be completed first. Please pay for the cargo before moving to inventory.', 'error');
+      showNotification('Cargo payment must be completed before moving to inventory.', 'error');
       return;
     }
     
@@ -1487,7 +1490,6 @@ const Orders = () => {
                       onChange={(e) => setFormData({ ...formData, order_payment_type: e.target.value })}
                       required
                     >
-                      <option value="cash">Cash</option>
                       <option value="card">Card</option>
                     </select>
                   </div>
@@ -1615,11 +1617,12 @@ const Orders = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Telephone</label>
+                <label>Telephone *</label>
                 <input
                   type="text"
                   value={newCustomerData.telephone}
                   onChange={(e) => setNewCustomerData({ ...newCustomerData, telephone: e.target.value })}
+                  required
                 />
               </div>
               <div className="form-group">
@@ -1869,26 +1872,7 @@ const Orders = () => {
                         Mark as Received
                       </button>
                     )}
-                    {order.status === 'received' && order.order_type === 'stock' && (
-                      <button
-                        className="btn-status"
-                        onClick={() => {
-                          if (!order.order_is_paid) {
-                            showNotification('Cannot move to inventory: Order payment must be completed first. Please pay for the order before moving to inventory.', 'error');
-                            return;
-                          }
-                          if (orderHasCargoCost(order) && !order.cargo_is_paid) {
-                            showNotification('Cannot move to inventory: Cargo payment must be completed first. Please pay for the cargo before moving to inventory.', 'error');
-                            return;
-                          }
-                          handleStatusUpdate(order.id, 'in_inventory');
-                        }}
-                        style={{ marginRight: '5px' }}
-                      >
-                        Move to Inventory
-                      </button>
-                    )}
-                    {/* Show payment buttons if payments haven't been made, regardless of status */}
+                    {/* Payment buttons — shown simultaneously until each is paid */}
                     {!order.order_is_paid && (
                       <button
                         className="btn-status"
@@ -1907,6 +1891,17 @@ const Orders = () => {
                         Pay for the Cargo
                       </button>
                     )}
+                    {/* Move to Inventory — only shown once both payments are done */}
+                    {order.status === 'received' && order.order_type === 'stock'
+                      && order.order_is_paid && order.cargo_is_paid && (
+                      <button
+                        className="btn-status"
+                        onClick={() => handleStatusUpdate(order.id, 'in_inventory')}
+                        style={{ marginRight: '5px' }}
+                      >
+                        Move to Inventory
+                      </button>
+                    )}
                     {/* On-demand order specific buttons when received */}
                     {order.order_type === 'on_demand' && order.status === 'received' && !order.has_sale && (
                       <>
@@ -1917,13 +1912,15 @@ const Orders = () => {
                         >
                           Sell the Product
                         </button>
-                        <button
-                          className="btn-status"
-                          onClick={() => handleMoveToInventoryFromOrder(order.id)}
-                          style={{ backgroundColor: '#2196f3', color: 'white' }}
-                        >
-                          Move to Inventory
-                        </button>
+                        {order.order_is_paid && order.cargo_is_paid && (
+                          <button
+                            className="btn-status"
+                            onClick={() => handleMoveToInventoryFromOrder(order.id)}
+                            style={{ backgroundColor: '#2196f3', color: 'white' }}
+                          >
+                            Move to Inventory
+                          </button>
+                        )}
                       </>
                     )}
                   </td>
