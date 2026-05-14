@@ -110,20 +110,16 @@ const Inventory = () => {
 
   const inventoryColumnTotals = useMemo(() => {
     let quantity = 0;
-    let uzsC = 0;
-    let uzsCard = 0;
-    let usdC = 0;
-    let usdCard = 0;
+    let uzsTotal = 0;
+    let usdTotal = 0;
     for (const item of filteredInventory) {
       const q = parseInt(item.quantity, 10) || 0;
       const p = item.product_detail || {};
       quantity += q;
-      uzsC += (parseFloat(p.cost_uzs_cash) || 0) * q;
-      uzsCard += (parseFloat(p.cost_uzs_card) || 0) * q;
-      usdC += (parseFloat(p.cost_usd_cash) || 0) * q;
-      usdCard += (parseFloat(p.cost_usd_card) || 0) * q;
+      uzsTotal += ((parseFloat(p.cost_uzs_cash) || 0) + (parseFloat(p.cost_uzs_card) || 0)) * q;
+      usdTotal += ((parseFloat(p.cost_usd_cash) || 0) + (parseFloat(p.cost_usd_card) || 0)) * q;
     }
-    return { quantity, uzsC, uzsCard, usdC, usdCard };
+    return { quantity, uzsTotal, usdTotal };
   }, [filteredInventory]);
 
   const fetchProducts = async () => {
@@ -394,10 +390,8 @@ const Inventory = () => {
               <th>Model</th>
               <th>Size</th>
               <th>Color</th>
-              <th>Cost-UZS (cash)</th>
-              <th>Cost-UZS (card)</th>
-              <th>Cost-USD (cash)</th>
-              <th>Cost-USD (card)</th>
+              <th>Cost (UZS) / unit</th>
+              <th>Cost (USD) / unit</th>
               <th>Quantity</th>
               <th>Status</th>
               <th>Location</th>
@@ -407,7 +401,7 @@ const Inventory = () => {
           <tbody>
             {filteredInventory.length === 0 ? (
               <tr>
-                <td colSpan="16" style={{ textAlign: 'center' }}>
+                <td colSpan="14" style={{ textAlign: 'center' }}>
                   No inventory items found
                 </td>
               </tr>
@@ -428,10 +422,8 @@ const Inventory = () => {
                   <td>{item.product_detail?.model || '-'}</td>
                   <td><strong>{item.product_detail?.size || '-'}</strong></td>
                   <td><strong>{item.product_detail?.color || '-'}</strong></td>
-                  <td style={{ fontSize: '0.9em' }}>{cost.uzsCash}</td>
-                  <td style={{ fontSize: '0.9em' }}>{cost.uzsCard}</td>
-                  <td style={{ fontSize: '0.9em' }}>{cost.usdCash}</td>
-                  <td style={{ fontSize: '0.9em' }}>{cost.usdCard}</td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.uzsTotal}</td>
+                  <td style={{ fontSize: '0.9em' }}>{cost.usdTotal}</td>
                   <td>{item.quantity}</td>
                   <td>
                     <span className={`status-badge ${item.status}`}>
@@ -451,23 +443,13 @@ const Inventory = () => {
                 Total
               </td>
               <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
-                {inventoryColumnTotals.uzsC > 0
-                  ? inventoryColumnTotals.uzsC.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                {inventoryColumnTotals.uzsTotal > 0
+                  ? inventoryColumnTotals.uzsTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })
                   : '—'}
               </td>
               <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
-                {inventoryColumnTotals.uzsCard > 0
-                  ? inventoryColumnTotals.uzsCard.toLocaleString(undefined, { maximumFractionDigits: 0 })
-                  : '—'}
-              </td>
-              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
-                {inventoryColumnTotals.usdC > 0
-                  ? `$${inventoryColumnTotals.usdC.toFixed(2)}`
-                  : '—'}
-              </td>
-              <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
-                {inventoryColumnTotals.usdCard > 0
-                  ? `$${inventoryColumnTotals.usdCard.toFixed(2)}`
+                {inventoryColumnTotals.usdTotal > 0
+                  ? `$${inventoryColumnTotals.usdTotal.toFixed(2)}`
                   : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>{inventoryColumnTotals.quantity.toLocaleString()}</td>

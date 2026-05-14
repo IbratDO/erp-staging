@@ -63,22 +63,24 @@ export function formatSignedCurrencyMap(m) {
 }
 
 /**
- * Cash/card legs matching MoneyBalance / cash buckets (order: UZS cash, UZS card, USD card, USD cash).
+ * Currency-only legs for finance tables (legacy cash/card rows fold into *_cash columns by currency).
  */
-export const BALANCE_FOUR_LEGS = ['uzs_cash', 'uzs_card', 'usd_card', 'usd_cash'];
+export const BALANCE_TABLE_LEGS = ['uzs_cash', 'usd_cash'];
+
+/** @deprecated Use BALANCE_TABLE_LEGS — kept for accidental imports elsewhere. */
+export const BALANCE_FOUR_LEGS = BALANCE_TABLE_LEGS;
 
 /**
- * Map finance record to leg from currency + payment_type.
- * @returns {string|null} leg key or null if payment_type missing or invalid
+ * Map finance record to display leg: UZS → uzs_cash, USD → usd_cash (card + cash summed in UI column).
+ * Rows with no currency are excluded so we do not wrongly attribute amounts to USD.
  */
 export function financeRecordLegKey(record) {
-  const c = (record.currency || 'USD').toString().toUpperCase();
-  const p = (record.payment_type || '').toString().toLowerCase();
-  if (p !== 'cash' && p !== 'card') return null;
-  if (c === 'UZS' && p === 'cash') return 'uzs_cash';
-  if (c === 'UZS' && p === 'card') return 'uzs_card';
-  if (c === 'USD' && p === 'card') return 'usd_card';
-  if (c === 'USD' && p === 'cash') return 'usd_cash';
+  if (record.currency == null || String(record.currency).trim() === '') {
+    return null;
+  }
+  const c = String(record.currency).toUpperCase();
+  if (c === 'UZS') return 'uzs_cash';
+  if (c === 'USD') return 'usd_cash';
   return null;
 }
 
@@ -90,7 +92,7 @@ export function financeRecordLegKey(record) {
  */
 export function signedFinanceAmountsByLeg(records, options = {}) {
   const { status: statusFilter } = options;
-  const m = Object.fromEntries(BALANCE_FOUR_LEGS.map((k) => [k, 0]));
+  const m = Object.fromEntries(BALANCE_TABLE_LEGS.map((k) => [k, 0]));
   for (const r of records) {
     if (statusFilter && r.status !== statusFilter) continue;
     const leg = financeRecordLegKey(r);

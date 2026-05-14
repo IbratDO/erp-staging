@@ -545,7 +545,6 @@ const Customers = () => {
                   <th>Type</th>
                   <th>Amount</th>
                   <th>Currency</th>
-                  <th>Payment Type</th>
                   <th>Notes</th>
                 </tr>
               </thead>
@@ -553,7 +552,7 @@ const Customers = () => {
                 {(!customerHistory.balance_transactions || customerHistory.balance_transactions.length === 0) &&
                  (!customerHistory.order_balance_transactions || customerHistory.order_balance_transactions.length === 0) ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center' }}>
+                    <td colSpan="5" style={{ textAlign: 'center' }}>
                       No transactions found
                     </td>
                   </tr>
@@ -578,12 +577,12 @@ const Customers = () => {
                           </td>
                           <td>{formatAmountByBalanceType(transaction.amount, transaction.balance_detail?.balance_type)}</td>
                           <td>
-                            {transaction.balance_detail?.balance_type?.includes('USD') ? 'USD' : 
-                             transaction.balance_detail?.balance_type?.includes('UZS') ? 'UZS' : '-'}
-                          </td>
-                          <td>
-                            {transaction.balance_detail?.balance_type?.includes('cash') ? 'Cash' : 
-                             transaction.balance_detail?.balance_type?.includes('card') ? 'Card' : '-'}
+                            {(() => {
+                              const bt = (transaction.balance_detail?.balance_type || '').toLowerCase();
+                              if (bt.startsWith('uzs')) return 'UZS';
+                              if (bt.startsWith('usd')) return 'USD';
+                              return '—';
+                            })()}
                           </td>
                           <td>{transaction.notes || '-'}</td>
                         </tr>

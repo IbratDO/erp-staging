@@ -3,10 +3,8 @@ import api from '../utils/api';
 import './TablePage.css';
 
 const defaultPaymentState = {
-  payment_uzs_cash: '',
-  payment_uzs_card: '',
-  payment_usd_cash: '',
-  payment_usd_card: '',
+  payment_uzs: '',
+  payment_usd: '',
 };
 
 /** Strip $, commas, spaces (so pasting "$1,200.50" does not stick a $ in the value). */
@@ -76,23 +74,19 @@ const Packages = () => {
     let quantityAdded = 0;
     let totalCostUzs = 0;
     let totalCostUsd = 0;
-    let sumUzsCash = 0;
-    let sumUzsCard = 0;
-    let sumUsdCash = 0;
-    let sumUsdCard = 0;
+    let sumUzs = 0;
+    let sumUsd = 0;
     for (const h of packageHistory) {
       quantityAdded += parseFloat(h.quantity_added) || 0;
       totalCostUzs += parseFloat(h.total_cost_uzs) || 0;
       totalCostUsd += parseFloat(h.total_cost_usd) || 0;
       const isPaid = h.is_paid || h.status === 'paid';
       if (isPaid) {
-        sumUzsCash += parseFloat(h.payment_uzs_cash) || 0;
-        sumUzsCard += parseFloat(h.payment_uzs_card) || 0;
-        sumUsdCash += parseFloat(h.payment_usd_cash) || 0;
-        sumUsdCard += parseFloat(h.payment_usd_card) || 0;
+        sumUzs += (parseFloat(h.payment_uzs_cash) || 0) + (parseFloat(h.payment_uzs_card) || 0);
+        sumUsd += (parseFloat(h.payment_usd_cash) || 0) + (parseFloat(h.payment_usd_card) || 0);
       }
     }
-    return { quantityAdded, totalCostUzs, totalCostUsd, sumUzsCash, sumUzsCard, sumUsdCash, sumUsdCard };
+    return { quantityAdded, totalCostUzs, totalCostUsd, sumUzs, sumUsd };
   }, [packageHistory]);
 
   const formatHistoryUzs = (n) => {
@@ -223,10 +217,8 @@ const Packages = () => {
     setPaymentFormData({
       historyId: historyId,
       quantity_received: quantityOrdered,
-      payment_uzs_cash: dueUzs > 0 ? String(dueUzs) : '',
-      payment_uzs_card: '',
-      payment_usd_cash: dueUsd > 0 ? String(dueUsd) : '',
-      payment_usd_card: '',
+      payment_uzs: dueUzs > 0 ? String(dueUzs) : '',
+      payment_usd: dueUsd > 0 ? String(dueUsd) : '',
     });
     setShowPaymentForm(true);
   };
@@ -240,18 +232,16 @@ const Packages = () => {
       const qty = parseInt(paymentFormData.quantity_received) || 0;
       const dueUzs = qty * cpuUzs;
       const dueUsd = qty * cpuUsd;
-      const uzs = (parseFloat(paymentFormData.payment_uzs_cash) || 0) + (parseFloat(paymentFormData.payment_uzs_card) || 0);
-      const usd = (parseFloat(paymentFormData.payment_usd_cash) || 0) + (parseFloat(paymentFormData.payment_usd_card) || 0);
+      const uzs = parseFloat(paymentFormData.payment_uzs) || 0;
+      const usd = parseFloat(paymentFormData.payment_usd) || 0;
       if ((dueUzs > 0 || dueUsd > 0) && uzs + usd <= 0) {
-        alert('Enter at least one of: UZS cash, UZS card, USD cash, USD card.');
+        alert('Enter at least one payment amount (UZS or USD).');
         return;
       }
       await api.post(`/package-history/${paymentFormData.historyId}/mark_received_and_pay/`, {
         quantity_received: paymentFormData.quantity_received,
-        payment_uzs_cash: parseFloat(paymentFormData.payment_uzs_cash) || 0,
-        payment_uzs_card: parseFloat(paymentFormData.payment_uzs_card) || 0,
-        payment_usd_cash: parseFloat(paymentFormData.payment_usd_cash) || 0,
-        payment_usd_card: parseFloat(paymentFormData.payment_usd_card) || 0,
+        payment_uzs: uzs,
+        payment_usd: usd,
       });
       setShowPaymentForm(false);
       setPaymentFormData({
@@ -404,10 +394,8 @@ const Packages = () => {
                     setPaymentFormData((prev) => ({
                       ...prev,
                       quantity_received: e.target.value,
-                      payment_uzs_cash: dueUzs > 0 ? String(dueUzs) : '',
-                      payment_uzs_card: '',
-                      payment_usd_cash: dueUsd > 0 ? String(dueUsd) : '',
-                      payment_usd_card: '',
+                      payment_uzs: dueUzs > 0 ? String(dueUzs) : '',
+                      payment_usd: dueUsd > 0 ? String(dueUsd) : '',
                     }));
                   }}
                   required
@@ -417,57 +405,29 @@ const Packages = () => {
                 </small>
               </div>
               <div className="form-group">
-                <label>UZS (cash)</label>
+                <label>UZS</label>
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={paymentFormData.payment_uzs_cash}
+                  value={paymentFormData.payment_uzs}
                   onChange={(e) =>
                     setPaymentFormData({
                       ...paymentFormData,
-                      payment_uzs_cash: sanitizePaymentAmountInput(e.target.value),
+                      payment_uzs: sanitizePaymentAmountInput(e.target.value),
                     })
                   }
                 />
               </div>
               <div className="form-group">
-                <label>UZS (card)</label>
+                <label>USD</label>
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={paymentFormData.payment_uzs_card}
+                  value={paymentFormData.payment_usd}
                   onChange={(e) =>
                     setPaymentFormData({
                       ...paymentFormData,
-                      payment_uzs_card: sanitizePaymentAmountInput(e.target.value),
-                    })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>USD (cash)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={paymentFormData.payment_usd_cash}
-                  onChange={(e) =>
-                    setPaymentFormData({
-                      ...paymentFormData,
-                      payment_usd_cash: sanitizePaymentAmountInput(e.target.value),
-                    })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>USD (card)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={paymentFormData.payment_usd_card}
-                  onChange={(e) =>
-                    setPaymentFormData({
-                      ...paymentFormData,
-                      payment_usd_card: sanitizePaymentAmountInput(e.target.value),
+                      payment_usd: sanitizePaymentAmountInput(e.target.value),
                     })
                   }
                 />
@@ -578,10 +538,8 @@ const Packages = () => {
               <th>Cost / unit</th>
               <th>Total cost</th>
               <th>Status</th>
-              <th>UZS cash</th>
-              <th>UZS card</th>
-              <th>USD cash</th>
-              <th>USD card</th>
+              <th>UZS Paid</th>
+              <th>USD Paid</th>
               <th>Added By</th>
               <th>Date</th>
               <th>Actions</th>
@@ -590,7 +548,7 @@ const Packages = () => {
           <tbody>
             {packageHistory.length === 0 ? (
               <tr>
-                <td colSpan="13" style={{ textAlign: 'center' }}>
+                <td colSpan="11" style={{ textAlign: 'center' }}>
                   No package history found
                 </td>
               </tr>
@@ -648,10 +606,12 @@ const Packages = () => {
                           : 'ORDERED'}
                     </span>
                   </td>
-                  <td style={{ fontSize: '0.9em' }}>{showPay ? formatHistoryUzs(historyItem.payment_uzs_cash) : '—'}</td>
-                  <td style={{ fontSize: '0.9em' }}>{showPay ? formatHistoryUzs(historyItem.payment_uzs_card) : '—'}</td>
-                  <td style={{ fontSize: '0.9em' }}>{showPay ? formatHistoryUsd(historyItem.payment_usd_cash) : '—'}</td>
-                  <td style={{ fontSize: '0.9em' }}>{showPay ? formatHistoryUsd(historyItem.payment_usd_card) : '—'}</td>
+                  <td style={{ fontSize: '0.9em' }}>
+                    {showPay ? formatHistoryUzs((parseFloat(historyItem.payment_uzs_cash) || 0) + (parseFloat(historyItem.payment_uzs_card) || 0)) : '—'}
+                  </td>
+                  <td style={{ fontSize: '0.9em' }}>
+                    {showPay ? formatHistoryUsd((parseFloat(historyItem.payment_usd_cash) || 0) + (parseFloat(historyItem.payment_usd_card) || 0)) : '—'}
+                  </td>
                   <td>{historyItem.created_by_detail?.username || '-'}</td>
                   <td>{new Date(historyItem.created_at).toLocaleString()}</td>
                   <td>
@@ -694,16 +654,10 @@ const Packages = () => {
               </td>
               <td>—</td>
               <td style={{ fontSize: '0.9em', fontWeight: 600 }}>
-                {formatHistoryUzs(packageHistoryTotals.sumUzsCash)}
+                {formatHistoryUzs(packageHistoryTotals.sumUzs)}
               </td>
               <td style={{ fontSize: '0.9em', fontWeight: 600 }}>
-                {formatHistoryUzs(packageHistoryTotals.sumUzsCard)}
-              </td>
-              <td style={{ fontSize: '0.9em', fontWeight: 600 }}>
-                {formatHistoryUsd(packageHistoryTotals.sumUsdCash)}
-              </td>
-              <td style={{ fontSize: '0.9em', fontWeight: 600 }}>
-                {formatHistoryUsd(packageHistoryTotals.sumUsdCard)}
+                {formatHistoryUsd(packageHistoryTotals.sumUsd)}
               </td>
               <td>—</td>
               <td>—</td>

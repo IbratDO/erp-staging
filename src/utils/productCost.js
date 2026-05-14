@@ -10,54 +10,31 @@ export function productCostUzsPortion(p) {
   return (parseFloat(p.cost_uzs_cash) || 0) + (parseFloat(p.cost_uzs_card) || 0);
 }
 
-function fmtUzs(n) {
-  if (n == null || n === '' || Number.isNaN(Number(n))) return null;
-  const v = parseFloat(n);
-  if (v === 0) return null;
-  return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
-
-function fmtUsd(n) {
-  if (n == null || n === '' || Number.isNaN(Number(n))) return null;
-  const v = parseFloat(n);
-  if (v === 0) return null;
-  return v.toFixed(2);
-}
-
 /**
  * Picker / list line: product #id, name, and cost segments without "cash" or "card" labels.
  */
 export function productCostPickerLabel(p) {
   if (!p) return '';
   const bits = [];
-  const u1 = fmtUzs(p.cost_uzs_cash);
-  const u2 = fmtUzs(p.cost_uzs_card);
-  const uzsJoined = [u1, u2].filter(Boolean);
-  if (uzsJoined.length) bits.push(`UZS ${uzsJoined.join(' + ')}`);
-  const s1 = fmtUsd(p.cost_usd_cash);
-  const s2 = fmtUsd(p.cost_usd_card);
-  const usdParts = [s1 ? `$${s1}` : null, s2 ? `$${s2}` : null].filter(Boolean);
-  if (usdParts.length) bits.push(usdParts.join(' + '));
+  const uzsT = productCostUzsPortion(p);
+  if (uzsT > 0) bits.push(`UZS ${uzsT.toLocaleString(undefined, { maximumFractionDigits: 0 })}`);
+  const usdT = productCostUsdPortion(p);
+  if (usdT > 0) bits.push(`$${usdT.toFixed(2)}`);
   if (bits.length) {
     return `#${p.id} ${p.brand} ${p.model} — ${p.size} (${p.color}) · ${bits.join(' · ')}`;
   }
   return `#${p.id} ${p.brand} ${p.model} — ${p.size} (${p.color})`;
 }
 
-/** Table cell values for the four cost columns (no combined USD-approx). */
+/** Combined per-unit costs for table columns (currency totals; legacy *_card folds in). */
 export function productCostCells(p) {
-  if (!p) return { uzsCash: '—', uzsCard: '—', usdCash: '—', usdCard: '—' };
-  const z = (v) =>
-    v != null && parseFloat(v) > 0
-      ? parseFloat(v).toLocaleString(undefined, { maximumFractionDigits: 0 })
-      : '—';
-  const u = (v) =>
-    v != null && parseFloat(v) > 0 ? `$${parseFloat(v).toFixed(2)}` : '—';
+  if (!p) return { uzsTotal: '—', usdTotal: '—' };
+  const uzsT = productCostUzsPortion(p);
+  const usdT = productCostUsdPortion(p);
   return {
-    uzsCash: z(p.cost_uzs_cash),
-    uzsCard: z(p.cost_uzs_card),
-    usdCash: u(p.cost_usd_cash),
-    usdCard: u(p.cost_usd_card),
+    uzsTotal:
+      uzsT > 0 ? uzsT.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—',
+    usdTotal: usdT > 0 ? `$${usdT.toFixed(2)}` : '—',
   };
 }
 

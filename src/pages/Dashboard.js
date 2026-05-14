@@ -90,11 +90,11 @@ const Dashboard = () => {
           <div className="metric-value">{business_metrics.total_returns}</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Inventory cost (USD legs)</div>
+          <div className="metric-label">Inventory cost (USD)</div>
           <div className="metric-value">${(business_metrics.inventory_value_usd ?? business_metrics.inventory_value).toLocaleString()}</div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Inventory cost (UZS legs)</div>
+          <div className="metric-label">Inventory cost (UZS)</div>
           <div className="metric-value">
             {(business_metrics.inventory_value_uzs ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
           </div>

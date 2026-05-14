@@ -2,16 +2,13 @@
 
 export const emptyPaymentFormState = () => ({
   saleId: null,
-  uzs_cash: '',
-  uzs_card: '',
-  usd_cash: '',
-  usd_card: '',
+  uzs: '',
+  usd: '',
   prepayment_amount: '',
   total_sale_amount: '',
   dispatch_payment_needed: false,
   dispatch_payment_amount: '',
   dispatch_payment_currency: 'UZS',
-  dispatch_payment_type: 'cash',
   balance_shortfall_type: '',
   completion_notes: '',
 });
@@ -35,8 +32,12 @@ export function buildPaymentFormDataFromSale(sale) {
   const dispatchPaymentNeeded = !!(dispatch && !dispatch.is_paid && hasDispatchCost);
   const dispatchAmountForForm = hasDispatchCost
     ? uzsV > 0
-      ? String(dispatch.delivery_cost_uzs)
-      : String(dispatch.delivery_cost ?? '')
+      ? (dispatch.delivery_cost_uzs != null && dispatch.delivery_cost_uzs !== ''
+          ? String(dispatch.delivery_cost_uzs)
+          : '')
+      : dispatch.delivery_cost != null && dispatch.delivery_cost !== ''
+        ? String(dispatch.delivery_cost)
+        : ''
     : '';
 
   const isFromOrder = !!(sale.order || advancePayment > 0 || sale.sale_type === 'from_order');
@@ -44,12 +45,10 @@ export function buildPaymentFormDataFromSale(sale) {
   return {
     saleId: sale.id,
     completion_notes: '',
-    uzs_cash: '',
-    uzs_card: '',
-    usd_cash: isFromOrder
+    uzs: '',
+    usd: isFromOrder
       ? (nowBeingPaid > 0 ? nowBeingPaid.toFixed(2) : '0')
       : totalAmount.toFixed(2),
-    usd_card: '',
     prepayment_amount: isFromOrder && advancePayment > 0 ? advancePayment.toFixed(2) : '',
     total_sale_amount: isFromOrder && advancePayment > 0 ? totalAmount.toFixed(2) : '',
     dispatch_payment_needed: !!dispatchPaymentNeeded,
@@ -59,11 +58,6 @@ export function buildPaymentFormDataFromSale(sale) {
         ? 'UZS'
         : 'USD'
       : 'UZS',
-    dispatch_payment_type: dispatchPaymentNeeded
-      ? dispatch.delivery_payment_cash && parseFloat(dispatch.delivery_payment_cash) > 0
-        ? 'cash'
-        : 'card'
-      : 'cash',
     balance_shortfall_type: '',
   };
 }
@@ -77,21 +71,12 @@ export function computePaymentShortfallMeta(sale, paymentFormData) {
   }
   const advance = parseFloat(sale.advance_payment_received) || 0;
   const due = parseFloat(sale.selling_price) * (sale.quantity || 0) - advance;
-  const uzsT =
-    (parseFloat(paymentFormData.uzs_cash) || 0) + (parseFloat(paymentFormData.uzs_card) || 0);
-  const usdT =
-    (parseFloat(paymentFormData.usd_cash) || 0) + (parseFloat(paymentFormData.usd_card) || 0);
+  const uzsT = parseFloat(paymentFormData.uzs) || 0;
+  const usdT = parseFloat(paymentFormData.usd) || 0;
   const sc = sale.sale_currency || 'USD';
   if (uzsT > 0 && usdT > 0) {
     const paid = sc === 'USD' ? usdT : uzsT;
-    return {
-      needs: false,
-      mixed: true,
-      short: due - paid,
-      sc,
-      due,
-      paid,
-    };
+    return { needs: false, mixed: true, short: due - paid, sc, due, paid };
   }
   const paid = sc === 'USD' ? usdT : uzsT;
   const short = due - paid;
@@ -104,10 +89,8 @@ export function buildCompleteSaleRequest(paymentFormData, meta) {
   const requestData = {
     status: 'completed',
     notes: String(paymentFormData.completion_notes || '').trim(),
-    uzs_cash: parseFloat(paymentFormData.uzs_cash) || 0,
-    uzs_card: parseFloat(paymentFormData.uzs_card) || 0,
-    usd_cash: parseFloat(paymentFormData.usd_cash) || 0,
-    usd_card: parseFloat(paymentFormData.usd_card) || 0,
+    uzs: parseFloat(paymentFormData.uzs) || 0,
+    usd: parseFloat(paymentFormData.usd) || 0,
   };
   if (meta.needs) {
     requestData.balance_shortfall_type = paymentFormData.balance_shortfall_type;
@@ -116,7 +99,6 @@ export function buildCompleteSaleRequest(paymentFormData, meta) {
     const dAmt = parseFloat(String(paymentFormData.dispatch_payment_amount).replace(',', '.')) || 0;
     requestData.dispatch_payment_amount = dAmt;
     requestData.dispatch_payment_currency = paymentFormData.dispatch_payment_currency || 'UZS';
-    requestData.dispatch_payment_type = paymentFormData.dispatch_payment_type || 'cash';
   }
   return requestData;
 }

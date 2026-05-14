@@ -6,6 +6,27 @@ const COMMON_COLORS = [
   'Black', 'White', 'Grey', 'Navy', 'Red', 'Blue', 'Brown', 'Beige', 'Green', 'Pink',
 ];
 
+/** Normalize variant fields for duplicate checks (matches backend iexact + strip). */
+const variantPart = (v) => String(v ?? '').trim().toLowerCase();
+
+const variantKeyFromBody = (body) =>
+  [variantPart(body.brand), variantPart(body.model), variantPart(body.size), variantPart(body.color)].join('|');
+
+function apiErrorMessage(error, fallback = 'Request failed') {
+  const data = error.response?.data;
+  if (!data) return error.message || fallback;
+  if (typeof data === 'string') return data;
+  if (typeof data.detail === 'string') return data.detail;
+  if (Array.isArray(data.non_field_errors) && data.non_field_errors.length) {
+    return data.non_field_errors.join(' ');
+  }
+  const keys = Object.keys(data);
+  if (keys.length && Array.isArray(data[keys[0]])) {
+    return `${keys[0]}: ${data[keys[0]][0]}`;
+  }
+  return fallback;
+}
+
 const Products = () => {
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
@@ -39,10 +60,13 @@ const Products = () => {
   const [isNewBrand, setIsNewBrand] = useState(false);
   const [isNewModel, setIsNewModel] = useState(false);
   const [isNewCategory, setIsNewCategory] = useState(false);
-  const [isNewColor, setIsNewColor] = useState(false);
   const [selectedSizes, setSelectedSizes] = useState([]);
+  const [selectedColors, setSelectedColors] = useState([]);
+  const [pendingCustomColor, setPendingCustomColor] = useState('');
   const [sizeDropdownOpen, setSizeDropdownOpen] = useState(false);
+  const [colorDropdownOpen, setColorDropdownOpen] = useState(false);
   const sizeDropdownRef = useRef(null);
+  const colorDropdownRef = useRef(null);
 
   const toggleSize = (size) => {
     setSelectedSizes(prev =>
@@ -50,12 +74,28 @@ const Products = () => {
     );
   };
 
-  // Close size dropdown when clicking outside
+  const toggleColor = (color) => {
+    const c = String(color).trim();
+    if (!c) return;
+    setSelectedColors(prev =>
+      prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]
+    );
+  };
+
+  const addPendingCustomColor = () => {
+    const c = pendingCustomColor.trim();
+    if (!c) return;
+    setSelectedColors((prev) => (prev.includes(c) ? prev : [...prev, c]));
+    setPendingCustomColor('');
+  };
+
+  // Close size/color dropdowns when clicking outside either panel
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (sizeDropdownRef.current && !sizeDropdownRef.current.contains(e.target)) {
-        setSizeDropdownOpen(false);
-      }
+      const inSize = sizeDropdownRef.current?.contains(e.target);
+      const inColor = colorDropdownRef.current?.contains(e.target);
+      if (!inSize) setSizeDropdownOpen(false);
+      if (!inColor) setColorDropdownOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -141,28 +181,115 @@ const Products = () => {
     return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [products]);
 
+  const pickerColorOptions = useMemo(() => {
+    const s = new Set([...colorOptions, ...selectedColors]);
+    return [...s].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [colorOptions, selectedColors]);
+
+  const existingVariantKeys = useMemo(() => {
+    const set = new Set();
+    for (const p of products) {
+      set.add(variantKeyFromBody(p));
+    }
+    return set;
+  }, [products]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const payload = { ...formData };
     try {
       if (editingProduct) {
-        await api.put(`/products/${editingProduct.id}/`, payload);
+        if (selectedColors.length === 0) {
+          showNotification('Please select at least one color.', 'error');
+          return;
+        }
+        const basePayload = { ...payload, color: selectedColors[0] };
+        await api.put(`/products/${editingProduct.id}/`, basePayload);
+        const extraColors = selectedColors.slice(1);
+        if (extraColors.length > 0) {
+          const bodies = extraColors.map((color) => ({ ...payload, color }));
+          const toPost = [];
+          const skippedDup = [];
+          for (const body of bodies) {
+            const k = variantKeyFromBody(body);
+            if (existingVariantKeys.has(k)) skippedDup.push(`${body.size} / ${body.color}`);
+            else toPost.push(body);
+          }
+          if (toPost.length === 0) {
+            showNotification(
+              'That product variant is already included (same brand, model, size, and color). No duplicate rows were added.',
+              'error',
+            );
+          } else {
+            await Promise.all(toPost.map((body) => api.post('/products/', body)));
+            if (skippedDup.length > 0) {
+              showNotification(
+                `Product updated. Added ${toPost.length} new variant(s). Skipped ${skippedDup.length} already in the catalog.`,
+                'success',
+              );
+            } else {
+              showNotification(
+                `Product updated. Created ${toPost.length} additional color variant${toPost.length !== 1 ? 's' : ''}.`,
+                'success',
+              );
+            }
+          }
+        } else {
+          showNotification('Product updated.', 'success');
+        }
       } else {
         if (selectedSizes.length === 0) {
           showNotification('Please select at least one size.', 'error');
           return;
         }
-        await Promise.all(
-          selectedSizes.map(size => api.post('/products/', { ...payload, size }))
-        );
+        if (selectedColors.length === 0) {
+          showNotification('Please select at least one color.', 'error');
+          return;
+        }
+        const combos = [];
+        for (const size of selectedSizes) {
+          for (const color of selectedColors) {
+            combos.push({ ...payload, size, color });
+          }
+        }
+        const toCreate = [];
+        const skippedDup = [];
+        for (const body of combos) {
+          const k = variantKeyFromBody(body);
+          if (existingVariantKeys.has(k)) skippedDup.push(`${body.size} / ${body.color}`);
+          else toCreate.push(body);
+        }
+        if (toCreate.length === 0) {
+          showNotification(
+            'This product has already been included (same brand, model, size, and color).',
+            'error',
+          );
+          return;
+        }
+        await Promise.all(toCreate.map((body) => api.post('/products/', body)));
+        if (skippedDup.length > 0) {
+          showNotification(
+            `Created ${toCreate.length} product${toCreate.length !== 1 ? 's' : ''}. Skipped ${skippedDup.length} variant${skippedDup.length !== 1 ? 's' : ''} already in the catalog.`,
+            'success',
+          );
+        } else {
+          showNotification(
+            `Created ${toCreate.length} product${toCreate.length !== 1 ? 's' : ''} (${selectedSizes.length} size${
+              selectedSizes.length !== 1 ? 's' : ''
+            } × ${selectedColors.length} color${selectedColors.length !== 1 ? 's' : ''}).`,
+            'success',
+          );
+        }
       }
       setShowForm(false);
       setEditingProduct(null);
       setIsNewBrand(false);
       setIsNewModel(false);
       setIsNewCategory(false);
-      setIsNewColor(false);
       setSelectedSizes([]);
+      setSelectedColors([]);
+      setPendingCustomColor('');
+      setColorDropdownOpen(false);
       setSizeDropdownOpen(false);
       setFormData({
         name: '',
@@ -175,7 +302,10 @@ const Products = () => {
       fetchProducts();
     } catch (error) {
       console.error('Error saving product:', error);
-      showNotification(error.response?.data?.selling_price?.[0] || error.response?.data?.detail || error.response?.data?.error || 'Error saving product', 'error');
+      const msg =
+        error.response?.data?.selling_price?.[0] ||
+        apiErrorMessage(error, 'Error saving product');
+      showNotification(msg, 'error');
     }
   };
 
@@ -184,8 +314,11 @@ const Products = () => {
     setIsNewBrand(false);
     setIsNewModel(false);
     setIsNewCategory(false);
-    setIsNewColor(false);
     setSelectedSizes([]);
+    const initialColor = product.color != null ? String(product.color).trim() : '';
+    setSelectedColors(initialColor ? [initialColor] : []);
+    setPendingCustomColor('');
+    setColorDropdownOpen(false);
     setSizeDropdownOpen(false);
     setFormData({
       name: product.name,
@@ -236,8 +369,10 @@ const Products = () => {
             setIsNewBrand(false);
             setIsNewModel(false);
             setIsNewCategory(false);
-            setIsNewColor(false);
             setSelectedSizes([]);
+            setSelectedColors([]);
+            setPendingCustomColor('');
+            setColorDropdownOpen(false);
             setSizeDropdownOpen(false);
             setFormData({
               name: '',
@@ -468,70 +603,178 @@ const Products = () => {
                         })}
                       </div>
                     )}
-
-                    {selectedSizes.length > 1 && (
-                      <small style={{ color: '#1976d2', marginTop: '4px', display: 'block' }}>
-                        {selectedSizes.length} products will be created
-                      </small>
-                    )}
                   </div>
                 )}
               </div>
               <div className="form-group">
-                <label>Color</label>
-                {!isNewColor ? (
-                  <select
-                    value={formData.color}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setIsNewColor(true);
-                        setFormData({ ...formData, color: '' });
-                      } else {
-                        setFormData({ ...formData, color: e.target.value });
+                <label>
+                  Color
+                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em', marginLeft: '6px' }}>
+                    — click to select multiple
+                  </span>
+                </label>
+                <div ref={colorDropdownRef} style={{ position: 'relative' }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setColorDropdownOpen((prev) => !prev);
                       }
                     }}
-                    required
+                    onClick={() => setColorDropdownOpen((prev) => !prev)}
+                    style={{
+                      padding: '8px 12px',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      background: '#fff',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      minHeight: '38px',
+                    }}
                   >
-                    <option value="">Select color</option>
-                    {colorOptions.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                    {formData.color && !colorOptions.includes(formData.color) && (
-                      <option value={formData.color}>{formData.color}</option>
-                    )}
-                    <option value="__new__">+ Add new color...</option>
-                  </select>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder="e.g. Panda, Bred, Off-White"
-                      value={formData.color}
-                      onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                      required
-                      autoFocus
-                      maxLength={100}
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNewColor(false);
-                        setFormData({ ...formData, color: '' });
-                      }}
+                    <span style={{ color: selectedColors.length === 0 ? '#999' : '#333' }}>
+                      {selectedColors.length === 0
+                        ? 'Select colors...'
+                        : selectedColors
+                            .slice()
+                            .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+                            .join(', ')}
+                    </span>
+                    <span style={{ fontSize: '0.75em', color: '#666' }}>{colorDropdownOpen ? '▲' : '▼'}</span>
+                  </div>
+                  {colorDropdownOpen && (
+                    <div
                       style={{
-                        padding: '0 10px',
-                        background: '#eee',
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        zIndex: 100,
                         border: '1px solid #ccc',
                         borderRadius: '4px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
+                        background: '#fff',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                        marginTop: '2px',
+                        padding: '8px',
+                        maxHeight: '280px',
+                        overflowY: 'auto',
                       }}
                     >
-                      ← Back
-                    </button>
-                  </div>
-                )}
+                      <div
+                        role="listbox"
+                        aria-label="Colors"
+                        aria-multiselectable="true"
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0',
+                          border: '1px solid #eee',
+                          borderRadius: '4px',
+                          overflow: 'hidden',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        {pickerColorOptions.map((c, idx) => {
+                          const isSelected = selectedColors.includes(c);
+                          const isLast = idx === pickerColorOptions.length - 1;
+                          return (
+                            <label
+                              key={c}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '8px 12px',
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                fontSize: '0.95em',
+                                borderBottom: isLast ? 'none' : '1px solid #f0f0f0',
+                                background: isSelected ? '#e8f4fd' : '#fff',
+                                transition: 'background 0.12s',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleColor(c)}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer', flexShrink: 0 }}
+                              />
+                              <span
+                                style={{
+                                  flex: 1,
+                                  fontWeight: isSelected ? 600 : 400,
+                                  color: '#222',
+                                }}
+                              >
+                                {c}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: '10px',
+                          paddingTop: '10px',
+                          borderTop: '1px solid #eee',
+                          display: 'flex',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <input
+                          type="text"
+                          placeholder="Custom color name"
+                          value={pendingCustomColor}
+                          onChange={(e) => setPendingCustomColor(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addPendingCustomColor();
+                            }
+                          }}
+                          maxLength={100}
+                          style={{
+                            flex: 1,
+                            minWidth: '140px',
+                            padding: '6px 10px',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn-edit"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            addPendingCustomColor();
+                          }}
+                        >
+                          Add color
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {!editingProduct && selectedSizes.length > 0 && selectedColors.length > 0 && (
+                    <small style={{ color: '#1976d2', marginTop: '6px', display: 'block' }}>
+                      {selectedSizes.length} size{selectedSizes.length !== 1 ? 's' : ''} × {selectedColors.length}{' '}
+                      color{selectedColors.length !== 1 ? 's' : ''} = {selectedSizes.length * selectedColors.length}{' '}
+                      product{selectedSizes.length * selectedColors.length !== 1 ? 's' : ''} will be created
+                    </small>
+                  )}
+                  {editingProduct && selectedColors.length > 1 && (
+                    <small style={{ color: '#1976d2', marginTop: '6px', display: 'block' }}>
+                      This row keeps the first selected color (after your edits); each extra color creates a new product
+                      with the same brand, model, and size.
+                    </small>
+                  )}
+                </div>
               </div>
             </div>
             <div className="form-actions">

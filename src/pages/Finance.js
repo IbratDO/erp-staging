@@ -5,9 +5,10 @@ import {
   sumAmountsByCurrency,
   formatMultiCurrencyAmounts,
   signedFinanceAmountsByLeg,
-  BALANCE_FOUR_LEGS,
+  BALANCE_TABLE_LEGS,
   financeRecordLegKey,
 } from '../utils/tableTotals';
+import { formatDisplayAmount } from '../utils/currencyFormat';
 import './TablePage.css';
 
 const SALE_TYPE_LABELS = {
@@ -79,10 +80,8 @@ function payableContext(p) {
 }
 
 function financeLegHeader(leg) {
-  if (leg === 'uzs_cash') return 'UZS — Cash';
-  if (leg === 'uzs_card') return 'UZS — Card';
-  if (leg === 'usd_card') return 'USD — Card';
-  if (leg === 'usd_cash') return 'USD — Cash';
+  if (leg === 'uzs_cash') return 'UZS';
+  if (leg === 'usd_cash') return 'USD';
   return leg;
 }
 
@@ -152,17 +151,13 @@ const Finance = () => {
   const [loading, setLoading] = useState(true);
   const [collectTarget, setCollectTarget] = useState(null);
   const [collectForm, setCollectForm] = useState({
-    uzs_cash: '',
-    uzs_card: '',
-    usd_cash: '',
-    usd_card: '',
+    amount: '',
     notes: '',
   });
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [expenseFormData, setExpenseFormData] = useState({
     expense_type: 'lunch',
     currency: 'USD',
-    payment_type: 'cash',
     amount: '',
     recipient: '',
     notes: '',
@@ -173,7 +168,6 @@ const Finance = () => {
     status: '',
     expense_type: '',
     currency: '',
-    payment_type: '',
     year: '',
     month: '',
   });
@@ -208,9 +202,6 @@ const Finance = () => {
       if (filter.type) params.append('type', filter.type);
       if (filter.status) params.append('status', filter.status);
       if (filter.expense_type) params.append('expense_type', filter.expense_type);
-      if (filter.currency) params.append('currency', filter.currency);
-      if (filter.payment_type) params.append('payment_type', filter.payment_type);
-      
       // Convert year/month to date range
       if (filter.year || filter.month) {
         let dateFrom, dateTo;
@@ -324,13 +315,10 @@ const Finance = () => {
     setCollectTarget(receivable);
     const ccy = String(receivable.currency || receivable.sale_detail?.sale_currency || 'USD').toUpperCase();
     const rem = parseFloat(receivable.amount) || 0;
-    const defUzsCash = ccy === 'UZS' && rem > 0 ? String(Math.round(rem)) : '';
-    const defUsdCash = ccy === 'USD' && rem > 0 ? rem.toFixed(2) : '';
+    const defAmount =
+      rem > 0 ? (ccy === 'UZS' ? String(Math.round(rem)) : rem.toFixed(2)) : '';
     setCollectForm({
-      uzs_cash: defUzsCash,
-      uzs_card: '',
-      usd_cash: defUsdCash,
-      usd_card: '',
+      amount: defAmount,
       notes: '',
     });
   };
@@ -339,54 +327,36 @@ const Finance = () => {
     e.preventDefault();
     if (!collectTarget) return;
     const ccy = String(collectTarget.currency || collectTarget.sale_detail?.sale_currency || 'USD').toUpperCase();
-    const uzs_cash = parseFloat(collectForm.uzs_cash) || 0;
-    const uzs_card = parseFloat(collectForm.uzs_card) || 0;
-    const usd_cash = parseFloat(collectForm.usd_cash) || 0;
-    const usd_card = parseFloat(collectForm.usd_card) || 0;
+    const pay = parseFloat(collectForm.amount) || 0;
     const rem = parseFloat(collectTarget.amount) || 0;
     const tol = 0.02;
 
-    let paySum;
-    if (ccy === 'USD') {
-      if (uzs_cash > 0 || uzs_card > 0) {
-        alert('This receivable is in USD — use USD cash/card fields only.');
-        return;
-      }
-      paySum = usd_cash + usd_card;
-    } else {
-      if (usd_cash > 0 || usd_card > 0) {
-        alert('This receivable is in UZS — use UZS cash/card fields only.');
-        return;
-      }
-      paySum = uzs_cash + uzs_card;
-    }
-
-    if (paySum <= 0) {
+    if (pay <= 0) {
       alert('Enter the amount collected (greater than zero).');
       return;
     }
-    if (paySum > rem + tol) {
+    if (pay > rem + tol) {
       alert(
-        `Collected amount cannot exceed remaining balance (${rem.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${ccy}).`,
+        `Collected amount cannot exceed remaining balance (${formatDisplayAmount(rem, ccy)}).`,
       );
       return;
     }
 
+    const uzs_cash = ccy === 'UZS' ? pay : 0;
+    const usd_cash = ccy === 'USD' ? pay : 0;
+
     try {
       const res = await api.post(`/receivables/${collectTarget.id}/collect_payment/`, {
         uzs_cash,
-        uzs_card,
+        uzs_card: 0,
         usd_cash,
-        usd_card,
+        usd_card: 0,
         notes: String(collectForm.notes || '').trim(),
       });
       alert(res.data?.message || 'Payment recorded.');
       setCollectTarget(null);
       setCollectForm({
-        uzs_cash: '',
-        uzs_card: '',
-        usd_cash: '',
-        usd_card: '',
+        amount: '',
         notes: '',
       });
       await fetchReceivables();
@@ -455,7 +425,7 @@ const Finance = () => {
         expense_type: expenseFormData.expense_type,
         amount: expenseFormData.amount || 0,
         currency: expenseFormData.currency,
-        payment_type: expenseFormData.payment_type,
+        payment_type: 'cash',
         recipient: expenseFormData.recipient || null,
         notes: String(expenseFormData.notes || '').trim(),
         status: 'completed',
@@ -466,7 +436,6 @@ const Finance = () => {
       setExpenseFormData({
         expense_type: 'lunch',
         currency: 'USD',
-        payment_type: 'cash',
         amount: '',
         recipient: '',
         notes: '',
@@ -484,7 +453,7 @@ const Finance = () => {
     }
   };
 
-  /* Footer totals: completed only, four-way legs; rows with no payment/currency leg show — and are excluded from these sums. */
+  /* Footer totals: completed only; two currency columns (legacy cash/card merged by currency). */
   const recordSignedLegTotals = useMemo(
     () => signedFinanceAmountsByLeg(records, { status: 'completed' }),
     [records]
@@ -633,17 +602,6 @@ const Finance = () => {
                 >
                   <option value="USD">USD</option>
                   <option value="UZS">UZS</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Payment Type</label>
-                <select
-                  value={expenseFormData.payment_type}
-                  onChange={(e) => setExpenseFormData({ ...expenseFormData, payment_type: e.target.value })}
-                  required
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
                 </select>
               </div>
               <div className="form-group">
@@ -952,13 +910,13 @@ const Finance = () => {
             <button
               type="button"
               className="btn-edit"
-              onClick={() => setFilter({ type: '', status: '', expense_type: '', currency: '', payment_type: '', year: '', month: '' })}
+              onClick={() => setFilter({ type: '', status: '', expense_type: '', currency: '', year: '', month: '' })}
             >
               Clear all
             </button>
           </div>
         </div>
-        </div>
+      </div>
       )}
 
       {/* Financial Records Table */}
@@ -971,7 +929,7 @@ const Finance = () => {
                 <th>ID</th>
                 <th>Type</th>
                 <th>Expense Type</th>
-                {BALANCE_FOUR_LEGS.map((leg) => (
+                {BALANCE_TABLE_LEGS.map((leg) => (
                   <th key={leg}>{financeLegHeader(leg)}</th>
                 ))}
                 <th>Status</th>
@@ -986,7 +944,7 @@ const Finance = () => {
             <tbody>
               {records.length === 0 ? (
                 <tr>
-                  <td colSpan="14" style={{ textAlign: 'center' }}>
+                  <td colSpan="12" style={{ textAlign: 'center' }}>
                     No finance records found
                   </td>
                 </tr>
@@ -1006,10 +964,10 @@ const Finance = () => {
                     <td>
                       {record.expense_type ? record.expense_type.replace('_', ' ') : '-'}
                     </td>
-                    {BALANCE_FOUR_LEGS.map((leg) => (
+                    {BALANCE_TABLE_LEGS.map((leg) => (
                       <td key={leg}>
                         <FinanceLegCell record={record} leg={leg} />
-                      </td>
+                    </td>
                     ))}
                     <td>
                       <span className={`status-badge ${record.status}`}>
@@ -1052,7 +1010,7 @@ const Finance = () => {
                 <td colSpan="3" style={{ textAlign: 'right' }}>
                   Net (completed)
                 </td>
-                {BALANCE_FOUR_LEGS.map((leg) => (
+                {BALANCE_TABLE_LEGS.map((leg) => (
                   <td key={leg}>
                     {records.length > 0 ? (
                       <FinanceLegTotal value={recordSignedLegTotals[leg] || 0} leg={leg} />
@@ -1066,7 +1024,7 @@ const Finance = () => {
                   style={{ fontSize: '0.85em', color: '#666', textAlign: 'right' }}
                 >
                   {records.length > 0
-                    ? 'Net (completed) per leg: only rows with currency and cash or card. Same sign as Type (income +, expense −). If cash and card were both used on one receipt, Notes show the split; Money Balance sums each bucket accurately.'
+                    ? 'Net (completed): completed rows summed by currency (UZS vs USD); legacy income/expense splits by cash/card appear in their currency column.'
                     : ' '}
                 </td>
               </tr>
@@ -1094,20 +1052,20 @@ const Finance = () => {
               <form onSubmit={handleCollectReceivableSubmit}>
                 <div className="form-grid">
                   <div className="form-group">
-                    <label>UZS — Cash</label>
-                    <input type="number" step="0.01" min="0" placeholder="0" value={collectForm.uzs_cash} onChange={(e) => setCollectForm({ ...collectForm, uzs_cash: e.target.value })} />
-                  </div>
-                  <div className="form-group">
-                    <label>UZS — Card</label>
-                    <input type="number" step="0.01" min="0" placeholder="0" value={collectForm.uzs_card} onChange={(e) => setCollectForm({ ...collectForm, uzs_card: e.target.value })} />
-                  </div>
-                  <div className="form-group">
-                    <label>USD — Cash</label>
-                    <input type="number" step="0.01" min="0" placeholder="0" value={collectForm.usd_cash} onChange={(e) => setCollectForm({ ...collectForm, usd_cash: e.target.value })} />
-                  </div>
-                  <div className="form-group">
-                    <label>USD — Card</label>
-                    <input type="number" step="0.01" min="0" placeholder="0" value={collectForm.usd_card} onChange={(e) => setCollectForm({ ...collectForm, usd_card: e.target.value })} />
+                    <label>
+                      Amount (
+                      {(collectTarget.currency || collectTarget.sale_detail?.sale_currency || 'USD').toUpperCase()}
+                      )
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0"
+                      value={collectForm.amount}
+                      onChange={(e) => setCollectForm({ ...collectForm, amount: e.target.value })}
+                      required
+                    />
                   </div>
                   <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                     <label>Notes (optional)</label>
@@ -1122,10 +1080,7 @@ const Finance = () => {
                     onClick={() => {
                       setCollectTarget(null);
                       setCollectForm({
-                        uzs_cash: '',
-                        uzs_card: '',
-                        usd_cash: '',
-                        usd_card: '',
+                        amount: '',
                         notes: '',
                       });
                     }}
@@ -1136,7 +1091,7 @@ const Finance = () => {
               </form>
             </div>
           )}
-          <div className="table-card">
+        <div className="table-card">
           <h2>Accounts Receivable</h2>
           <div className="data-table-scroll">
           <table className="data-table">
@@ -1168,8 +1123,8 @@ const Finance = () => {
                 receivables.map((receivable) => {
                   const sd = receivable.sale_detail;
                   return (
-                    <tr key={receivable.id}>
-                      <td>#{receivable.id}</td>
+                  <tr key={receivable.id}>
+                    <td>#{receivable.id}</td>
                       <td>{sd?.customer_detail?.name || '—'}</td>
                       <td>#{receivable.sale}</td>
                       <td>
@@ -1192,20 +1147,20 @@ const Finance = () => {
                         title={sd?.dispatch_info?.logistics_notes || undefined}
                       >
                         {receivableDispatchLabel(sd)}
-                      </td>
-                      <td style={{ fontWeight: '600', color: '#28a745' }}>
-                        {parseFloat(receivable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td>{receivable.currency || 'USD'}</td>
-                      <td>
-                        <span className={`status-badge ${receivable.status}`}>
-                          {receivable.status}
-                        </span>
-                      </td>
-                      <td>{new Date(receivable.created_at).toLocaleString()}</td>
-                      <td>
-                        {receivable.paid_date
-                          ? new Date(receivable.paid_date).toLocaleString()
+                    </td>
+                    <td style={{ fontWeight: '600', color: '#28a745' }}>
+                      {parseFloat(receivable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td>{receivable.currency || 'USD'}</td>
+                    <td>
+                      <span className={`status-badge ${receivable.status}`}>
+                        {receivable.status}
+                      </span>
+                    </td>
+                    <td>{new Date(receivable.created_at).toLocaleString()}</td>
+                    <td>
+                      {receivable.paid_date
+                        ? new Date(receivable.paid_date).toLocaleString()
                           : '—'}
                       </td>
                       <td>
@@ -1220,8 +1175,8 @@ const Finance = () => {
                         ) : (
                           '—'
                         )}
-                      </td>
-                    </tr>
+                    </td>
+                  </tr>
                   );
                 })
               )}
@@ -1242,7 +1197,7 @@ const Finance = () => {
               </tr>
             </tfoot>
           </table>
-          </div>
+        </div>
           </div>
         </>
       )}
@@ -1279,41 +1234,41 @@ const Finance = () => {
                 payables.map((payable) => {
                   const { kind, ref } = payableKind(payable);
                   return (
-                    <tr key={payable.id}>
-                      <td>#{payable.id}</td>
-                      <td>
+                  <tr key={payable.id}>
+                    <td>#{payable.id}</td>
+                    <td>
                         <span
                           className="status-badge"
                           style={{ background: '#6c757d', fontSize: '0.75rem' }}
                         >
                           {kind}
                         </span>
-                      </td>
+                    </td>
                       <td style={{ fontSize: '0.9rem' }}>{ref}</td>
                       <td>{payableCustomerName(payable)}</td>
-                      <td>
-                        {payable.order_detail?.product_detail
-                          ? `${payable.order_detail.product_detail.brand} ${payable.order_detail.product_detail.model}`
-                          : payable.dispatch_detail?.sale_detail?.product_detail
-                            ? `${payable.dispatch_detail.sale_detail.product_detail.brand} ${payable.dispatch_detail.sale_detail.product_detail.model}`
+                    <td>
+                      {payable.order_detail?.product_detail
+                        ? `${payable.order_detail.product_detail.brand} ${payable.order_detail.product_detail.model}`
+                        : payable.dispatch_detail?.sale_detail?.product_detail
+                        ? `${payable.dispatch_detail.sale_detail.product_detail.brand} ${payable.dispatch_detail.sale_detail.product_detail.model}`
                             : payable.package_history_detail?.package_detail
                               ? `Packages · type ${payable.package_history_detail.package_detail.package_type}`
                               : '—'}
-                      </td>
+                    </td>
                       <td style={{ fontSize: '0.9rem', maxWidth: '220px' }}>{payableContext(payable)}</td>
-                      <td style={{ fontWeight: '600', color: '#dc3545' }}>
-                        {parseFloat(payable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td>{payable.currency || 'USD'}</td>
-                      <td>
-                        <span className={`status-badge ${payable.status}`}>
-                          {payable.status}
-                        </span>
-                      </td>
-                      <td>{new Date(payable.created_at).toLocaleString()}</td>
-                      <td>
-                        {payable.paid_date
-                          ? new Date(payable.paid_date).toLocaleString()
+                    <td style={{ fontWeight: '600', color: '#dc3545' }}>
+                      {parseFloat(payable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td>{payable.currency || 'USD'}</td>
+                    <td>
+                      <span className={`status-badge ${payable.status}`}>
+                        {payable.status}
+                      </span>
+                    </td>
+                    <td>{new Date(payable.created_at).toLocaleString()}</td>
+                    <td>
+                      {payable.paid_date
+                        ? new Date(payable.paid_date).toLocaleString()
                           : '—'}
                       </td>
                     </tr>
@@ -1437,11 +1392,11 @@ const Finance = () => {
                           </td>
                           <td style={{ color: item.profit_uzs >= 0 ? '#28a745' : '#dc3545', fontWeight: '600' }}>
                             {(item.profit_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
                   <tfoot>
                     <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
                       <td colSpan="3">Totals</td>
@@ -1457,8 +1412,8 @@ const Finance = () => {
                       </td>
                     </tr>
                   </tfoot>
-                </table>
-                </div>
+          </table>
+        </div>
               </div>
 
               <div className="table-card">

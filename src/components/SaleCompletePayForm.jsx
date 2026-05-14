@@ -77,7 +77,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
     <div className="form-card" style={{ marginBottom: '20px' }}>
       <h2>Complete Sale #{sale.id}</h2>
       <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-        Fill in any combination of payment methods. Leave a field empty or 0 if not used.
+        Enter the UZS and/or USD amount received.
       </p>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
@@ -87,7 +87,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
               <input
                 type="number"
                 step="0.01"
-                value={paymentFormData.prepayment_amount}
+                value={paymentFormData.prepayment_amount ?? ''}
                 readOnly
                 style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
               />
@@ -97,47 +97,25 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
             </div>
           )}
           <div className="form-group">
-            <label>UZS — Cash</label>
+            <label>UZS</label>
             <input
               type="number"
               step="0.01"
               min="0"
               placeholder="0"
-              value={paymentFormData.uzs_cash}
-              onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs_cash: e.target.value })}
+              value={paymentFormData.uzs ?? ''}
+              onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs: e.target.value })}
             />
           </div>
           <div className="form-group">
-            <label>UZS — Card</label>
+            <label>USD</label>
             <input
               type="number"
               step="0.01"
               min="0"
               placeholder="0"
-              value={paymentFormData.uzs_card}
-              onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs_card: e.target.value })}
-            />
-          </div>
-          <div className="form-group">
-            <label>USD — Cash</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0"
-              value={paymentFormData.usd_cash}
-              onChange={(e) => setPaymentFormData({ ...paymentFormData, usd_cash: e.target.value })}
-            />
-          </div>
-          <div className="form-group">
-            <label>USD — Card</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0"
-              value={paymentFormData.usd_card}
-              onChange={(e) => setPaymentFormData({ ...paymentFormData, usd_card: e.target.value })}
+              value={paymentFormData.usd ?? ''}
+              onChange={(e) => setPaymentFormData({ ...paymentFormData, usd: e.target.value })}
             />
           </div>
 
@@ -239,7 +217,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   type="number"
                   step="0.01"
                   min="0"
-                  value={paymentFormData.dispatch_payment_amount}
+                  value={paymentFormData.dispatch_payment_amount ?? ''}
                   onChange={(e) =>
                     setPaymentFormData({ ...paymentFormData, dispatch_payment_amount: e.target.value })
                   }
@@ -259,19 +237,6 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   <option value="UZS">UZS</option>
                 </select>
               </div>
-              <div className="form-group">
-                <label>Dispatch Payment Type</label>
-                <select
-                  value={paymentFormData.dispatch_payment_type || 'cash'}
-                  onChange={(e) =>
-                    setPaymentFormData({ ...paymentFormData, dispatch_payment_type: e.target.value })
-                  }
-                  required={paymentFormData.dispatch_payment_needed}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                </select>
-              </div>
             </>
           )}
 
@@ -279,7 +244,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
             <label>Notes{shortfallMeta.needs ? ' *' : ''}</label>
             <textarea
               rows={3}
-              value={paymentFormData.completion_notes}
+              value={paymentFormData.completion_notes ?? ''}
               onChange={(e) => setPaymentFormData({ ...paymentFormData, completion_notes: e.target.value })}
               required={shortfallMeta.needs}
             />

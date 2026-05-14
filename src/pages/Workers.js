@@ -470,14 +470,13 @@ const Workers = () => {
                 <th>Type</th>
                 <th>Amount</th>
                 <th>Currency</th>
-                <th>Payment Type</th>
                 <th>Notes</th>
               </tr>
             </thead>
             <tbody>
               {workerTransactions.finance_records.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center' }}>
+                  <td colSpan="5" style={{ textAlign: 'center' }}>
                     No transactions found
                   </td>
                 </tr>
@@ -494,13 +493,6 @@ const Workers = () => {
                       -{formatDisplayAmount(record.amount, record.currency || 'USD')}
                     </td>
                     <td>{record.currency || 'USD'}</td>
-                    <td>
-                      {record.payment_type ? (
-                        <span className={`status-badge ${record.payment_type === 'cash' ? 'confirmed' : 'pending'}`}>
-                          {record.payment_type === 'cash' ? 'Cash' : 'Card'}
-                        </span>
-                      ) : '-'}
-                    </td>
                     <td>{record.notes || '-'}</td>
                   </tr>
                 ))

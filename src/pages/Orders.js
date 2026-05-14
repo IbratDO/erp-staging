@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
-import { formatDisplayAmount } from '../utils/currencyFormat';
+import { formatDisplayAmount, cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import { uniqueSupplierCountriesFromOrdersAndProducts } from '../utils/supplierCountries';
 import { prefillPayOrderFromSupplier } from '../utils/orderPayPrefill';
 import './TablePage.css';
@@ -42,13 +42,18 @@ function plannedSupplierTotal(order) {
 }
 
 /**
- * Planned supplier payment legs at order creation (UZS buckets + USD buckets or legacy cost_total).
+ * Planned supplier payment totals for confirm dialogs (UZS buckets, USD buckets, legacy cost_total USD).
  */
 function plannedSupplierPaymentTotals(order) {
   if (!order) return { uzs: 0, usd: 0 };
   const usdBuckets =
     numOrZero(order.supplier_cost_usd_cash) + numOrZero(order.supplier_cost_usd_card);
+  const uzsBuckets =
+    numOrZero(order.supplier_cost_uzs_cash) + numOrZero(order.supplier_cost_uzs_card);
   const fromCostTotal = parseFloat(order.cost_total) || 0;
+  if (uzsBuckets > 0) {
+    return { uzs: uzsBuckets, usd: usdBuckets };
+  }
   const usd = usdBuckets > 0 ? usdBuckets : fromCostTotal;
   return { uzs: 0, usd };
 }
@@ -72,14 +77,19 @@ function plannedCargoPaymentTotals(order) {
 }
 
 /**
- * Returns false if user cancels confirmation (zero-payment, mismatch vs planned cargo, etc.).
+ * Cargo pay form: single UZS field + single USD field (Option A rolls into *_cash buckets).
+ * @returns {false} if user cancels.
  */
-function confirmCargoPaymentIfNeeded(order, uzsCash, uzsCard, usdCash, usdCard) {
+function confirmCargoPaymentIfNeeded(order, uzsEntered, usdEntered) {
+  const uz = Number(uzsEntered) || 0;
+  const us = Number(usdEntered) || 0;
   const { uzs: expZ, usd: expD } = plannedCargoPaymentTotals(order);
-  const inZ = (uzsCash || 0) + (uzsCard || 0);
-  const inD = (usdCash || 0) + (usdCard || 0);
 
-  if (inZ + inD === 0) {
+  if (payTotalsMatchPlanned(expZ, expD, uz, 0, us, 0)) {
+    return true;
+  }
+
+  if (uz + us === 0) {
     const hadPlannedCargo = expZ + expD > 0;
     const msg = hadPlannedCargo
       ? 'This order shows cargo amounts on record:\n' +
@@ -90,35 +100,31 @@ function confirmCargoPaymentIfNeeded(order, uzsCash, uzsCard, usdCash, usdCard) 
     return window.confirm(msg);
   }
 
-  if (payTotalsMatchPlanned(expZ, expD, uzsCash, uzsCard, usdCash, usdCard)) {
-    return true;
-  }
-
   const msg =
     'The cargo payment totals you entered differ from the cargo amount on this order.\n\n' +
     `On order — UZS: ${formatDisplayAmount(expZ, 'UZS')}; USD: ${formatDisplayAmount(expD, 'USD')}\n` +
-    `Entered — UZS: ${formatDisplayAmount(inZ, 'UZS')}; USD: ${formatDisplayAmount(inD, 'USD')}\n\n` +
+    `Entered — UZS: ${formatDisplayAmount(uz, 'UZS')}; USD: ${formatDisplayAmount(us, 'USD')}\n\n` +
     'Proceed anyway with this cargo payment?';
 
   return window.confirm(msg);
 }
 
 /**
- * Returns false if user cancels confirmation when totals differ from planned supplier.
+ * “Pay for the order” / supplier cost: compares form UZS + USD totals to planned supplier legs.
+ * @returns {false} if user cancels.
  */
-function confirmOrderPayTotalsIfMismatch(order, uzsCash, uzsCard, usdCash, usdCard) {
+function confirmOrderPayTotalsIfMismatch(order, uzsEntered, usdEntered) {
+  const uz = Number(uzsEntered) || 0;
+  const us = Number(usdEntered) || 0;
   const { uzs: expZ, usd: expD } = plannedSupplierPaymentTotals(order);
-  if (payTotalsMatchPlanned(expZ, expD, uzsCash, uzsCard, usdCash, usdCard)) {
+  if (payTotalsMatchPlanned(expZ, expD, uz, 0, us, 0)) {
     return true;
   }
-
-  const inZ = (uzsCash || 0) + (uzsCard || 0);
-  const inD = (usdCash || 0) + (usdCard || 0);
 
   const msg =
     "The payment totals you entered differ from this order's planned supplier cost (from when the order was created).\n\n" +
     `Planned — UZS: ${formatDisplayAmount(expZ, 'UZS')}; USD: ${formatDisplayAmount(expD, 'USD')}\n` +
-    `Entered — UZS: ${formatDisplayAmount(inZ, 'UZS')}; USD: ${formatDisplayAmount(inD, 'USD')}\n\n` +
+    `Entered — UZS: ${formatDisplayAmount(uz, 'UZS')}; USD: ${formatDisplayAmount(us, 'USD')}\n\n` +
     'Proceed anyway with this payment?';
 
   return window.confirm(msg);
@@ -129,13 +135,6 @@ function productOrderPickerLabel(p) {
   const bits = [p.brand, p.model, p.size ? `size ${p.size}` : null, p.color].filter(Boolean);
   return bits.join(' · ');
 }
-function orderHasCargoCost(o) {
-  if (!o) return false;
-  const u = parseFloat(o.cargo_cost_uzs) || 0;
-  const d = parseFloat(o.cargo_cost_usd) || 0;
-  return u > 0 || d > 0;
-}
-
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
@@ -280,19 +279,8 @@ const Orders = () => {
     }
   };
 
-  // Helper: get current balance for a given currency + payment type
-  const getAvailableBalance = (currency, paymentType) => {
-    const balanceTypeMap = {
-      'USD-cash': 'usd_cash',
-      'UZS-cash': 'uzs_cash',
-      'USD-card': 'usd_card',
-      'UZS-card': 'uzs_card',
-    };
-    const balanceType = balanceTypeMap[`${currency}-${paymentType}`];
-    const found = balances.find(b => b.balance_type === balanceType);
-    return found ? parseFloat(found.balance) : 0;
-  };
-  
+  const getAvailableBalance = (currency) => cashBalanceTotalByCurrency(balances, currency);
+
   const fetchCustomers = async () => {
     try {
       const response = await api.get('/customers/');
@@ -514,11 +502,13 @@ const Orders = () => {
           );
           return;
         }
-        const required = usdSup;
-        const available = getAvailableBalance('USD', formData.order_payment_type);
+        const required = usdSup * qty;
+        const available = getAvailableBalance('USD');
         if (available < required) {
           showNotification(
-            `Insufficient balance. Available: ${available.toFixed(2)} USD (${formData.order_payment_type}), required: ${required.toFixed(2)} USD cost.`,
+            formatInsufficientLedgerMessage('USD', available, required, {
+              context: 'order_paid_on_create',
+            }),
             'error',
           );
           return;
@@ -573,11 +563,9 @@ const Orders = () => {
         cost_usd_per_unit: '',
         order_is_paid: false,
         order_payment_currency: 'USD',
-        order_payment_type: 'card',
         customer: '',
         advance_payment_amount: '',
         advance_payment_currency: 'USD',
-        advance_payment_type: 'cash',
         status: 'ordered',
       });
       fetchOrders();
@@ -613,10 +601,8 @@ const Orders = () => {
     const pref = prefillPayOrderFromSupplier(order);
     setPaymentFormData({
       orderId: orderId,
-      uzs_cash: pref.uzs_cash,
-      uzs_card: pref.uzs_card,
-      usd_cash: pref.usd_cash,
-      usd_card: pref.usd_card,
+      uzs: pref.uzs,
+      usd: pref.usd,
       is_pay_order: true,
       is_received_and_pay: false,
       status_notes: '',
@@ -627,15 +613,12 @@ const Orders = () => {
 
   const handlePayCargo = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
-    // Pre-fill the field that matches the order's cargo cost currency
     const costUzs = order?.cargo_cost_uzs > 0 ? order.cargo_cost_uzs : '';
     const costUsd = order?.cargo_cost_usd > 0 ? order.cargo_cost_usd : '';
     setCargoFormData({
       orderId: orderId,
-      uzs_cash: costUzs && order?.cargo_payment_currency !== 'USD' ? costUzs : '',
-      uzs_card: '',
-      usd_cash: costUsd && order?.cargo_payment_currency === 'USD' ? costUsd : '',
-      usd_card: '',
+      uzs: costUzs && order?.cargo_payment_currency !== 'USD' ? String(costUzs) : '',
+      usd: costUsd && order?.cargo_payment_currency === 'USD' ? String(costUsd) : '',
     });
     setShowCargoForm(true);
     setTimeout(() => cargoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -650,48 +633,33 @@ const Orders = () => {
     try {
       // Check if this is for paying order separately
       if (paymentFormData.is_pay_order) {
-        const uzs_cash = parseFloat(paymentFormData.uzs_cash) || 0;
-        const uzs_card = parseFloat(paymentFormData.uzs_card) || 0;
-        const usd_cash = parseFloat(paymentFormData.usd_cash) || 0;
-        const usd_card = parseFloat(paymentFormData.usd_card) || 0;
-        if (uzs_cash + uzs_card + usd_cash + usd_card === 0) {
+        const uzs = parseFloat(paymentFormData.uzs) || 0;
+        const usd = parseFloat(paymentFormData.usd) || 0;
+        if (uzs + usd === 0) {
           showNotification('Please enter at least one payment amount.', 'error');
           return;
         }
-        const checks = [
-          { amount: uzs_cash, currency: 'UZS', type: 'cash' },
-          { amount: uzs_card, currency: 'UZS', type: 'card' },
-          { amount: usd_cash, currency: 'USD', type: 'cash' },
-          { amount: usd_card, currency: 'USD', type: 'card' },
-        ];
-        for (const { amount, currency, type } of checks) {
-          if (amount > 0) {
-            const available = getAvailableBalance(currency, type);
-            if (available < amount) {
-              showNotification(`Insufficient ${currency} ${type} balance. Available: ${available.toFixed(2)} ${currency}, Required: ${amount.toFixed(2)} ${currency}.`, 'error');
-              return;
-            }
+        if (uzs > 0) {
+          const available = getAvailableBalance('UZS');
+          if (available < uzs) {
+            showNotification(formatInsufficientLedgerMessage('UZS', available, uzs), 'error');
+            return;
+          }
+        }
+        if (usd > 0) {
+          const available = getAvailableBalance('USD');
+          if (available < usd) {
+            showNotification(formatInsufficientLedgerMessage('USD', available, usd), 'error');
+            return;
           }
         }
         const orderForPay = orders.find((o) => o.id === paymentFormData.orderId);
-        if (
-          orderForPay &&
-          !confirmOrderPayTotalsIfMismatch(orderForPay, uzs_cash, uzs_card, usd_cash, usd_card)
-        ) {
+        if (orderForPay && !confirmOrderPayTotalsIfMismatch(orderForPay, uzs, usd)) {
           return;
         }
-        await api.post(`/orders/${paymentFormData.orderId}/pay_order/`, { uzs_cash, uzs_card, usd_cash, usd_card });
+        await api.post(`/orders/${paymentFormData.orderId}/pay_order/`, { uzs, usd });
         setShowPaymentForm(false);
-        setPaymentFormData({
-          orderId: null,
-          uzs_cash: '',
-          uzs_card: '',
-          usd_cash: '',
-          usd_card: '',
-          is_pay_order: false,
-          is_received_and_pay: false,
-          status_notes: '',
-        });
+        setPaymentFormData({ orderId: null, uzs: '', usd: '', is_pay_order: false, is_received_and_pay: false, status_notes: '' });
         fetchOrders();
         showNotification('Order payment completed successfully!', 'success');
         return;
@@ -706,66 +674,49 @@ const Orders = () => {
 
       // Check balances before submitting (only if not already paid)
       if (!isAlreadyPaid) {
-        const uzs_cash = parseFloat(paymentFormData.uzs_cash) || 0;
-        const uzs_card = parseFloat(paymentFormData.uzs_card) || 0;
-        const usd_cash = parseFloat(paymentFormData.usd_cash) || 0;
-        const usd_card = parseFloat(paymentFormData.usd_card) || 0;
-        if (uzs_cash + uzs_card + usd_cash + usd_card === 0) {
+        const uzs = parseFloat(paymentFormData.uzs) || 0;
+        const usd = parseFloat(paymentFormData.usd) || 0;
+        if (uzs + usd === 0) {
           showNotification('Please enter at least one payment amount.', 'error');
           return;
         }
-        const balChecks = [
-          { amount: uzs_cash, currency: 'UZS', type: 'cash' },
-          { amount: uzs_card, currency: 'UZS', type: 'card' },
-          { amount: usd_cash, currency: 'USD', type: 'cash' },
-          { amount: usd_card, currency: 'USD', type: 'card' },
-        ];
-        for (const { amount, currency, type } of balChecks) {
-          if (amount > 0) {
-            const available = getAvailableBalance(currency, type);
-            if (available < amount) {
-              showNotification(`Insufficient ${currency} ${type} balance. Available: ${available.toFixed(2)} ${currency}, Required: ${amount.toFixed(2)} ${currency}.`, 'error');
-              return;
-            }
+        if (uzs > 0) {
+          const available = getAvailableBalance('UZS');
+          if (available < uzs) {
+            showNotification(formatInsufficientLedgerMessage('UZS', available, uzs), 'error');
+            return;
+          }
+        }
+        if (usd > 0) {
+          const available = getAvailableBalance('USD');
+          if (available < usd) {
+            showNotification(formatInsufficientLedgerMessage('USD', available, usd), 'error');
+            return;
           }
         }
       }
-      
+
       // Build update payload
       const updatePayload = {
         status: targetStatus,
         notes: String(paymentFormData.status_notes).trim(),
       };
-      
+
       // Only send payment info if order is not already paid
       if (!isAlreadyPaid) {
-        updatePayload.uzs_cash = parseFloat(paymentFormData.uzs_cash) || 0;
-        updatePayload.uzs_card = parseFloat(paymentFormData.uzs_card) || 0;
-        updatePayload.usd_cash = parseFloat(paymentFormData.usd_cash) || 0;
-        updatePayload.usd_card = parseFloat(paymentFormData.usd_card) || 0;
+        updatePayload.uzs = parseFloat(paymentFormData.uzs) || 0;
+        updatePayload.usd = parseFloat(paymentFormData.usd) || 0;
         updatePayload.order_is_paid = true;
       }
-      
+
       // Update order status
       await api.post(`/orders/${paymentFormData.orderId}/update_status/`, updatePayload);
-      
+
       // Refresh orders to get updated status
       await fetchOrders();
-      
+
       setShowPaymentForm(false);
-      setPaymentFormData({
-        orderId: null,
-        uzs_cash: '',
-        uzs_card: '',
-        usd_cash: '',
-        usd_card: '',
-        order_payment_amount: '',
-        order_payment_currency: 'USD',
-        order_payment_type: 'card',
-        is_pay_order: false,
-        is_received_and_pay: false,
-        status_notes: '',
-      });
+      setPaymentFormData({ orderId: null, uzs: '', usd: '', is_pay_order: false, is_received_and_pay: false, status_notes: '' });
       showNotification('Payment processed successfully!', 'success');
     } catch (error) {
       console.error('Error updating order payment:', error);
@@ -776,41 +727,38 @@ const Orders = () => {
   const handleCargoPaymentSubmit = async (e) => {
     e.preventDefault();
     try {
-      const uzs_cash = parseFloat(cargoFormData.uzs_cash) || 0;
-      const uzs_card = parseFloat(cargoFormData.uzs_card) || 0;
-      const usd_cash = parseFloat(cargoFormData.usd_cash) || 0;
-      const usd_card = parseFloat(cargoFormData.usd_card) || 0;
+      const uzs = parseFloat(cargoFormData.uzs) || 0;
+      const usd = parseFloat(cargoFormData.usd) || 0;
 
-      // Client-side balance checks (all zeros = free cargo; no balance check)
-      const checks = [
-        { amount: uzs_cash, currency: 'UZS', type: 'cash' },
-        { amount: uzs_card, currency: 'UZS', type: 'card' },
-        { amount: usd_cash, currency: 'USD', type: 'cash' },
-        { amount: usd_card, currency: 'USD', type: 'card' },
-      ];
-      for (const { amount, currency, type } of checks) {
-        if (amount > 0) {
-          const available = getAvailableBalance(currency, type);
-          if (available < amount) {
-            showNotification(
-              `Insufficient ${currency} ${type} balance. Available: ${available.toFixed(2)} ${currency}, Required: ${amount.toFixed(2)} ${currency}. Please top up your balance first.`,
-              'error'
-            );
-            return;
-          }
+      if (uzs > 0) {
+        const available = getAvailableBalance('UZS');
+        if (available < uzs) {
+          showNotification(
+            formatInsufficientLedgerMessage('UZS', available, uzs, { topUpSuffix: true }),
+            'error',
+          );
+          return;
+        }
+      }
+      if (usd > 0) {
+        const available = getAvailableBalance('USD');
+        if (available < usd) {
+          showNotification(
+            formatInsufficientLedgerMessage('USD', available, usd, { topUpSuffix: true }),
+            'error',
+          );
+          return;
         }
       }
 
       const cargoOrder = orders.find((o) => o.id === cargoFormData.orderId);
-      if (!confirmCargoPaymentIfNeeded(cargoOrder, uzs_cash, uzs_card, usd_cash, usd_card)) {
+      if (!confirmCargoPaymentIfNeeded(cargoOrder, uzs, usd)) {
         return;
       }
 
-      const res = await api.post(`/orders/${cargoFormData.orderId}/pay_cargo/`, {
-        uzs_cash, uzs_card, usd_cash, usd_card,
-      });
+      const res = await api.post(`/orders/${cargoFormData.orderId}/pay_cargo/`, { uzs, usd });
       setShowCargoForm(false);
-      setCargoFormData({ orderId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' });
+      setCargoFormData({ orderId: null, uzs: '', usd: '' });
       await fetchOrders();
       showNotification(res.data?.message || 'Cargo payment processed successfully.', 'success');
     } catch (error) {
@@ -821,12 +769,22 @@ const Orders = () => {
 
   const handleSellProduct = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
-    
-    if (orderHasCargoCost(order) && !order?.cargo_is_paid) {
-      showNotification('Cannot sell product: Cargo payment must be completed first. Please pay for the cargo before selling the product.', 'error');
+
+    if (!order?.order_is_paid) {
+      showNotification(
+        'Pay for the supplier order first (Pay for the Order) before selling this on‑demand product.',
+        'error',
+      );
       return;
     }
-    
+    if (!order?.cargo_is_paid) {
+      showNotification(
+        'Pay for the cargo first (use zero totals in that form if there is no freight). You cannot sell this on‑demand item until cargo is marked paid.',
+        'error',
+      );
+      return;
+    }
+
     try {
       const response = await api.post(`/orders/${orderId}/sell_product/`);
       showNotification(response.data.message || 'Sale created successfully! Please check the Sales tab to complete the payment.', 'success');
@@ -845,17 +803,18 @@ const Orders = () => {
       return;
     }
 
-    if (orderHasCargoCost(order) && !order?.cargo_is_paid) {
-      showNotification('Cargo payment must be completed before moving to inventory.', 'error');
+    if (!order?.cargo_is_paid) {
+      showNotification(
+        'Cargo must be marked paid before moving to inventory (use Pay for the Cargo; zero totals if there is no freight).',
+        'error',
+      );
       return;
     }
     
     if (order && order.advance_payment_amount && order.advance_payment_amount > 0) {
-      // Show form to ask about advance payment return
       setMoveToInventoryData({
         orderId: orderId,
         return_advance: false,
-        return_payment_type: 'cash',
       });
       setShowMoveToInventoryForm(true);
       setTimeout(() => moveToInventoryFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -865,22 +824,12 @@ const Orders = () => {
     }
   };
 
-  const moveToInventoryFromOrder = async (orderId, returnAdvance, returnPaymentType) => {
+  const moveToInventoryFromOrder = async (orderId, returnAdvance) => {
     try {
-      const payload = {
-        return_advance: returnAdvance,
-      };
-      if (returnAdvance && returnPaymentType) {
-        payload.return_payment_type = returnPaymentType;
-      }
-      
+      const payload = { return_advance: returnAdvance };
       await api.post(`/orders/${orderId}/move_to_inventory_from_order/`, payload);
       setShowMoveToInventoryForm(false);
-      setMoveToInventoryData({
-        orderId: null,
-        return_advance: false,
-        return_payment_type: 'cash',
-      });
+      setMoveToInventoryData({ orderId: null, return_advance: false });
       await fetchOrders();
       showNotification('Order moved to inventory successfully!', 'success');
     } catch (error) {
@@ -891,11 +840,7 @@ const Orders = () => {
 
   const handleMoveToInventorySubmit = async (e) => {
     e.preventDefault();
-    await moveToInventoryFromOrder(
-      moveToInventoryData.orderId,
-      moveToInventoryData.return_advance,
-      moveToInventoryData.return_advance ? moveToInventoryData.return_payment_type : null
-    );
+    await moveToInventoryFromOrder(moveToInventoryData.orderId, moveToInventoryData.return_advance);
   };
 
   if (loading) {
@@ -961,33 +906,21 @@ const Orders = () => {
             {paymentFormData.is_pay_order ? 'Pay for the Order' : paymentFormData.is_received_and_pay ? 'Mark Order as Received and Pay' : 'Move Order to Inventory & Pay'}
           </h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Fill in any combination of payment methods. Leave a field empty or 0 if not used.
+            Enter the UZS and/or USD amount. Leave a field empty or 0 if not used.
           </p>
           <form onSubmit={handlePaymentSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>UZS — Cash</label>
+                <label>UZS</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
-                  value={paymentFormData.uzs_cash}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs_cash: e.target.value })} />
+                  value={paymentFormData.uzs}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>UZS — Card</label>
+                <label>USD</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
-                  value={paymentFormData.uzs_card}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs_card: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Cash</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={paymentFormData.usd_cash}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, usd_cash: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Card</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={paymentFormData.usd_card}
-                  onChange={(e) => setPaymentFormData({ ...paymentFormData, usd_card: e.target.value })} />
+                  value={paymentFormData.usd}
+                  onChange={(e) => setPaymentFormData({ ...paymentFormData, usd: e.target.value })} />
               </div>
               {!paymentFormData.is_pay_order && (
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -1008,16 +941,7 @@ const Orders = () => {
               <button type="button" className="btn-edit"
                 onClick={() => {
                   setShowPaymentForm(false);
-                  setPaymentFormData({
-                    orderId: null,
-                    uzs_cash: '',
-                    uzs_card: '',
-                    usd_cash: '',
-                    usd_card: '',
-                    is_pay_order: false,
-                    is_received_and_pay: false,
-                    status_notes: '',
-                  });
+                  setPaymentFormData({ orderId: null, uzs: '', usd: '', is_pay_order: false, is_received_and_pay: false, status_notes: '' });
                 }}>
                 Cancel
               </button>
@@ -1041,19 +965,6 @@ const Orders = () => {
                   {' '}Return advance payment to customer
                 </label>
               </div>
-              {moveToInventoryData.return_advance && (
-                <div className="form-group">
-                  <label>Return Payment Type</label>
-                  <select
-                    value={moveToInventoryData.return_payment_type}
-                    onChange={(e) => setMoveToInventoryData({ ...moveToInventoryData, return_payment_type: e.target.value })}
-                    required
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                  </select>
-                </div>
-              )}
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -1064,11 +975,7 @@ const Orders = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowMoveToInventoryForm(false);
-                  setMoveToInventoryData({
-                    orderId: null,
-                    return_advance: false,
-                    return_payment_type: 'cash',
-                  });
+                  setMoveToInventoryData({ orderId: null, return_advance: false });
                 }}
               >
                 Cancel
@@ -1082,53 +989,30 @@ const Orders = () => {
         <div className="form-card" style={{ marginBottom: '20px' }} ref={cargoFormRef}>
           <h2>Pay for Cargo - Order #{cargoFormData.orderId}</h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Fill in any combination of payment methods. Leave a field empty or 0 if not used. If cargo was{' '}
-            <strong>free</strong>, enter <strong>0</strong> in all four fields and submit — that records cargo as paid with no charge.
+            Enter the UZS and/or USD amount. If cargo was <strong>free</strong>, enter <strong>0</strong> in both fields and submit.
           </p>
           <form onSubmit={handleCargoPaymentSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>UZS — Cash</label>
+                <label>UZS</label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   placeholder="0"
-                  value={cargoFormData.uzs_cash}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, uzs_cash: e.target.value })}
+                  value={cargoFormData.uzs}
+                  onChange={(e) => setCargoFormData({ ...cargoFormData, uzs: e.target.value })}
                 />
               </div>
               <div className="form-group">
-                <label>UZS — Card</label>
+                <label>USD</label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   placeholder="0"
-                  value={cargoFormData.uzs_card}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, uzs_card: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>USD — Cash</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0"
-                  value={cargoFormData.usd_cash}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, usd_cash: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>USD — Card</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0"
-                  value={cargoFormData.usd_card}
-                  onChange={(e) => setCargoFormData({ ...cargoFormData, usd_card: e.target.value })}
+                  value={cargoFormData.usd}
+                  onChange={(e) => setCargoFormData({ ...cargoFormData, usd: e.target.value })}
                 />
               </div>
             </div>
@@ -1141,7 +1025,7 @@ const Orders = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowCargoForm(false);
-                  setCargoFormData({ orderId: null, uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' });
+                  setCargoFormData({ orderId: null, uzs: '', usd: '' });
                 }}
               >
                 Cancel
@@ -1483,16 +1367,6 @@ const Orders = () => {
                       <option value="USD">USD</option>
                     </select>
                   </div>
-                  <div className="form-group">
-                    <label>Payment Type</label>
-                    <select
-                      value={formData.order_payment_type}
-                      onChange={(e) => setFormData({ ...formData, order_payment_type: e.target.value })}
-                      required
-                    >
-                      <option value="card">Card</option>
-                    </select>
-                  </div>
                 </>
               )}
               {/* Customer and advance payment fields for on-demand orders */}
@@ -1536,28 +1410,16 @@ const Orders = () => {
                     />
                   </div>
                   {formData.advance_payment_amount && parseFloat(formData.advance_payment_amount) > 0 && (
-                    <>
-                      <div className="form-group">
-                        <label>Advance Payment Currency</label>
-                        <select
-                          value={formData.advance_payment_currency}
-                          onChange={(e) => setFormData({ ...formData, advance_payment_currency: e.target.value })}
-                        >
-                          <option value="USD">USD</option>
-                          <option value="UZS">UZS</option>
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>Advance Payment Type</label>
-                        <select
-                          value={formData.advance_payment_type}
-                          onChange={(e) => setFormData({ ...formData, advance_payment_type: e.target.value })}
-                        >
-                          <option value="cash">Cash</option>
-                          <option value="card">Card</option>
-                        </select>
-                      </div>
-                    </>
+                    <div className="form-group">
+                      <label>Advance Payment Currency</label>
+                      <select
+                        value={formData.advance_payment_currency}
+                        onChange={(e) => setFormData({ ...formData, advance_payment_currency: e.target.value })}
+                      >
+                        <option value="USD">USD</option>
+                        <option value="UZS">UZS</option>
+                      </select>
+                    </div>
                   )}
                 </>
               )}
@@ -1586,11 +1448,9 @@ const Orders = () => {
                     cost_usd_per_unit: '',
                     order_is_paid: false,
                     order_payment_currency: 'USD',
-                    order_payment_type: 'card',
                     customer: '',
                     advance_payment_amount: '',
                     advance_payment_currency: 'USD',
-                    advance_payment_type: 'cash',
                     status: 'ordered',
                   });
                 }}
@@ -1834,14 +1694,10 @@ const Orders = () => {
               <th>Selling price/unit</th>
               <th>Cost Per Unit</th>
               <th>Total Cost</th>
-              <th>Order UZS Cash</th>
-              <th>Order UZS Card</th>
-              <th>Order USD Cash</th>
-              <th>Order USD Card</th>
-              <th>Cargo UZS Cash</th>
-              <th>Cargo UZS Card</th>
-              <th>Cargo USD Cash</th>
-              <th>Cargo USD Card</th>
+              <th>Order UZS</th>
+              <th>Order USD</th>
+              <th>Cargo UZS</th>
+              <th>Cargo USD</th>
               <th>Status</th>
               <th>Created By</th>
               <th>Date</th>
@@ -1850,7 +1706,7 @@ const Orders = () => {
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="26" style={{ textAlign: 'center' }}>
+                <td colSpan="22" style={{ textAlign: 'center' }}>
                   No orders found
                 </td>
               </tr>
@@ -1903,7 +1759,11 @@ const Orders = () => {
                       </button>
                     )}
                     {/* On-demand order specific buttons when received */}
-                    {order.order_type === 'on_demand' && order.status === 'received' && !order.has_sale && (
+                    {order.order_type === 'on_demand' &&
+                      order.status === 'received' &&
+                      !order.has_sale &&
+                      order.order_is_paid &&
+                      order.cargo_is_paid && (
                       <>
                         <button
                           className="btn-status"
@@ -1912,15 +1772,13 @@ const Orders = () => {
                         >
                           Sell the Product
                         </button>
-                        {order.order_is_paid && order.cargo_is_paid && (
-                          <button
-                            className="btn-status"
-                            onClick={() => handleMoveToInventoryFromOrder(order.id)}
-                            style={{ backgroundColor: '#2196f3', color: 'white' }}
-                          >
-                            Move to Inventory
-                          </button>
-                        )}
+                        <button
+                          className="btn-status"
+                          onClick={() => handleMoveToInventoryFromOrder(order.id)}
+                          style={{ backgroundColor: '#2196f3', color: 'white' }}
+                        >
+                          Move to Inventory
+                        </button>
                       </>
                     )}
                   </td>
@@ -1978,44 +1836,28 @@ const Orders = () => {
                     )}
                   </td>
                   <td>
-                    {parseFloat(order.order_payment_uzs_cash) > 0
-                      ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>{parseFloat(order.order_payment_uzs_cash).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
+                    {(() => {
+                      const v = (parseFloat(order.order_payment_uzs_cash) || 0) + (parseFloat(order.order_payment_uzs_card) || 0);
+                      return v > 0 ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>{v.toLocaleString()} UZS</span> : <span style={{ color: '#bbb' }}>—</span>;
+                    })()}
                   </td>
                   <td>
-                    {parseFloat(order.order_payment_uzs_card) > 0
-                      ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>{parseFloat(order.order_payment_uzs_card).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
+                    {(() => {
+                      const v = (parseFloat(order.order_payment_usd_cash) || 0) + (parseFloat(order.order_payment_usd_card) || 0);
+                      return v > 0 ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>${v.toFixed(2)}</span> : <span style={{ color: '#bbb' }}>—</span>;
+                    })()}
                   </td>
                   <td>
-                    {parseFloat(order.order_payment_usd_cash) > 0
-                      ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>${parseFloat(order.order_payment_usd_cash).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
+                    {(() => {
+                      const v = (parseFloat(order.cargo_payment_uzs_cash) || 0) + (parseFloat(order.cargo_payment_uzs_card) || 0);
+                      return v > 0 ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>{v.toLocaleString()} UZS</span> : <span style={{ color: '#bbb' }}>—</span>;
+                    })()}
                   </td>
                   <td>
-                    {parseFloat(order.order_payment_usd_card) > 0
-                      ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>${parseFloat(order.order_payment_usd_card).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(order.cargo_payment_uzs_cash) > 0
-                      ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>{parseFloat(order.cargo_payment_uzs_cash).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(order.cargo_payment_uzs_card) > 0
-                      ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>{parseFloat(order.cargo_payment_uzs_card).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(order.cargo_payment_usd_cash) > 0
-                      ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>${parseFloat(order.cargo_payment_usd_cash).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(order.cargo_payment_usd_card) > 0
-                      ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>${parseFloat(order.cargo_payment_usd_card).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
+                    {(() => {
+                      const v = (parseFloat(order.cargo_payment_usd_cash) || 0) + (parseFloat(order.cargo_payment_usd_card) || 0);
+                      return v > 0 ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>${v.toFixed(2)}</span> : <span style={{ color: '#bbb' }}>—</span>;
+                    })()}
                   </td>
                   <td>
                     <span className={`status-badge ${order.status}`}>
@@ -2051,45 +1893,17 @@ const Orders = () => {
               <td style={{ fontWeight: 600 }}>
                 ${orderColumnTotals.costTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
-              <td>
-                {orderColumnTotals.orderUzsCash > 0
-                  ? `${orderColumnTotals.orderUzsCash.toLocaleString()} UZS`
-                  : '—'}
+              <td style={{ fontWeight: 600 }}>
+                {orderColumnTotals.orderUzs > 0 ? `${orderColumnTotals.orderUzs.toLocaleString()} UZS` : '—'}
               </td>
-              <td>
-                {orderColumnTotals.orderUzsCard > 0
-                  ? `${orderColumnTotals.orderUzsCard.toLocaleString()} UZS`
-                  : '—'}
+              <td style={{ fontWeight: 600 }}>
+                {orderColumnTotals.orderUsd > 0 ? `$${orderColumnTotals.orderUsd.toFixed(2)}` : '—'}
               </td>
-              <td>
-                {orderColumnTotals.orderUsdCash > 0
-                  ? `$${orderColumnTotals.orderUsdCash.toFixed(2)}`
-                  : '—'}
+              <td style={{ fontWeight: 600 }}>
+                {orderColumnTotals.cargoUzs > 0 ? `${orderColumnTotals.cargoUzs.toLocaleString()} UZS` : '—'}
               </td>
-              <td>
-                {orderColumnTotals.orderUsdCard > 0
-                  ? `$${orderColumnTotals.orderUsdCard.toFixed(2)}`
-                  : '—'}
-              </td>
-              <td>
-                {orderColumnTotals.cargoUzsCash > 0
-                  ? `${orderColumnTotals.cargoUzsCash.toLocaleString()} UZS`
-                  : '—'}
-              </td>
-              <td>
-                {orderColumnTotals.cargoUzsCard > 0
-                  ? `${orderColumnTotals.cargoUzsCard.toLocaleString()} UZS`
-                  : '—'}
-              </td>
-              <td>
-                {orderColumnTotals.cargoUsdCash > 0
-                  ? `$${orderColumnTotals.cargoUsdCash.toFixed(2)}`
-                  : '—'}
-              </td>
-              <td>
-                {orderColumnTotals.cargoUsdCard > 0
-                  ? `$${orderColumnTotals.cargoUsdCard.toFixed(2)}`
-                  : '—'}
+              <td style={{ fontWeight: 600 }}>
+                {orderColumnTotals.cargoUsd > 0 ? `$${orderColumnTotals.cargoUsd.toFixed(2)}` : '—'}
               </td>
               <td colSpan="3">—</td>
             </tr>

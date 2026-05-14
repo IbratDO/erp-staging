@@ -25,7 +25,7 @@ function PackageLinesSelector({ lines, onChange, packages: pkgList }) {
           <div key={line.key} style={{ display: 'flex', gap: '6px', alignItems: 'stretch' }}>
             {/* Type */}
             <select
-              value={line.package_type}
+              value={line.package_type ?? ''}
               onChange={(e) => updateLine(line.key, 'package_type', e.target.value)}
               style={{ ...fieldH, flex: '1 1 0', minWidth: 0, background: 'white',
                        borderColor: isLow ? '#fc8181' : '#ddd' }}
@@ -42,7 +42,7 @@ function PackageLinesSelector({ lines, onChange, packages: pkgList }) {
             <input
               type="number"
               min="1"
-              value={line.quantity}
+              value={line.quantity == null || Number.isNaN(line.quantity) ? 1 : line.quantity}
               onChange={(e) => updateLine(line.key, 'quantity', parseInt(e.target.value, 10) || 1)}
               style={{ ...fieldH, width: '62px', textAlign: 'center', flexShrink: 0,
                        borderColor: isLow ? '#fc8181' : '#ddd' }}
@@ -121,7 +121,6 @@ const Sales = () => {
     deposit_received: false,
     deposit_amount: '',
     deposit_currency: 'USD',
-    deposit_payment_type: 'cash',
   });
   
   const [customers, setCustomers] = useState([]);
@@ -293,43 +292,22 @@ const Sales = () => {
   const salesColumnTotals = useMemo(() => {
     const list = filteredSales;
     if (!list.length) {
-      return {
-        quantity: 0,
-        totalAmount: 0,
-        totalAmountCurrency: null,
-        uzsCash: 0,
-        uzsCard: 0,
-        usdCash: 0,
-        usdCard: 0,
-      };
+      return { quantity: 0, totalAmount: 0, totalAmountCurrency: null, uzs: 0, usd: 0 };
     }
     let quantity = 0;
     let totalAmount = 0;
-    let uzsCash = 0;
-    let uzsCard = 0;
-    let usdCash = 0;
-    let usdCard = 0;
+    let uzs = 0;
+    let usd = 0;
     const saleCurrencies = new Set();
     for (const s of list) {
       quantity += parseInt(s.quantity, 10) || 0;
       totalAmount += parseFloat(s.total_amount) || 0;
       saleCurrencies.add(s.sale_currency || 'USD');
-      uzsCash += parseFloat(s.payment_uzs_cash) || 0;
-      uzsCard += parseFloat(s.payment_uzs_card) || 0;
-      usdCash += parseFloat(s.payment_usd_cash) || 0;
-      usdCard += parseFloat(s.payment_usd_card) || 0;
+      uzs += (parseFloat(s.payment_uzs_cash) || 0) + (parseFloat(s.payment_uzs_card) || 0);
+      usd += (parseFloat(s.payment_usd_cash) || 0) + (parseFloat(s.payment_usd_card) || 0);
     }
-    const totalAmountCurrency =
-      saleCurrencies.size === 1 ? [...saleCurrencies][0] : null;
-    return {
-      quantity,
-      totalAmount,
-      totalAmountCurrency,
-      uzsCash,
-      uzsCard,
-      usdCash,
-      usdCard,
-    };
+    const totalAmountCurrency = saleCurrencies.size === 1 ? [...saleCurrencies][0] : null;
+    return { quantity, totalAmount, totalAmountCurrency, uzs, usd };
   }, [filteredSales]);
 
   const fetchProducts = async () => {
@@ -414,7 +392,6 @@ const Sales = () => {
         deposit_received: false,
         deposit_amount: '',
         deposit_currency: 'USD',
-        deposit_payment_type: 'cash',
       });
       fetchSales();
       fetchInventory(); // Refresh inventory after sale
@@ -577,7 +554,6 @@ const Sales = () => {
     dispatcher: '',
     is_paid: false,
     currency: 'UZS',
-    payment_type: 'cash',
     dispatch_notes: '',
   });
   const [dispatchersList, setDispatchersList] = useState([]);
@@ -586,10 +562,8 @@ const Sales = () => {
   const [showSellReservedForm, setShowSellReservedForm] = useState(false);
   const [sellReservedData, setSellReservedData] = useState({
     saleId: null,
-    uzs_cash: '',
-    uzs_card: '',
-    usd_cash: '',
-    usd_card: '',
+    uzs: '',
+    usd: '',
   });
   
   /** When set, shows shared Complete & Pay form (same flow as Dispatchers tab). */
@@ -602,14 +576,11 @@ const Sales = () => {
     customer: '',
     selling_price: '',
     sale_type: 'bought_from_shop',
-    now_uzs_cash: '',
-    now_uzs_card: '',
-    now_usd_cash: '',
-    now_usd_card: '',
+    now_uzs: '',
+    now_usd: '',
     deposit_received: false,
     deposit_amount: '',
     deposit_currency: 'USD',
-    deposit_payment_type: 'cash',
   });
 
   const handleStatusUpdate = async (saleId, newStatus) => {
@@ -624,7 +595,6 @@ const Sales = () => {
           dispatcher: '',
           is_paid: false,
           currency: 'UZS',
-          payment_type: 'cash',
           dispatch_notes: '',
         });
         setShowDispatchForm(true);
@@ -701,17 +671,10 @@ const Sales = () => {
           dispatchData.dispatcher = parseInt(dispatchFormData.dispatcher, 10);
         }
         
-        // Map payment_type and currency to delivery_payment_cash or delivery_payment_card
         if (dispatchFormData.currency === 'UZS') {
-          if (dispatchFormData.payment_type === 'cash') {
-            dispatchData.delivery_payment_cash = dispatchFormData.delivery_cost;
-            dispatchData.delivery_payment_card = 0;
-          } else {
-            dispatchData.delivery_payment_card = dispatchFormData.delivery_cost;
-            dispatchData.delivery_payment_cash = 0;
-          }
+          dispatchData.delivery_payment_cash = dispatchFormData.delivery_cost;
+          dispatchData.delivery_payment_card = 0;
         } else {
-          // For USD, we'll store in delivery_cost and let backend handle it
           dispatchData.delivery_payment_cash = 0;
           dispatchData.delivery_payment_card = 0;
         }
@@ -728,7 +691,6 @@ const Sales = () => {
         dispatcher: '',
         is_paid: false,
         currency: 'UZS',
-        payment_type: 'cash',
         dispatch_notes: '',
       });
       fetchSales();
@@ -749,16 +711,16 @@ const Sales = () => {
       setCompleteFromOrderData({
         saleId: saleId,
         customer: sale.customer || sale.order_detail?.customer || '',
-        selling_price: sale.selling_price || '',
+        selling_price:
+          sale.selling_price != null && sale.selling_price !== ''
+            ? String(sale.selling_price)
+            : '',
         sale_type: 'bought_from_shop',
-        now_uzs_cash: '',
-        now_uzs_card: '',
-        now_usd_cash: nowPaidAmount > 0 ? nowPaidAmount.toFixed(2) : '0',
-        now_usd_card: '',
+        now_uzs: '',
+        now_usd: nowPaidAmount > 0 ? nowPaidAmount.toFixed(2) : '0',
         deposit_received: false,
         deposit_amount: '',
         deposit_currency: 'USD',
-        deposit_payment_type: 'cash',
       });
       setShowCompleteFromOrderForm(true);
     }
@@ -797,22 +759,19 @@ const Sales = () => {
         sale_type: completeFromOrderData.sale_type,
         package_type: null,
         package_quantity: null,
-        uzs_cash: parseFloat(completeFromOrderData.now_uzs_cash) || 0,
-        uzs_card: parseFloat(completeFromOrderData.now_uzs_card) || 0,
-        usd_cash: parseFloat(completeFromOrderData.now_usd_cash) || 0,
-        usd_card: parseFloat(completeFromOrderData.now_usd_card) || 0,
+        uzs: parseFloat(completeFromOrderData.now_uzs) || 0,
+        usd: parseFloat(completeFromOrderData.now_usd) || 0,
         ...(cfoActiveLines.length > 0 ? {
           package_lines: cfoActiveLines.map(({ package_type, quantity }) => ({ package_type, quantity })),
         } : {}),
       };
-      
+
       // Add deposit fields if reserved sale
       if (completeFromOrderData.sale_type === 'reserved') {
         requestData.deposit_received = completeFromOrderData.deposit_received;
         if (completeFromOrderData.deposit_received && completeFromOrderData.deposit_amount) {
           requestData.deposit_amount = parseFloat(completeFromOrderData.deposit_amount);
           requestData.deposit_currency = completeFromOrderData.deposit_currency;
-          requestData.deposit_payment_type = completeFromOrderData.deposit_payment_type;
         }
       }
       
@@ -829,24 +788,13 @@ const Sales = () => {
           dispatcher: '',
           is_paid: false,
           currency: 'UZS',
-          payment_type: 'cash',
           dispatch_notes: '',
         });
         setShowDispatchForm(true);
         setCompleteFromOrderPackageLines(EMPTY_PKG_LINES());
         setCompleteFromOrderData({
-          saleId: null,
-          customer: '',
-          selling_price: '',
-          sale_type: 'bought_from_shop',
-          now_uzs_cash: '',
-          now_uzs_card: '',
-          now_usd_cash: '',
-          now_usd_card: '',
-          deposit_received: false,
-          deposit_amount: '',
-          deposit_currency: 'USD',
-          deposit_payment_type: 'cash',
+          saleId: null, customer: '', selling_price: '', sale_type: 'bought_from_shop',
+          now_uzs: '', now_usd: '', deposit_received: false, deposit_amount: '', deposit_currency: 'USD',
         });
         fetchSales();
         showNotification('Sale completed! Please enter dispatch information.', 'success');
@@ -854,18 +802,8 @@ const Sales = () => {
         setShowCompleteFromOrderForm(false);
         setCompleteFromOrderPackageLines(EMPTY_PKG_LINES());
         setCompleteFromOrderData({
-          saleId: null,
-          customer: '',
-          selling_price: '',
-          sale_type: 'bought_from_shop',
-          now_uzs_cash: '',
-          now_uzs_card: '',
-          now_usd_cash: '',
-          now_usd_card: '',
-          deposit_received: false,
-          deposit_amount: '',
-          deposit_currency: 'USD',
-          deposit_payment_type: 'cash',
+          saleId: null, customer: '', selling_price: '', sale_type: 'bought_from_shop',
+          now_uzs: '', now_usd: '', deposit_received: false, deposit_amount: '', deposit_currency: 'USD',
         });
         fetchSales();
         showNotification('Sale from order completed successfully!', 'success');
@@ -900,11 +838,12 @@ const Sales = () => {
       const depositAmount = sale.deposit_amount || 0;
       const remainingAmount = totalAmount - depositAmount;
       
+      const remUsd = (sale.sale_currency || 'USD') === 'USD' && remainingAmount > 0 ? remainingAmount.toFixed(2) : '';
+      const remUzs = (sale.sale_currency || 'USD') === 'UZS' && remainingAmount > 0 ? String(Math.round(remainingAmount)) : '';
       setSellReservedData({
         saleId: saleId,
-        payment_amount: remainingAmount > 0 ? remainingAmount.toFixed(2) : '0',
-        payment_currency: sale.sale_currency || 'USD',
-        payment_type: 'cash',
+        uzs: remUzs,
+        usd: remUsd,
       });
       setShowSellReservedForm(true);
     }
@@ -914,20 +853,11 @@ const Sales = () => {
     e.preventDefault();
     try {
       await api.post(`/sales/${sellReservedData.saleId}/sell_reserved/`, {
-        uzs_cash: parseFloat(sellReservedData.uzs_cash) || 0,
-        uzs_card: parseFloat(sellReservedData.uzs_card) || 0,
-        usd_cash: parseFloat(sellReservedData.usd_cash) || 0,
-        usd_card: parseFloat(sellReservedData.usd_card) || 0,
-        // legacy compat placeholder:
-        payment_type: sellReservedData.payment_type,
+        uzs: parseFloat(sellReservedData.uzs) || 0,
+        usd: parseFloat(sellReservedData.usd) || 0,
       });
       setShowSellReservedForm(false);
-      setSellReservedData({
-        saleId: null,
-        payment_amount: '',
-        payment_currency: 'USD',
-        payment_type: 'cash',
-      });
+      setSellReservedData({ saleId: null, uzs: '', usd: '' });
       fetchSales();
       showNotification('Reserved sale completed successfully!', 'success');
     } catch (error) {
@@ -1094,17 +1024,6 @@ const Sales = () => {
                 </select>
               </div>
               <div className="form-group">
-                <label>Payment Type</label>
-                <select
-                  value={dispatchFormData.payment_type}
-                  onChange={(e) => setDispatchFormData({ ...dispatchFormData, payment_type: e.target.value })}
-                  required
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                </select>
-              </div>
-              <div className="form-group">
                 <label>Delivery Cost ({dispatchFormData.currency})</label>
                 <input
                   type="number"
@@ -1161,7 +1080,6 @@ const Sales = () => {
                     dispatcher: '',
                     is_paid: false,
                     currency: 'UZS',
-                    payment_type: 'cash',
                     dispatch_notes: '',
                   });
                 }}
@@ -1205,7 +1123,7 @@ const Sales = () => {
                   type="number"
                   step="0.01"
                   min="0"
-                  value={completeFromOrderData.selling_price}
+                  value={completeFromOrderData.selling_price ?? ''}
                   onChange={(e) => {
                     const sellingPrice = parseFloat(e.target.value) || 0;
                     const sale = sales.find(s => s.id === completeFromOrderData.saleId);
@@ -1230,7 +1148,11 @@ const Sales = () => {
                 <input
                   type="number"
                   step="0.01"
-                  value={sales.find(s => s.id === completeFromOrderData.saleId)?.advance_payment_received || 0}
+                  value={(() => {
+                    const adv = sales.find((s) => s.id === completeFromOrderData.saleId)?.advance_payment_received;
+                    if (adv == null || adv === '') return '';
+                    return String(adv);
+                  })()}
                   readOnly
                   style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
                 />
@@ -1269,7 +1191,7 @@ const Sales = () => {
                           type="number"
                           step="0.01"
                           min="0"
-                          value={completeFromOrderData.deposit_amount}
+                          value={completeFromOrderData.deposit_amount ?? ''}
                           onChange={(e) => {
                             const depositAmount = parseFloat(e.target.value) || 0;
                             const sale = sales.find(s => s.id === completeFromOrderData.saleId);
@@ -1297,17 +1219,6 @@ const Sales = () => {
                           <option value="UZS">UZS</option>
                         </select>
                       </div>
-                      <div className="form-group">
-                        <label>Deposit Payment Type</label>
-                        <select
-                          value={completeFromOrderData.deposit_payment_type}
-                          onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, deposit_payment_type: e.target.value })}
-                          required
-                        >
-                          <option value="cash">Cash</option>
-                          <option value="card">Card</option>
-                        </select>
-                      </div>
                     </>
                   )}
                 </>
@@ -1322,32 +1233,20 @@ const Sales = () => {
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', paddingTop: '12px', marginTop: '4px' }}>
                 <p style={{ margin: '0 0 10px 0', color: '#555', fontSize: '0.9em', fontWeight: 600 }}>
-                  Payment — fill any combination:
+                  Payment:
                 </p>
               </div>
               <div className="form-group">
-                <label>UZS — Cash</label>
+                <label>UZS</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
-                  value={completeFromOrderData.now_uzs_cash}
-                  onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, now_uzs_cash: e.target.value })} />
+                  value={completeFromOrderData.now_uzs ?? ''}
+                  onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, now_uzs: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>UZS — Card</label>
+                <label>USD</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
-                  value={completeFromOrderData.now_uzs_card}
-                  onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, now_uzs_card: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Cash</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={completeFromOrderData.now_usd_cash}
-                  onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, now_usd_cash: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Card</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={completeFromOrderData.now_usd_card}
-                  onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, now_usd_card: e.target.value })} />
+                  value={completeFromOrderData.now_usd ?? ''}
+                  onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, now_usd: e.target.value })} />
               </div>
             </div>
             <div className="form-actions">
@@ -1361,18 +1260,8 @@ const Sales = () => {
                   setShowCompleteFromOrderForm(false);
                   setCompleteFromOrderPackageLines(EMPTY_PKG_LINES());
                   setCompleteFromOrderData({
-                    saleId: null,
-                    customer: '',
-                    selling_price: '',
-                    sale_type: 'bought_from_shop',
-                    now_uzs_cash: '',
-                    now_uzs_card: '',
-                    now_usd_cash: '',
-                    now_usd_card: '',
-                    deposit_received: false,
-                    deposit_amount: '',
-                    deposit_currency: 'USD',
-                    deposit_payment_type: 'cash',
+                    saleId: null, customer: '', selling_price: '', sale_type: 'bought_from_shop',
+                    now_uzs: '', now_usd: '', deposit_received: false, deposit_amount: '', deposit_currency: 'USD',
                   });
                 }}
               >
@@ -1399,33 +1288,21 @@ const Sales = () => {
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>Complete Reserved Sale #{sellReservedData.saleId}</h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Fill in any combination of payment methods for the remaining amount.
+            Enter the UZS and/or USD amount for the remaining balance.
           </p>
           <form onSubmit={handleSellReservedSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>UZS — Cash</label>
+                <label>UZS</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
-                  value={sellReservedData.uzs_cash}
-                  onChange={(e) => setSellReservedData({ ...sellReservedData, uzs_cash: e.target.value })} />
+                  value={sellReservedData.uzs ?? ''}
+                  onChange={(e) => setSellReservedData({ ...sellReservedData, uzs: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>UZS — Card</label>
+                <label>USD</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
-                  value={sellReservedData.uzs_card}
-                  onChange={(e) => setSellReservedData({ ...sellReservedData, uzs_card: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Cash</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={sellReservedData.usd_cash}
-                  onChange={(e) => setSellReservedData({ ...sellReservedData, usd_cash: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Card</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={sellReservedData.usd_card}
-                  onChange={(e) => setSellReservedData({ ...sellReservedData, usd_card: e.target.value })} />
+                  value={sellReservedData.usd ?? ''}
+                  onChange={(e) => setSellReservedData({ ...sellReservedData, usd: e.target.value })} />
               </div>
             </div>
             <div className="form-actions">
@@ -1437,12 +1314,7 @@ const Sales = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowSellReservedForm(false);
-                  setSellReservedData({
-                    saleId: null,
-                    payment_amount: '',
-                    payment_currency: 'USD',
-                    payment_type: 'cash',
-                  });
+                  setSellReservedData({ saleId: null, uzs: '', usd: '' });
                 }}
               >
                 Cancel
@@ -1475,11 +1347,17 @@ const Sales = () => {
                   value={formData.product}
                   onChange={(e) => {
                     const selectedProductId = e.target.value;
-                    const selectedProduct = products.find(p => p.id === parseInt(selectedProductId));
+                    const selectedProduct = products.find((p) => p.id === parseInt(selectedProductId, 10));
+                    const sp =
+                      selectedProduct &&
+                      selectedProduct.selling_price != null &&
+                      selectedProduct.selling_price !== ''
+                        ? String(selectedProduct.selling_price)
+                        : '';
                     setFormData({
                       ...formData,
                       product: selectedProductId,
-                      selling_price: selectedProduct ? selectedProduct.selling_price : formData.selling_price,
+                      selling_price: selectedProduct ? sp : formData.selling_price,
                     });
                   }}
                   required
@@ -1506,7 +1384,8 @@ const Sales = () => {
                           const inventoryItems = inventory.filter(
                             item => item.product === parseInt(formData.product) && item.status === 'in_inventory'
                           );
-                          return inventoryItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+                          const n = inventoryItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+                          return Number.isFinite(n) ? String(n) : '';
                         })()
                       : ''
                   }
@@ -1519,7 +1398,7 @@ const Sales = () => {
                 <input
                   type="number"
                   min="1"
-                  value={formData.quantity}
+                  value={formData.quantity ?? ''}
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   required
                 />
@@ -1541,7 +1420,7 @@ const Sales = () => {
                   type="number"
                   step="0.01"
                   min="0"
-                  value={formData.selling_price}
+                  value={formData.selling_price ?? ''}
                   onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
                   required
                 />
@@ -1611,17 +1490,6 @@ const Sales = () => {
                           <option value="UZS">UZS</option>
                         </select>
                       </div>
-                      <div className="form-group">
-                        <label>Deposit Payment Type</label>
-                        <select
-                          value={formData.deposit_payment_type}
-                          onChange={(e) => setFormData({ ...formData, deposit_payment_type: e.target.value })}
-                          required
-                        >
-                          <option value="cash">Cash</option>
-                          <option value="card">Card</option>
-                        </select>
-                      </div>
                     </>
                   )}
                 </>
@@ -1676,7 +1544,6 @@ const Sales = () => {
                     deposit_received: false,
                     deposit_amount: '',
                     deposit_currency: 'USD',
-                    deposit_payment_type: 'cash',
                   });
                 }}
               >
@@ -1799,7 +1666,7 @@ const Sales = () => {
                           <td>
                             <select
                               className="batch-sale-lines__control"
-                              value={line.product}
+                              value={line.product ?? ''}
                               onChange={(e) => updateBatchLine(line.key, 'product', e.target.value)}
                               aria-label="Product"
                             >
@@ -1822,7 +1689,7 @@ const Sales = () => {
                               className="batch-sale-lines__control"
                               type="number"
                               min="1"
-                              value={line.quantity}
+                              value={line.quantity ?? ''}
                               onChange={(e) => updateBatchLine(line.key, 'quantity', e.target.value)}
                               title="Quantity"
                               aria-label="Quantity"
@@ -1834,7 +1701,7 @@ const Sales = () => {
                               type="number"
                               step="0.01"
                               min="0"
-                              value={line.selling_price}
+                              value={line.selling_price ?? ''}
                               onChange={(e) => updateBatchLine(line.key, 'selling_price', e.target.value)}
                               title="Selling price"
                               placeholder="0.00"
@@ -2111,10 +1978,8 @@ const Sales = () => {
               <th>Price</th>
               <th>Total</th>
               <th>Discount / credit</th>
-              <th>UZS Cash</th>
-              <th>UZS Card</th>
-              <th>USD Cash</th>
-              <th>USD Card</th>
+              <th>UZS</th>
+              <th>USD</th>
               <th>Customer</th>
               <th>Phone</th>
               <th>Salesman</th>
@@ -2201,9 +2066,9 @@ const Sales = () => {
                         )}
                       </>
                     )}
-                    {sale.status === 'completed' && sale.payment_currency && sale.payment_type && (
+                    {sale.status === 'completed' && sale.payment_currency && (
                       <span style={{ fontSize: '0.9em', color: '#666', display: 'block', marginTop: '5px' }}>
-                        Paid: {sale.payment_currency} {sale.payment_type === 'cash' ? 'Cash' : 'Card'}
+                        Paid: {sale.payment_currency}
                       </span>
                     )}
                   </td>
@@ -2254,24 +2119,16 @@ const Sales = () => {
                         : '—'}
                   </td>
                   <td>
-                    {parseFloat(sale.payment_uzs_cash) > 0
-                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>{parseFloat(sale.payment_uzs_cash).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
+                    {(() => {
+                      const v = (parseFloat(sale.payment_uzs_cash) || 0) + (parseFloat(sale.payment_uzs_card) || 0);
+                      return v > 0 ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>{v.toLocaleString()} UZS</span> : <span style={{ color: '#bbb' }}>—</span>;
+                    })()}
                   </td>
                   <td>
-                    {parseFloat(sale.payment_uzs_card) > 0
-                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>{parseFloat(sale.payment_uzs_card).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(sale.payment_usd_cash) > 0
-                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>${parseFloat(sale.payment_usd_cash).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(sale.payment_usd_card) > 0
-                      ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>${parseFloat(sale.payment_usd_card).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
+                    {(() => {
+                      const v = (parseFloat(sale.payment_usd_cash) || 0) + (parseFloat(sale.payment_usd_card) || 0);
+                      return v > 0 ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>${v.toFixed(2)}</span> : <span style={{ color: '#bbb' }}>—</span>;
+                    })()}
                   </td>
                   <td>{sale.customer_detail?.name || '-'}</td>
                   <td>{sale.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
@@ -2304,21 +2161,11 @@ const Sales = () => {
                     : formatPlainAmount(salesColumnTotals.totalAmount)}
               </td>
               <td>—</td>
-              <td>
-                {salesColumnTotals.uzsCash > 0
-                  ? `${salesColumnTotals.uzsCash.toLocaleString()} UZS`
-                  : '—'}
+              <td style={{ fontWeight: 600 }}>
+                {salesColumnTotals.uzs > 0 ? `${salesColumnTotals.uzs.toLocaleString()} UZS` : '—'}
               </td>
-              <td>
-                {salesColumnTotals.uzsCard > 0
-                  ? `${salesColumnTotals.uzsCard.toLocaleString()} UZS`
-                  : '—'}
-              </td>
-              <td>
-                {salesColumnTotals.usdCash > 0 ? `$${salesColumnTotals.usdCash.toFixed(2)}` : '—'}
-              </td>
-              <td>
-                {salesColumnTotals.usdCard > 0 ? `$${salesColumnTotals.usdCard.toFixed(2)}` : '—'}
+              <td style={{ fontWeight: 600 }}>
+                {salesColumnTotals.usd > 0 ? `$${salesColumnTotals.usd.toFixed(2)}` : '—'}
               </td>
               <td colSpan="4">—</td>
             </tr>

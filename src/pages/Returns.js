@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
+import { cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import './TablePage.css';
 
 const Returns = () => {
@@ -37,10 +38,8 @@ const Returns = () => {
   });
   const [refundFormData, setRefundFormData] = useState({
     returnId: null,
-    uzs_cash: '',
-    uzs_card: '',
-    usd_cash: '',
-    usd_card: '',
+    uzs: '',
+    usd: '',
   });
   const [showRefundForm, setShowRefundForm] = useState(false);
 
@@ -129,18 +128,14 @@ const Returns = () => {
 
   const returnColumnTotals = useMemo(() => {
     let quantity = 0;
-    let uzsCash = 0;
-    let uzsCard = 0;
-    let usdCash = 0;
-    let usdCard = 0;
+    let uzs = 0;
+    let usd = 0;
     for (const r of filteredReturns) {
       quantity += parseInt(r.quantity, 10) || 0;
-      uzsCash += parseFloat(r.refund_uzs_cash) || 0;
-      uzsCard += parseFloat(r.refund_uzs_card) || 0;
-      usdCash += parseFloat(r.refund_usd_cash) || 0;
-      usdCard += parseFloat(r.refund_usd_card) || 0;
+      uzs += (parseFloat(r.refund_uzs_cash) || 0) + (parseFloat(r.refund_uzs_card) || 0);
+      usd += (parseFloat(r.refund_usd_cash) || 0) + (parseFloat(r.refund_usd_card) || 0);
     }
-    return { quantity, uzsCash, uzsCard, usdCash, usdCard };
+    return { quantity, uzs, usd };
   }, [filteredReturns]);
 
   const fetchProducts = async () => {
@@ -228,10 +223,8 @@ const Returns = () => {
     const returnItem = returns.find(r => r.id === returnId);
     setRefundFormData({
       returnId: returnId,
-      uzs_cash: '',
-      uzs_card: '',
-      usd_cash: returnItem?.sale_detail?.total_amount || '',
-      usd_card: '',
+      uzs: '',
+      usd: returnItem?.sale_detail?.total_amount || '',
     });
     setShowRefundForm(true);
   };
@@ -239,56 +232,35 @@ const Returns = () => {
   const handleRefundSubmit = async (e) => {
     e.preventDefault();
     try {
-      const uzs_cash = parseFloat(refundFormData.uzs_cash) || 0;
-      const uzs_card = parseFloat(refundFormData.uzs_card) || 0;
-      const usd_cash = parseFloat(refundFormData.usd_cash) || 0;
-      const usd_card = parseFloat(refundFormData.usd_card) || 0;
-      if (uzs_cash + uzs_card + usd_cash + usd_card === 0) {
+      const uzs = parseFloat(refundFormData.uzs) || 0;
+      const usd = parseFloat(refundFormData.usd) || 0;
+      if (uzs + usd === 0) {
         showNotification('Please enter at least one refund amount.', 'error');
         return;
       }
       const balanceResponse = await api.get('/cash-balance/');
       const balanceList = balanceResponse.data.results || balanceResponse.data;
-      const getBalNow = (currency, paymentType) => {
-        const balanceTypeMap = {
-          'USD-cash': 'usd_cash',
-          'UZS-cash': 'uzs_cash',
-          'USD-card': 'usd_card',
-          'UZS-card': 'uzs_card',
-        };
-        const bt = balanceTypeMap[`${currency}-${paymentType}`];
-        const found = balanceList.find(b => b.balance_type === bt);
-        return found ? parseFloat(found.balance) : 0;
-      };
       const balChecks = [
-        { amount: uzs_cash, currency: 'UZS', type: 'cash' },
-        { amount: uzs_card, currency: 'UZS', type: 'card' },
-        { amount: usd_cash, currency: 'USD', type: 'cash' },
-        { amount: usd_card, currency: 'USD', type: 'card' },
+        { amount: uzs, currency: 'UZS' },
+        { amount: usd, currency: 'USD' },
       ];
-      for (const { amount, currency, type } of balChecks) {
+      for (const { amount, currency } of balChecks) {
         if (amount > 0) {
-          const available = getBalNow(currency, type);
+          const available = cashBalanceTotalByCurrency(balanceList, currency);
           if (available < amount) {
             showNotification(
-              `Insufficient ${currency} ${type} balance for this refund. Available: ${available.toFixed(2)} ${currency}, Required: ${amount.toFixed(2)} ${currency}.`,
-              'error'
+              formatInsufficientLedgerMessage(currency, available, amount, { context: 'refund' }),
+              'error',
             );
             return;
           }
         }
       }
       await api.post(`/returns/${refundFormData.returnId}/mark_refunded/`, {
-        uzs_cash, uzs_card, usd_cash, usd_card,
+        uzs, usd,
       });
       setShowRefundForm(false);
-      setRefundFormData({
-        returnId: null,
-        uzs_cash: '',
-        uzs_card: '',
-        usd_cash: '',
-        usd_card: '',
-      });
+      setRefundFormData({ returnId: null, uzs: '', usd: '' });
       fetchReturns();
     } catch (error) {
       console.error('Error marking return as refunded:', error);
@@ -483,33 +455,21 @@ const Returns = () => {
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>Mark Return #{refundFormData.returnId} as Refunded</h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Fill in any combination of refund methods. Leave a field empty or 0 if not used.
+            Enter the UZS and/or USD refund amount.
           </p>
           <form onSubmit={handleRefundSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>UZS — Cash</label>
+                <label>UZS</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
-                  value={refundFormData.uzs_cash}
-                  onChange={(e) => setRefundFormData({ ...refundFormData, uzs_cash: e.target.value })} />
+                  value={refundFormData.uzs}
+                  onChange={(e) => setRefundFormData({ ...refundFormData, uzs: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>UZS — Card</label>
+                <label>USD</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
-                  value={refundFormData.uzs_card}
-                  onChange={(e) => setRefundFormData({ ...refundFormData, uzs_card: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Cash</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={refundFormData.usd_cash}
-                  onChange={(e) => setRefundFormData({ ...refundFormData, usd_cash: e.target.value })} />
-              </div>
-              <div className="form-group">
-                <label>USD — Card</label>
-                <input type="number" step="0.01" min="0" placeholder="0"
-                  value={refundFormData.usd_card}
-                  onChange={(e) => setRefundFormData({ ...refundFormData, usd_card: e.target.value })} />
+                  value={refundFormData.usd}
+                  onChange={(e) => setRefundFormData({ ...refundFormData, usd: e.target.value })} />
               </div>
             </div>
             <div className="form-actions">
@@ -521,13 +481,7 @@ const Returns = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowRefundForm(false);
-                  setRefundFormData({
-                    returnId: null,
-                    uzs_cash: '',
-                    uzs_card: '',
-                    usd_cash: '',
-                    usd_card: '',
-                  });
+                  setRefundFormData({ returnId: null, uzs: '', usd: '' });
                 }}
               >
                 Cancel
@@ -694,10 +648,8 @@ const Returns = () => {
               <th>Phone</th>
               <th>Quantity</th>
               <th>Reason</th>
-              <th>Refund UZS Cash</th>
-              <th>Refund UZS Card</th>
-              <th>Refund USD Cash</th>
-              <th>Refund USD Card</th>
+              <th>Refund UZS</th>
+              <th>Refund USD</th>
               <th>Refund Status</th>
               <th>Notes</th>
               <th>Processed By</th>
@@ -707,7 +659,7 @@ const Returns = () => {
           <tbody>
             {filteredReturns.length === 0 ? (
               <tr>
-                <td colSpan="22" style={{ textAlign: 'center' }}>
+                <td colSpan="20" style={{ textAlign: 'center' }}>
                   No returns found
                 </td>
               </tr>
@@ -744,24 +696,10 @@ const Returns = () => {
                   <td>{returnItem.quantity}</td>
                   <td>{returnItem.reason.replace('_', ' ')}</td>
                   <td>
-                    {parseFloat(returnItem.refund_uzs_cash) > 0
-                      ? <span style={{ color: '#4caf50' }}>{parseFloat(returnItem.refund_uzs_cash).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
+                    {(() => { const v = (parseFloat(returnItem.refund_uzs_cash) || 0) + (parseFloat(returnItem.refund_uzs_card) || 0); return v > 0 ? <span style={{ color: '#4caf50' }}>{v.toLocaleString()} UZS</span> : <span style={{ color: '#bbb' }}>—</span>; })()}
                   </td>
                   <td>
-                    {parseFloat(returnItem.refund_uzs_card) > 0
-                      ? <span style={{ color: '#4caf50' }}>{parseFloat(returnItem.refund_uzs_card).toLocaleString()} UZS</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(returnItem.refund_usd_cash) > 0
-                      ? <span style={{ color: '#4caf50' }}>${parseFloat(returnItem.refund_usd_cash).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>
-                    {parseFloat(returnItem.refund_usd_card) > 0
-                      ? <span style={{ color: '#4caf50' }}>${parseFloat(returnItem.refund_usd_card).toFixed(2)}</span>
-                      : <span style={{ color: '#bbb' }}>—</span>}
+                    {(() => { const v = (parseFloat(returnItem.refund_usd_cash) || 0) + (parseFloat(returnItem.refund_usd_card) || 0); return v > 0 ? <span style={{ color: '#4caf50' }}>${v.toFixed(2)}</span> : <span style={{ color: '#bbb' }}>—</span>; })()}
                   </td>
                   <td>
                     <span className={`status-badge ${returnItem.refund_status === 'refunded' ? 'completed' : 'pending'}`}>
@@ -782,25 +720,11 @@ const Returns = () => {
               </td>
               <td style={{ fontWeight: 600 }}>{returnColumnTotals.quantity.toLocaleString()}</td>
               <td>—</td>
-              <td>
-                {returnColumnTotals.uzsCash > 0
-                  ? `${returnColumnTotals.uzsCash.toLocaleString()} UZS`
-                  : '—'}
+              <td style={{ fontWeight: 600 }}>
+                {returnColumnTotals.uzs > 0 ? `${returnColumnTotals.uzs.toLocaleString()} UZS` : '—'}
               </td>
-              <td>
-                {returnColumnTotals.uzsCard > 0
-                  ? `${returnColumnTotals.uzsCard.toLocaleString()} UZS`
-                  : '—'}
-              </td>
-              <td>
-                {returnColumnTotals.usdCash > 0
-                  ? `$${returnColumnTotals.usdCash.toFixed(2)}`
-                  : '—'}
-              </td>
-              <td>
-                {returnColumnTotals.usdCard > 0
-                  ? `$${returnColumnTotals.usdCard.toFixed(2)}`
-                  : '—'}
+              <td style={{ fontWeight: 600 }}>
+                {returnColumnTotals.usd > 0 ? `$${returnColumnTotals.usd.toFixed(2)}` : '—'}
               </td>
               <td colSpan="4">—</td>
             </tr>
