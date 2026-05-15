@@ -12,6 +12,55 @@ const variantPart = (v) => String(v ?? '').trim().toLowerCase();
 const variantKeyFromBody = (body) =>
   [variantPart(body.brand), variantPart(body.model), variantPart(body.size), variantPart(body.color)].join('|');
 
+/** Letter apparel sizes (shown separately from numeric sizes in pickers). */
+const LETTER_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+/** Typical numeric sizes (e.g. footwear); separate group from LETTER_SIZES in the UI. */
+const NUMERIC_SIZES = Array.from({ length: 11 }, (_, i) => (36 + i).toString());
+const ALL_EDITOR_SIZE_OPTIONS = [...LETTER_SIZES, ...NUMERIC_SIZES];
+
+const LETTER_SIZE_RANK = new Map(
+  LETTER_SIZES.map((s, i) => [s.toUpperCase(), i]),
+);
+
+/** Order for display/filter: XS…XXL (case-insensitive), then numeric ascending, then other strings A–Z. */
+function sortSizesCanonical(values) {
+  const uniq = [...new Set(values)].filter(Boolean);
+  const numericString = (s) => /^-?\d+(\.\d+)?$/.test(String(s).trim());
+
+  return uniq.sort((a, b) => {
+    const au = String(a).toUpperCase();
+    const bu = String(b).toUpperCase();
+    const ar = LETTER_SIZE_RANK.get(au);
+    const br = LETTER_SIZE_RANK.get(bu);
+    if (ar !== undefined && br !== undefined) return ar - br;
+    if (ar !== undefined) return -1;
+    if (br !== undefined) return 1;
+    const aNum = numericString(a);
+    const bNum = numericString(b);
+    if (aNum && bNum) return Number(a) - Number(b);
+    if (aNum) return 1;
+    if (bNum) return -1;
+    return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+  });
+}
+
+/** Split size list for grouped selects: letter / number / other. */
+function partitionSizesForUiGroups(sortedSizesFlat) {
+  const letterSet = new Set(LETTER_SIZES.map((s) => s.toUpperCase()));
+  const letters = [];
+  const nums = [];
+  const other = [];
+  for (const s of sortedSizesFlat) {
+    if (!s) continue;
+    const up = String(s).toUpperCase();
+    const isNum = /^-?\d+(\.\d+)?$/.test(String(s).trim());
+    if (letterSet.has(up)) letters.push(s);
+    else if (isNum) nums.push(s);
+    else other.push(s);
+  }
+  return { letters, nums, other };
+}
+
 function apiErrorMessage(error, fallback = 'Request failed') {
   const data = error.response?.data;
   if (!data) return error.message || fallback;
@@ -39,7 +88,6 @@ const Products = () => {
   };
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const [availableSizes, setAvailableSizes] = useState([]);
   const [filters, setFilters] = useState({
     category: '',
     brand: '',
@@ -101,10 +149,6 @@ const Products = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // All possible sizes from 36 to 46
-  const allSizes = Array.from({ length: 11 }, (_, i) => (36 + i).toString());
-  
-
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -115,10 +159,7 @@ const Products = () => {
       const response = await api.get('/products/');
       const productsList = response.data.results || response.data;
       setProducts(productsList);
-      
-      // Use all sizes from 36 to 46
-      setAvailableSizes(allSizes);
-      
+
       applyFilters(productsList);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -129,8 +170,12 @@ const Products = () => {
 
   // Extract unique values for dropdowns
   const getUniqueValues = (productsList, field) => {
-    const values = productsList.map(p => p[field]).filter(Boolean);
-    return [...new Set(values)].sort();
+    const values = productsList.map((p) => p[field]).filter(Boolean);
+    const uniq = [...new Set(values)];
+    if (field === 'size') return sortSizesCanonical(uniq);
+    return uniq.sort((a, b) =>
+      String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }),
+    );
   };
 
   const applyFilters = (productsList) => {
@@ -546,10 +591,17 @@ const Products = () => {
                     required
                   >
                     <option value="">Select Size</option>
-                    {availableSizes.map((size) => (
-                      <option key={size} value={size}>{size}</option>
-                    ))}
-                    {formData.size && !availableSizes.includes(formData.size) && (
+                    <optgroup label="Letter sizes">
+                      {LETTER_SIZES.map((size) => (
+                        <option key={size} value={size}>{size}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Number sizes (36–46)">
+                      {NUMERIC_SIZES.map((size) => (
+                        <option key={size} value={size}>{size}</option>
+                      ))}
+                    </optgroup>
+                    {formData.size && !ALL_EDITOR_SIZE_OPTIONS.includes(formData.size) && (
                       <option value={formData.size}>{formData.size}</option>
                     )}
                   </select>
@@ -568,7 +620,7 @@ const Products = () => {
                       <span style={{ color: selectedSizes.length === 0 ? '#999' : '#333' }}>
                         {selectedSizes.length === 0
                           ? 'Select sizes...'
-                          : selectedSizes.slice().sort((a, b) => Number(a) - Number(b)).join(', ')}
+                          : sortSizesCanonical(selectedSizes).join(', ')}
                       </span>
                       <span style={{ fontSize: '0.75em', color: '#666' }}>{sizeDropdownOpen ? '▲' : '▼'}</span>
                     </div>
@@ -580,9 +632,51 @@ const Products = () => {
                         border: '1px solid #ccc', borderRadius: '4px', background: '#fff',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.15)', marginTop: '2px',
                         padding: '8px',
-                        display: 'flex', flexWrap: 'wrap', gap: '6px',
+                        display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center',
                       }}>
-                        {allSizes.map(size => {
+                        <div style={{
+                          flexBasis: '100%',
+                          marginBottom: '4px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          color: '#555',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                        }}>
+                          Letter sizes
+                        </div>
+                        {LETTER_SIZES.map((size) => {
+                          const isSelected = selectedSizes.includes(size);
+                          return (
+                            <div
+                              key={size}
+                              onClick={() => toggleSize(size)}
+                              style={{
+                                padding: '6px 14px', borderRadius: '4px', cursor: 'pointer',
+                                fontWeight: 600, fontSize: '0.95em', userSelect: 'none',
+                                border: isSelected ? '2px solid #1976d2' : '2px solid #ddd',
+                                background: isSelected ? '#1976d2' : '#f5f5f5',
+                                color: isSelected ? '#fff' : '#333',
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              {size}
+                            </div>
+                          );
+                        })}
+                        <div style={{
+                          flexBasis: '100%',
+                          marginTop: '10px',
+                          marginBottom: '4px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          color: '#555',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                        }}>
+                          Number sizes (36–46)
+                        </div>
+                        {NUMERIC_SIZES.map((size) => {
                           const isSelected = selectedSizes.includes(size);
                           return (
                             <div
@@ -838,11 +932,35 @@ const Products = () => {
               onChange={(e) => setFilters({ ...filters, size: e.target.value })}
             >
               <option value="">All Sizes</option>
-              {getUniqueValues(products, 'size').map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
+              {(() => {
+                const sortedSizes = getUniqueValues(products, 'size');
+                const { letters, nums, other } = partitionSizesForUiGroups(sortedSizes);
+                return (
+                  <>
+                    {letters.length > 0 ? (
+                      <optgroup label="Letter sizes">
+                        {letters.map((size) => (
+                          <option key={size} value={size}>{size}</option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                    {nums.length > 0 ? (
+                      <optgroup label="Number sizes">
+                        {nums.map((size) => (
+                          <option key={size} value={size}>{size}</option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                    {other.length > 0 ? (
+                      <optgroup label="Other sizes">
+                        {other.map((size) => (
+                          <option key={size} value={size}>{size}</option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                  </>
+                );
+              })()}
             </select>
           </div>
           <div className="filter-field">

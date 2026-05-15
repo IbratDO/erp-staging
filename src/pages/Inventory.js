@@ -383,7 +383,6 @@ const Inventory = () => {
           <thead>
             <tr>
               <th>Category</th>
-              <th>Name</th>
               <th>Rec #</th>
               <th>Product</th>
               <th>Brand</th>
@@ -401,7 +400,7 @@ const Inventory = () => {
           <tbody>
             {filteredInventory.length === 0 ? (
               <tr>
-                <td colSpan="14" style={{ textAlign: 'center' }}>
+                <td colSpan="13" style={{ textAlign: 'center' }}>
                   No inventory items found
                 </td>
               </tr>
@@ -411,7 +410,6 @@ const Inventory = () => {
                 return (
                 <tr key={item.id}>
                   <td>{item.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>{item.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
                   <td><strong>#{item.product_detail?.id ?? item.product}</strong></td>
                   <td>
                     {item.product_detail
@@ -439,7 +437,7 @@ const Inventory = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="8" style={{ textAlign: 'right' }}>
+              <td colSpan="7" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td style={{ fontWeight: 600, fontSize: '0.9em' }}>

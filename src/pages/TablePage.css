@@ -49,6 +49,80 @@
   margin-bottom: 20px;
 }
 
+/* Orders — New Order: aligned rows vs one auto-fit grid */
+.orders-new-order-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.orders-new-order-row {
+  display: grid;
+  gap: 1rem 1.25rem;
+  align-items: flex-end;
+}
+
+@media (min-width: 1100px) {
+  .orders-new-order-row--5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 700px) and (max-width: 1099px) {
+  .orders-new-order-row--5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 699px) {
+  .orders-new-order-row--5 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.orders-new-order-row--qty-prices {
+  grid-template-columns: minmax(100px, 150px) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+@media (max-width: 699px) {
+  .orders-new-order-row--qty-prices {
+    grid-template-columns: 1fr;
+  }
+}
+
+.orders-new-order-checkbox-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  line-height: 1.35;
+}
+
+.orders-field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #718096;
+  font-weight: 400;
+}
+
+.orders-new-order-form .form-group > label + .orders-field-hint {
+  margin-top: 2px;
+  margin-bottom: 8px;
+}
+
+@media (min-width: 900px) {
+  .orders-new-order-row--on-demand {
+    grid-template-columns: minmax(0, 2fr) minmax(140px, 1fr) minmax(140px, 1fr);
+  }
+}
+
+@media (max-width: 899px) {
+  .orders-new-order-row--on-demand {
+    grid-template-columns: 1fr;
+  }
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -516,10 +590,17 @@
   margin: 0;
 }
 
-select.batch-sale-lines__control {
+select.batch-sale-lines__control,
+button.batch-sale-lines__control {
   padding-right: 1.8rem;
   cursor: pointer;
   background-color: #fff;
+  text-align: left;
+}
+
+button.batch-sale-lines__control:disabled {
+  cursor: not-allowed;
+  color: #999;
 }
 
 input.batch-sale-lines__control {

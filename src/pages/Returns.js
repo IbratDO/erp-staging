@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../utils/api';
 import { cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import './TablePage.css';
@@ -138,6 +138,70 @@ const Returns = () => {
     return { quantity, uzs, usd };
   }, [filteredReturns]);
 
+  /** Units already tied to return rows per sale (any refund status) — prevents over-returning the same sale line. */
+  const qtyReturnedBySaleId = useMemo(() => {
+    const m = new Map();
+    for (const r of returns) {
+      let sid = r.sale;
+      if (sid == null || sid === '') continue;
+      if (typeof sid === 'object' && sid !== null) sid = sid.id;
+      sid = Number(sid);
+      if (!Number.isFinite(sid)) continue;
+      const q = parseInt(r.quantity, 10) || 0;
+      m.set(sid, (m.get(sid) || 0) + q);
+    }
+    return m;
+  }, [returns]);
+
+  const getRemainingReturnQtyForSale = useCallback(
+    (sale) => {
+      if (!sale?.id) return 0;
+      const used = qtyReturnedBySaleId.get(sale.id) || 0;
+      return Math.max(0, (parseInt(sale.quantity, 10) || 0) - used);
+    },
+    [qtyReturnedBySaleId]
+  );
+
+  const selectedSaleForReturn = useMemo(() => {
+    if (!formData.sale) return null;
+    const id = parseInt(formData.sale, 10);
+    if (!Number.isFinite(id)) return null;
+    return sales.find((s) => s.id === id) || null;
+  }, [formData.sale, sales]);
+
+  const soldPriceDisplay = useMemo(() => {
+    if (!selectedSaleForReturn) return '';
+    const s = selectedSaleForReturn;
+    const ccy = s.sale_currency || 'USD';
+    const unit =
+      s.selling_price != null && s.selling_price !== '' ? parseFloat(s.selling_price) : NaN;
+    const qty = parseInt(s.quantity, 10) || 0;
+    const totalRaw = s.total_amount;
+    const total =
+      totalRaw != null && totalRaw !== ''
+        ? parseFloat(totalRaw)
+        : Number.isFinite(unit) && qty
+          ? unit * qty
+          : NaN;
+    const parts = [];
+    if (Number.isFinite(unit)) parts.push(`${unit.toFixed(2)} ${ccy}/unit`);
+    else parts.push('No unit price on record');
+    if (qty) parts.push(`original qty ${qty}`);
+    if (Number.isFinite(total)) parts.push(`line total ${total.toFixed(2)} ${ccy}`);
+    return parts.join(' · ');
+  }, [selectedSaleForReturn]);
+
+  const newReturnEligibleSales = useMemo(() => {
+    const cid = formData.customer ? parseInt(formData.customer, 10) : null;
+    return sales.filter((s) => {
+      if (getRemainingReturnQtyForSale(s) <= 0) return false;
+      if (cid != null && !Number.isNaN(cid) && s.customer !== cid) return false;
+      if (formData.product && s.product !== parseInt(formData.product, 10)) return false;
+      if (formCategory && s.product_detail?.category !== formCategory) return false;
+      return true;
+    });
+  }, [sales, formData.customer, formData.product, formCategory, getRemainingReturnQtyForSale]);
+
   const fetchProducts = async () => {
     try {
       const response = await api.get('/products/');
@@ -172,10 +236,18 @@ const Returns = () => {
       return;
     }
     if (formData.sale) {
-      const selectedSale = sales.find(s => s.id === parseInt(formData.sale));
-      if (selectedSale && parseInt(formData.quantity) > selectedSale.quantity) {
-        showNotification(`Return quantity (${formData.quantity}) cannot exceed the original sale quantity (${selectedSale.quantity}).`, 'error');
-        return;
+      const selectedSale = sales.find((s) => s.id === parseInt(formData.sale, 10));
+      if (selectedSale) {
+        const rem = getRemainingReturnQtyForSale(selectedSale);
+        const q = parseInt(formData.quantity, 10) || 0;
+        const used = qtyReturnedBySaleId.get(selectedSale.id) || 0;
+        if (q > rem) {
+          showNotification(
+            `Return quantity (${q}) exceeds what can still be returned on this sale (${rem} unit(s) left; ${used} already on return records).`,
+            'error'
+          );
+          return;
+        }
       }
     }
     try {
@@ -297,16 +369,19 @@ const Returns = () => {
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               {(() => {
-                const customerSales = formData.customer
-                  ? sales.filter(s => s.customer === parseInt(formData.customer))
-                  : sales;
-                const customerProductIds = new Set(customerSales.map(s => s.product).filter(Boolean));
+                const eligibleSales = sales.filter((s) => getRemainingReturnQtyForSale(s) > 0);
+                const customerEligibleSales = formData.customer
+                  ? eligibleSales.filter((s) => s.customer === parseInt(formData.customer, 10))
+                  : eligibleSales;
+                const customerProductIds = new Set(customerEligibleSales.map((s) => s.product).filter(Boolean));
                 const availableProducts = formData.customer
-                  ? products.filter(p => customerProductIds.has(p.id))
-                  : products;
-                const availableCategories = [...new Set(availableProducts.map(p => p.category).filter(Boolean))].sort();
+                  ? products.filter((p) => customerProductIds.has(p.id))
+                  : products.filter((p) => eligibleSales.some((s) => s.product === p.id));
 
-                return (<>
+                const availableCategories = [...new Set(availableProducts.map((p) => p.category).filter(Boolean))].sort();
+
+                return (
+                  <>
                   <div className="form-group">
                     <label>Customer (Optional)</label>
                     <select
@@ -352,22 +427,20 @@ const Returns = () => {
                           </option>
                         ))}
                     </select>
-                    {formData.customer && (
+                    {!formData.customer ? (
+                      <small style={{ color: '#718096', marginTop: '4px', display: 'block' }}>
+                        Only products from sales that still have returnable quantity (not fully covered by existing returns).
+                      </small>
+                    ) : (
                       <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
-                        Showing only products purchased by <strong>{customers.find(c => c.id === parseInt(formData.customer))?.name}</strong>
+                        Showing only products purchased by{' '}
+                        <strong>{customers.find((c) => c.id === parseInt(formData.customer, 10))?.name}</strong> that still have
+                        returnable quantity.
                       </small>
                     )}
                   </div>
-                </>);
-              })()}
-              {formData.product && (() => {
-                const cat = products.find(p => p.id === parseInt(formData.product))?.category;
-                return cat ? (
-                  <div className="form-group">
-                    <label>Category</label>
-                    <input type="text" value={cat} readOnly style={{ background: '#f5f5f5', color: '#666', cursor: 'default' }} />
-                  </div>
-                ) : null;
+                  </>
+                );
               })()}
               <div className="form-group">
                 <label>Sale (Optional)</label>
@@ -376,19 +449,12 @@ const Returns = () => {
                   onChange={(e) => setFormData({ ...formData, sale: e.target.value })}
                 >
                   <option value="">None</option>
-                  {sales
-                    .filter(s => {
-                      if (formData.customer && s.customer !== parseInt(formData.customer)) return false;
-                      if (formData.product && s.product !== parseInt(formData.product)) return false;
-                      if (formCategory && s.product_detail?.category !== formCategory) return false;
-                      return true;
-                    })
-                    .map((sale) => (
-                      <option key={sale.id} value={sale.id}>
-                        Sale #{sale.id} - {sale.product_detail?.brand} {sale.product_detail?.model}
-                        {sale.customer_detail?.name ? ` (${sale.customer_detail.name})` : ''}
-                      </option>
-                    ))}
+                  {newReturnEligibleSales.map((sale) => (
+                    <option key={sale.id} value={sale.id}>
+                      Sale #{sale.id} - {sale.product_detail?.brand} {sale.product_detail?.model}
+                      {sale.customer_detail?.name ? ` (${sale.customer_detail.name})` : ''}
+                    </option>
+                  ))}
                 </select>
                 {(formData.customer || formData.product) && (
                   <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
@@ -400,22 +466,49 @@ const Returns = () => {
                 )}
               </div>
               <div className="form-group">
+                <label>Sold price</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={soldPriceDisplay}
+                  placeholder="Select a sale to show unit price and line total."
+                  style={{
+                    backgroundColor: '#f5f5f5',
+                    cursor: 'not-allowed',
+                    color: soldPriceDisplay ? '#2c3e50' : '#888',
+                  }}
+                />
+              </div>
+              <div className="form-group">
                 <label>Quantity</label>
                 <input
                   type="number"
                   min="1"
-                  max={formData.sale ? (sales.find(s => s.id === parseInt(formData.sale))?.quantity || undefined) : undefined}
+                  max={
+                    formData.sale
+                      ? (() => {
+                          const s = sales.find((x) => x.id === parseInt(formData.sale, 10));
+                          const rem = s ? getRemainingReturnQtyForSale(s) : 0;
+                          return rem > 0 ? rem : undefined;
+                        })()
+                      : undefined
+                  }
                   value={formData.quantity}
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   required
                 />
                 {formData.sale && (() => {
-                  const selectedSale = sales.find(s => s.id === parseInt(formData.sale));
-                  return selectedSale ? (
+                  const selectedSale = sales.find((s) => s.id === parseInt(formData.sale, 10));
+                  if (!selectedSale) return null;
+                  const remaining = getRemainingReturnQtyForSale(selectedSale);
+                  const alreadyReturned = qtyReturnedBySaleId.get(selectedSale.id) || 0;
+                  return (
                     <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
-                      Original sale quantity: <strong>{selectedSale.quantity}</strong>
+                      Original sale qty: <strong>{selectedSale.quantity}</strong>
+                      {' · '}Already on return records: <strong>{alreadyReturned}</strong>
+                      {' · '}You can still return: <strong>{remaining}</strong>
                     </small>
-                  ) : null;
+                  );
                 })()}
               </div>
               <div className="form-group">
@@ -637,7 +730,6 @@ const Returns = () => {
               <th>ID</th>
               <th>Actions</th>
               <th>Category</th>
-              <th>Name</th>
               <th>Product</th>
               <th>Brand</th>
               <th>Model</th>
@@ -659,7 +751,7 @@ const Returns = () => {
           <tbody>
             {filteredReturns.length === 0 ? (
               <tr>
-                <td colSpan="20" style={{ textAlign: 'center' }}>
+                <td colSpan="19" style={{ textAlign: 'center' }}>
                   No returns found
                 </td>
               </tr>
@@ -678,7 +770,6 @@ const Returns = () => {
                     )}
                   </td>
                   <td>{returnItem.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>{returnItem.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
                     {returnItem.product_detail
                       ? `${returnItem.product_detail.brand} ${returnItem.product_detail.model}`
@@ -715,7 +806,7 @@ const Returns = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="12" style={{ textAlign: 'right' }}>
+              <td colSpan="11" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td style={{ fontWeight: 600 }}>{returnColumnTotals.quantity.toLocaleString()}</td>

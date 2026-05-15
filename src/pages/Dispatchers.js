@@ -227,15 +227,11 @@ const Dispatchers = () => {
 
   const handleDispatcherSubmit = async (e) => {
     e.preventDefault();
-    if (!String(formData.notes || '').trim()) {
-      alert('Please enter notes.');
-      return;
-    }
     try {
       const payload = {
         name: formData.name,
         telephone: formData.telephone || '',
-        notes: String(formData.notes).trim(),
+        notes: String(formData.notes || '').trim(),
         is_active: formData.is_active,
       };
       if (formData.id) {
@@ -415,12 +411,14 @@ const Dispatchers = () => {
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes *</label>
+                <label>
+                  Notes{' '}
+                  <span style={{ fontWeight: 400, color: '#718096' }}>(optional)</span>
+                </label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows={3}
-                  required
                 />
               </div>
               <div className="form-group">

@@ -36,10 +36,6 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         );
         return;
       }
-      if (meta.needs && !paymentFormData.balance_shortfall_type) {
-        showNotification('Select Discount or On credit for the remaining balance.', 'error');
-        return;
-      }
 
       if (paymentFormData.dispatch_payment_needed) {
         const dAmt = parseFloat(String(paymentFormData.dispatch_payment_amount).replace(',', '.')) || 0;
@@ -49,12 +45,33 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         }
       }
 
-      if (meta.needs && !String(paymentFormData.completion_notes || '').trim()) {
+      if (
+        meta.needs &&
+        paymentFormData.balance_shortfall_type !== 'discount'
+      ) {
         showNotification(
-          'Please enter notes when the payment is less than the amount due (discount or on credit).',
+          'Payment is below the amount due. Select Discount to record the remainder, or collect more.',
           'error'
         );
         return;
+      }
+
+      if (meta.needs && !String(paymentFormData.completion_notes || '').trim()) {
+        showNotification(
+          'Please enter notes when the payment is less than the amount due (the gap is booked as a discount).',
+          'error'
+        );
+        return;
+      }
+
+      if (meta.hasOverpayment && meta.due != null && meta.overpaymentAmount != null) {
+        const msg = [
+          `Payment entered is higher than amount due.`,
+          `Due: ${meta.due.toFixed(2)} ${meta.sc} · Entered: ${meta.paid.toFixed(2)} ${meta.sc} · Excess: ${meta.overpaymentAmount.toFixed(2)} ${meta.sc}.`,
+          `The extra amount will still be booked as collected sale payment.`,
+          `Continue?`,
+        ].join('\n\n');
+        if (!window.confirm(msg)) return;
       }
 
       const requestData = buildCompleteSaleRequest(paymentFormData, meta);
@@ -133,73 +150,24 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
             </div>
           )}
           {shortfallMeta.needs && (
-            <div
-              className="form-group"
-              style={{
-                gridColumn: '1 / -1',
-                alignItems: 'flex-start',
-                maxWidth: '100%',
-              }}
-            >
-              <div
-                style={{
-                  color: '#2c3e50',
-                  fontWeight: 500,
-                  fontSize: 14,
-                  marginBottom: 4,
-                }}
-              >
-                Remainder {shortfallMeta.short != null ? shortfallMeta.short.toFixed(2) : ''} {shortfallMeta.sc}:
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                }}
-              >
-                <label
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    width: 'auto',
-                    maxWidth: '100%',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="sf"
-                    checked={paymentFormData.balance_shortfall_type === 'discount'}
-                    onChange={() =>
-                      setPaymentFormData({ ...paymentFormData, balance_shortfall_type: 'discount' })
-                    }
-                  />
-                  <span>Discount</span>
-                </label>
-                <label
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    cursor: 'pointer',
-                    width: 'auto',
-                    maxWidth: '100%',
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="sf"
-                    checked={paymentFormData.balance_shortfall_type === 'on_credit'}
-                    onChange={() =>
-                      setPaymentFormData({ ...paymentFormData, balance_shortfall_type: 'on_credit' })
-                    }
-                  />
-                  <span>On credit</span>
-                </label>
-              </div>
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <p style={{ margin: '0 0 10px 0', fontSize: '0.9em', color: '#555', lineHeight: 1.45 }}>
+                Payment is below the amount due. To complete, choose{' '}
+                <strong>Discount</strong> so the unpaid remainder{' '}
+                {shortfallMeta.short != null ? `(${shortfallMeta.short.toFixed(2)} ${shortfallMeta.sc}) ` : ''}
+                is recorded as a discount, or increase the payment.
+              </p>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="sale_complete_shortfall"
+                  checked={paymentFormData.balance_shortfall_type === 'discount'}
+                  onChange={() =>
+                    setPaymentFormData({ ...paymentFormData, balance_shortfall_type: 'discount' })
+                  }
+                />
+                <span>Discount (record remainder as discount)</span>
+              </label>
             </div>
           )}
 
@@ -254,7 +222,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
               </small>
             ) : (
               <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
-                Required when selecting discount or on credit for the unpaid remainder.
+                Required when payment is less than the amount due (remainder is a discount).
               </small>
             )}
           </div>

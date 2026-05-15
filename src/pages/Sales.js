@@ -1,9 +1,27 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
-import { productSalePickerLabel } from '../utils/productCost';
 import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat';
 import SaleCompletePayForm from '../components/SaleCompletePayForm';
+import ProductSearchableSelect from '../components/ProductSearchableSelect';
 import './TablePage.css';
+
+/** Same shortfall rules as Complete & Pay — reserved balance uses total_amount − deposit. */
+function computeReservedCompletionShortfall(sale, uzsStr, usdStr) {
+  if (!sale) return { needsDiscountChoice: false, mixed: false };
+  const deposit = sale.deposit_received ? parseFloat(sale.deposit_amount || 0) : 0;
+  const due = parseFloat(sale.total_amount || 0) - deposit;
+  const uzsT = parseFloat(uzsStr) || 0;
+  const usdT = parseFloat(usdStr) || 0;
+  const sc = sale.sale_currency || 'USD';
+  if (uzsT > 0 && usdT > 0) {
+    return { needsDiscountChoice: false, mixed: true, due, sc };
+  }
+  const paid = sc === 'USD' ? usdT : uzsT;
+  const short = due - paid;
+  const needsDiscountChoice =
+    short > 0.005 && ((sc === 'USD' && uzsT === 0) || (sc === 'UZS' && usdT === 0));
+  return { needsDiscountChoice, mixed: false, due, short, sc, paid };
+}
 
 // ----- PackageLinesSelector: compact multi-package row editor -----
 function PackageLinesSelector({ lines, onChange, packages: pkgList }) {
@@ -107,6 +125,7 @@ const Sales = () => {
     size: '',
     color: '',
     status: '',
+    sale_type: '',
     year: '',
     month: '',
   });
@@ -266,6 +285,9 @@ const Sales = () => {
     if (filters.status) {
       filtered = filtered.filter(sale => sale.status === filters.status);
     }
+    if (filters.sale_type) {
+      filtered = filtered.filter((sale) => sale.sale_type === filters.sale_type);
+    }
     if (filters.year) {
       filtered = filtered.filter(sale => {
         const saleYear = new Date(sale.sale_date).getFullYear();
@@ -278,7 +300,17 @@ const Sales = () => {
         return saleMonth.toString() === filters.month;
       });
     }
-    
+
+    // Open / actionable rows first so completed sales do not bury work in progress
+    filtered = [...filtered].sort((a, b) => {
+      const aDone = a.status === 'completed' ? 1 : 0;
+      const bDone = b.status === 'completed' ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      const ta = new Date(a.sale_date).getTime() || 0;
+      const tb = new Date(b.sale_date).getTime() || 0;
+      return tb - ta;
+    });
+
     setFilteredSales(filtered);
   };
 
@@ -310,6 +342,66 @@ const Sales = () => {
     return { quantity, totalAmount, totalAmountCurrency, uzs, usd };
   }, [filteredSales]);
 
+  const productIdsWithPositiveInventory = useMemo(() => {
+    const ids = new Set();
+    for (const item of inventory) {
+      if (item.status === 'in_inventory' && Number(item.quantity) > 0) {
+        ids.add(item.product);
+      }
+    }
+    return ids;
+  }, [inventory]);
+
+  const productsAvailableForSale = useMemo(
+    () => products.filter((p) => productIdsWithPositiveInventory.has(p.id)),
+    [products, productIdsWithPositiveInventory]
+  );
+
+  const newSaleProductsForPicker = useMemo(
+    () =>
+      productsAvailableForSale
+        .filter((p) => !formCategory || p.category === formCategory)
+        .slice()
+        .sort((a, b) => b.id - a.id),
+    [productsAvailableForSale, formCategory]
+  );
+
+  const batchProductsForPicker = useMemo(
+    () =>
+      productsAvailableForSale
+        .filter((p) => !batchFormCategory || p.category === batchFormCategory)
+        .slice()
+        .sort((a, b) => b.id - a.id),
+    [productsAvailableForSale, batchFormCategory]
+  );
+
+  useEffect(() => {
+    if (!showForm || !formData.product) return;
+    const id = parseInt(formData.product, 10);
+    if (Number.isNaN(id)) return;
+    if (!newSaleProductsForPicker.some((p) => p.id === id)) {
+      setFormData((prev) => ({ ...prev, product: '', selling_price: '' }));
+    }
+  }, [showForm, formData.product, newSaleProductsForPicker]);
+
+  useEffect(() => {
+    if (!showBatchForm) return;
+    setBatchLines((lines) => {
+      const allowed = new Set(batchProductsForPicker.map((p) => p.id));
+      let changed = false;
+      const next = lines.map((line) => {
+        if (!line.product) return line;
+        const id = parseInt(line.product, 10);
+        if (Number.isNaN(id) || !allowed.has(id)) {
+          changed = true;
+          return { ...line, product: '', selling_price: '', packageLines: EMPTY_PKG_LINES() };
+        }
+        return line;
+      });
+      return changed ? next : lines;
+    });
+  }, [showBatchForm, batchProductsForPicker]);
+
   const fetchProducts = async () => {
     try {
       const response = await api.get('/products/');
@@ -332,6 +424,10 @@ const Sales = () => {
     e.preventDefault();
     if (!formData.customer) {
       showNotification('Please select a customer before creating a sale.', 'error');
+      return;
+    }
+    if (!formData.product) {
+      showNotification('Please select a product.', 'error');
       return;
     }
     try {
@@ -564,6 +660,7 @@ const Sales = () => {
     saleId: null,
     uzs: '',
     usd: '',
+    balance_shortfall_type: '',
   });
   
   /** When set, shows shared Complete & Pay form (same flow as Dispatchers tab). */
@@ -634,11 +731,7 @@ const Sales = () => {
 
   const handleDispatchSubmit = async (e) => {
     e.preventDefault();
-    if (!String(dispatchFormData.dispatch_notes || '').trim()) {
-      showNotification('Please enter notes for the status change and dispatch.', 'error');
-      return;
-    }
-    const dn = String(dispatchFormData.dispatch_notes).trim();
+    const dn = String(dispatchFormData.dispatch_notes || '').trim();
     try {
       if (dispatchFormData.dispatch_type === 'dostavshik') {
         if (!dispatchFormData.dispatcher) {
@@ -652,7 +745,7 @@ const Sales = () => {
       }
 
       // First update sale status to dispatched
-      await api.post(`/sales/${dispatchFormData.saleId}/update_status/`, { status: 'dispatched', notes: dn });
+      await api.post(`/sales/${dispatchFormData.saleId}/update_status/`, { status: 'dispatched', notes: dn || '' });
       
       // Then create dispatch with delivery cost
       const sale = sales.find(s => s.id === dispatchFormData.saleId);
@@ -665,7 +758,7 @@ const Sales = () => {
           delivery_cost_uzs: dispatchFormData.currency === 'UZS' ? dispatchFormData.delivery_cost : 0,
           tracking_number: dispatchFormData.tracking_number || '',
           status: 'dispatched',
-          logistics_notes: dn,
+          logistics_notes: dn || '',
         };
         if (dispatchFormData.dispatch_type === 'dostavshik' && dispatchFormData.dispatcher) {
           dispatchData.dispatcher = parseInt(dispatchFormData.dispatcher, 10);
@@ -844,6 +937,7 @@ const Sales = () => {
         saleId: saleId,
         uzs: remUzs,
         usd: remUsd,
+        balance_shortfall_type: '',
       });
       setShowSellReservedForm(true);
     }
@@ -852,12 +946,36 @@ const Sales = () => {
   const handleSellReservedSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.post(`/sales/${sellReservedData.saleId}/sell_reserved/`, {
+      const sale = sales.find((s) => s.id === sellReservedData.saleId);
+      const meta = computeReservedCompletionShortfall(
+        sale,
+        sellReservedData.uzs,
+        sellReservedData.usd
+      );
+      if (meta.mixed) {
+        showNotification(
+          'Pay in one currency only (UZS or USD) when the amount is less than the total, matching the sale list price currency.',
+          'error'
+        );
+        return;
+      }
+      if (meta.needsDiscountChoice && sellReservedData.balance_shortfall_type !== 'discount') {
+        showNotification(
+          'Payment is below the balance due. Select Discount to record the remainder, or collect more.',
+          'error'
+        );
+        return;
+      }
+      const payload = {
         uzs: parseFloat(sellReservedData.uzs) || 0,
         usd: parseFloat(sellReservedData.usd) || 0,
-      });
+      };
+      if (meta.needsDiscountChoice) {
+        payload.balance_shortfall_type = 'discount';
+      }
+      await api.post(`/sales/${sellReservedData.saleId}/sell_reserved/`, payload);
       setShowSellReservedForm(false);
-      setSellReservedData({ saleId: null, uzs: '', usd: '' });
+      setSellReservedData({ saleId: null, uzs: '', usd: '', balance_shortfall_type: '' });
       fetchSales();
       showNotification('Reserved sale completed successfully!', 'success');
     } catch (error) {
@@ -865,6 +983,15 @@ const Sales = () => {
       showNotification(error.response?.data?.error || 'Error completing reserved sale', 'error');
     }
   };
+
+  const sellReservedSaleForForm = showSellReservedForm
+    ? sales.find((s) => s.id === sellReservedData.saleId)
+    : null;
+  const sellReservedPayMeta = computeReservedCompletionShortfall(
+    sellReservedSaleForForm,
+    sellReservedData.uzs,
+    sellReservedData.usd
+  );
 
   if (loading) {
     return <div className="page-container">Loading...</div>;
@@ -1043,14 +1170,12 @@ const Sales = () => {
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes *</label>
+                <label>Notes <span style={{ fontWeight: 400, color: '#718096' }}>(optional)</span></label>
                 <textarea
                   rows={3}
                   value={dispatchFormData.dispatch_notes}
                   onChange={(e) => setDispatchFormData({ ...dispatchFormData, dispatch_notes: e.target.value })}
-                  required
                 />
-                <small style={{ color: '#666' }}>Required for the sale status change and for dispatch logistics notes.</small>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
@@ -1304,6 +1429,28 @@ const Sales = () => {
                   value={sellReservedData.usd ?? ''}
                   onChange={(e) => setSellReservedData({ ...sellReservedData, usd: e.target.value })} />
               </div>
+              {sellReservedPayMeta.needsDiscountChoice && (
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '0.9em', color: '#555', lineHeight: 1.45 }}>
+                    Payment is below the balance due. Select <strong>Discount</strong> to record the remainder (
+                    {sellReservedPayMeta.short != null
+                      ? `${sellReservedPayMeta.short.toFixed(2)} ${sellReservedPayMeta.sc}`
+                      : sellReservedPayMeta.sc}
+                    ), or collect more.
+                  </p>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="sell_reserved_shortfall"
+                      checked={sellReservedData.balance_shortfall_type === 'discount'}
+                      onChange={() =>
+                        setSellReservedData({ ...sellReservedData, balance_shortfall_type: 'discount' })
+                      }
+                    />
+                    <span>Discount (record remainder as discount)</span>
+                  </label>
+                </div>
+              )}
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -1314,7 +1461,7 @@ const Sales = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowSellReservedForm(false);
-                  setSellReservedData({ saleId: null, uzs: '', usd: '' });
+                  setSellReservedData({ saleId: null, uzs: '', usd: '', balance_shortfall_type: '' });
                 }}
               >
                 Cancel
@@ -1333,21 +1480,24 @@ const Sales = () => {
                 <label>Filter by category</label>
                 <select
                   value={formCategory}
-                  onChange={(e) => { setFormCategory(e.target.value); setFormData({ ...formData, product: '', selling_price: '' }); }}
+                  onChange={(e) => {
+                    setFormCategory(e.target.value);
+                    setFormData({ ...formData, product: '', selling_price: '' });
+                  }}
                 >
                   <option value="">All Categories</option>
-                  {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
+                  {[...new Set(productsAvailableForSale.map((p) => p.category).filter(Boolean))].sort().map((cat) => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
                 <label>Product</label>
-                <select
+                <ProductSearchableSelect
+                  products={newSaleProductsForPicker}
                   value={formData.product}
-                  onChange={(e) => {
-                    const selectedProductId = e.target.value;
-                    const selectedProduct = products.find((p) => p.id === parseInt(selectedProductId, 10));
+                  onChange={(id) => {
+                    const selectedProduct = products.find((p) => p.id === parseInt(id, 10));
                     const sp =
                       selectedProduct &&
                       selectedProduct.selling_price != null &&
@@ -1356,23 +1506,18 @@ const Sales = () => {
                         : '';
                     setFormData({
                       ...formData,
-                      product: selectedProductId,
+                      product: id,
                       selling_price: selectedProduct ? sp : formData.selling_price,
                     });
                   }}
-                  required
-                >
-                  <option value="">Select a product</option>
-                  {products
-                    .filter(p => !formCategory || p.category === formCategory)
-                    .slice()
-                    .sort((a, b) => b.id - a.id)
-                    .map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {productSalePickerLabel(product)}
-                      </option>
-                    ))}
-                </select>
+                  placeholder="Select a product…"
+                  aria-label="Product"
+                  emptyHint={
+                    productsAvailableForSale.length === 0 ? (
+                      <span style={{ color: '#c62828' }}>Add or receive stock first.</span>
+                    ) : null
+                  }
+                />
               </div>
               <div className="form-group">
                 <label>In Inventory</label>
@@ -1569,7 +1714,7 @@ const Sales = () => {
                   onChange={(e) => setBatchFormCategory(e.target.value)}
                 >
                   <option value="">All categories</option>
-                  {[...new Set(products.map((p) => p.category).filter(Boolean))].sort().map((cat) => (
+                  {[...new Set(productsAvailableForSale.map((p) => p.category).filter(Boolean))].sort().map((cat) => (
                     <option key={cat} value={cat}>
                       {cat}
                     </option>
@@ -1643,7 +1788,21 @@ const Sales = () => {
                   </colgroup>
                   <thead>
                     <tr>
-                      <th>Product</th>
+                      <th scope="col">
+                        Product
+                        <span
+                          className="batch-sale-lines__empty"
+                          style={{
+                            fontWeight: 400,
+                            fontSize: 11,
+                            display: 'block',
+                            lineHeight: 1.3,
+                            marginTop: 4,
+                          }}
+                        >
+                          In-stock only — search inside picker
+                        </span>
+                      </th>
                       <th className="batch-sale-lines__th--num" title="In inventory">
                         Stock
                       </th>
@@ -1664,22 +1823,14 @@ const Sales = () => {
                       return (
                         <tr key={line.key}>
                           <td>
-                            <select
-                              className="batch-sale-lines__control"
+                            <ProductSearchableSelect
+                              products={batchProductsForPicker}
                               value={line.product ?? ''}
-                              onChange={(e) => updateBatchLine(line.key, 'product', e.target.value)}
+                              onChange={(id) => updateBatchLine(line.key, 'product', id)}
+                              triggerClassName="batch-sale-lines__control"
+                              placeholder="— Product —"
                               aria-label="Product"
-                            >
-                              <option value="">— Product —</option>
-                              {products
-                                .filter((p) => !batchFormCategory || p.category === batchFormCategory)
-                                .sort((a, b) => b.id - a.id)
-                                .map((p) => (
-                                  <option key={p.id} value={p.id}>
-                                    {productSalePickerLabel(p)}
-                                  </option>
-                                ))}
-                            </select>
+                            />
                           </td>
                           <td className="batch-sale-lines__td--num">
                             {pid ? stock : <span className="batch-sale-lines__empty" aria-hidden>—</span>}
@@ -1908,6 +2059,19 @@ const Sales = () => {
             </select>
           </div>
           <div className="filter-field">
+            <label>Sale type</label>
+            <select
+              value={filters.sale_type}
+              onChange={(e) => setFilters({ ...filters, sale_type: e.target.value })}
+            >
+              <option value="">All sale types</option>
+              <option value="bought_from_shop">Shop</option>
+              <option value="delivery">Delivery</option>
+              <option value="reserved">Reserved</option>
+              <option value="from_order">From order</option>
+            </select>
+          </div>
+          <div className="filter-field">
             <label>Year</label>
             <select
               value={filters.year}
@@ -1949,7 +2113,19 @@ const Sales = () => {
             <button
               type="button"
               className="btn-edit"
-              onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', status: '', year: '', month: '' })}
+              onClick={() =>
+                setFilters({
+                  category: '',
+                  brand: '',
+                  model: '',
+                  size: '',
+                  color: '',
+                  status: '',
+                  sale_type: '',
+                  year: '',
+                  month: '',
+                })
+              }
             >
               Clear all
             </button>
@@ -1966,7 +2142,6 @@ const Sales = () => {
               <th>ID</th>
               <th>Actions</th>
               <th>Category</th>
-              <th>Name</th>
               <th>Product</th>
               <th>Brand</th>
               <th>Model</th>
@@ -1984,13 +2159,14 @@ const Sales = () => {
               <th>Phone</th>
               <th>Salesman</th>
               <th>Status</th>
+              <th>Dispatcher</th>
               <th>Date</th>
             </tr>
           </thead>
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan="23" style={{ textAlign: 'center' }}>
+                <td colSpan="22" style={{ textAlign: 'center' }}>
                   No sales found
                 </td>
               </tr>
@@ -2073,7 +2249,6 @@ const Sales = () => {
                     )}
                   </td>
                   <td>{sale.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>{sale.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
                     {sale.product_detail
                       ? `${sale.product_detail.brand} ${sale.product_detail.model}`
@@ -2138,6 +2313,20 @@ const Sales = () => {
                       {sale.status}
                     </span>
                   </td>
+                  <td>
+                    {(() => {
+                      const d = sale.dispatch_info;
+                      if (!d) return <span style={{ color: '#bbb' }}>—</span>;
+                      if (d.dispatch_type === 'bts') {
+                        return d.dispatcher_name || 'BTS';
+                      }
+                      return d.dispatcher_name ? (
+                        d.dispatcher_name
+                      ) : (
+                        <span style={{ color: '#bbb' }}>—</span>
+                      );
+                    })()}
+                  </td>
                   <td>{new Date(sale.sale_date).toLocaleString()}</td>
                 </tr>
               ))
@@ -2145,7 +2334,7 @@ const Sales = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="11" style={{ textAlign: 'right' }}>
+              <td colSpan="10" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td style={{ fontWeight: 600 }}>{salesColumnTotals.quantity.toLocaleString()}</td>
@@ -2167,7 +2356,7 @@ const Sales = () => {
               <td style={{ fontWeight: 600 }}>
                 {salesColumnTotals.usd > 0 ? `$${salesColumnTotals.usd.toFixed(2)}` : '—'}
               </td>
-              <td colSpan="4">—</td>
+              <td colSpan="6">—</td>
             </tr>
           </tfoot>
         </table>

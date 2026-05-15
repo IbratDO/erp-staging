@@ -63,26 +63,59 @@ export function buildPaymentFormDataFromSale(sale) {
 }
 
 /**
- * Shortfall / discount / on_credit meta for the payment form.
+ * Shortfall: underpayment may be completed as discount only after the user selects it (no on credit).
  */
 export function computePaymentShortfallMeta(sale, paymentFormData) {
   if (!sale) {
-    return { needs: false, mixed: false, short: 0, due: null, paid: null, sc: 'USD' };
+    return {
+      needs: false,
+      mixed: false,
+      short: 0,
+      due: null,
+      paid: null,
+      sc: 'USD',
+      hasOverpayment: false,
+      overpaymentAmount: null,
+    };
   }
   const advance = parseFloat(sale.advance_payment_received) || 0;
   const due = parseFloat(sale.selling_price) * (sale.quantity || 0) - advance;
   const uzsT = parseFloat(paymentFormData.uzs) || 0;
   const usdT = parseFloat(paymentFormData.usd) || 0;
   const sc = sale.sale_currency || 'USD';
+  const sameSaleCurrencyBuckets =
+    (sc === 'USD' && uzsT === 0) || (sc === 'UZS' && usdT === 0);
   if (uzsT > 0 && usdT > 0) {
     const paid = sc === 'USD' ? usdT : uzsT;
-    return { needs: false, mixed: true, short: due - paid, sc, due, paid };
+    return {
+      needs: false,
+      mixed: true,
+      short: due - paid,
+      sc,
+      due,
+      paid,
+      hasOverpayment: false,
+      overpaymentAmount: null,
+    };
   }
   const paid = sc === 'USD' ? usdT : uzsT;
   const short = due - paid;
   const needs =
     short > 0.01 && ((sc === 'USD' && uzsT === 0) || (sc === 'UZS' && usdT === 0));
-  return { needs, mixed: false, short, sc, due, paid };
+  const overpaymentAmount =
+    sameSaleCurrencyBuckets && paid > due + 0.005 ? paid - due : null;
+  const hasOverpayment =
+    !!overpaymentAmount && overpaymentAmount > 0.005;
+  return {
+    needs,
+    mixed: false,
+    short,
+    sc,
+    due,
+    paid,
+    hasOverpayment,
+    overpaymentAmount,
+  };
 }
 
 export function buildCompleteSaleRequest(paymentFormData, meta) {
@@ -92,8 +125,8 @@ export function buildCompleteSaleRequest(paymentFormData, meta) {
     uzs: parseFloat(paymentFormData.uzs) || 0,
     usd: parseFloat(paymentFormData.usd) || 0,
   };
-  if (meta.needs) {
-    requestData.balance_shortfall_type = paymentFormData.balance_shortfall_type;
+  if (meta.needs && paymentFormData.balance_shortfall_type === 'discount') {
+    requestData.balance_shortfall_type = 'discount';
   }
   if (paymentFormData.dispatch_payment_needed) {
     const dAmt = parseFloat(String(paymentFormData.dispatch_payment_amount).replace(',', '.')) || 0;

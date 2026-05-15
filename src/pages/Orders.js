@@ -206,7 +206,8 @@ const Orders = () => {
   const [moveToInventoryData, setMoveToInventoryData] = useState({
     orderId: null,
     return_advance: false,
-    return_payment_type: 'cash',
+    /** Which cash ledger leg to debit when refunding advance (UZS vs USD buckets). */
+    return_payment_currency: 'USD',
   });
   
   const [customers, setCustomers] = useState([]);
@@ -476,6 +477,14 @@ const Orders = () => {
       if (!formData.supplier_country.trim()) {
         showNotification('Please select or enter a Supplier Country.', 'error');
         return;
+      }
+
+      if (formData.order_type === 'on_demand') {
+        const cId = parseInt(formData.customer, 10);
+        if (!formData.customer || Number.isNaN(cId)) {
+          showNotification('Select a customer for on-demand orders.', 'error');
+          return;
+        }
       }
 
       const usdS = numOrZero(formData.selling_usd_per_unit);
@@ -812,24 +821,33 @@ const Orders = () => {
     }
     
     if (order && order.advance_payment_amount && order.advance_payment_amount > 0) {
+      const advCur = order.advance_payment_currency
+        ? String(order.advance_payment_currency).toUpperCase()
+        : 'USD';
       setMoveToInventoryData({
         orderId: orderId,
         return_advance: false,
+        return_payment_currency: advCur === 'UZS' ? 'UZS' : 'USD',
       });
       setShowMoveToInventoryForm(true);
       setTimeout(() => moveToInventoryFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
     } else {
       // No advance payment, just move to inventory
-      await moveToInventoryFromOrder(orderId, false, null);
+      await moveToInventoryFromOrder(orderId, { return_advance: false });
     }
   };
 
-  const moveToInventoryFromOrder = async (orderId, returnAdvance) => {
+  const moveToInventoryFromOrder = async (orderId, options = {}) => {
+    const returnAdvance = !!options.return_advance;
     try {
       const payload = { return_advance: returnAdvance };
+      if (returnAdvance) {
+        const ccy = String(options.return_payment_currency || 'USD').toUpperCase();
+        payload.return_payment_currency = ccy === 'UZS' ? 'UZS' : 'USD';
+      }
       await api.post(`/orders/${orderId}/move_to_inventory_from_order/`, payload);
       setShowMoveToInventoryForm(false);
-      setMoveToInventoryData({ orderId: null, return_advance: false });
+      setMoveToInventoryData({ orderId: null, return_advance: false, return_payment_currency: 'USD' });
       await fetchOrders();
       showNotification('Order moved to inventory successfully!', 'success');
     } catch (error) {
@@ -840,7 +858,10 @@ const Orders = () => {
 
   const handleMoveToInventorySubmit = async (e) => {
     e.preventDefault();
-    await moveToInventoryFromOrder(moveToInventoryData.orderId, moveToInventoryData.return_advance);
+    await moveToInventoryFromOrder(moveToInventoryData.orderId, {
+      return_advance: moveToInventoryData.return_advance,
+      return_payment_currency: moveToInventoryData.return_payment_currency,
+    });
   };
 
   if (loading) {
@@ -955,6 +976,26 @@ const Orders = () => {
           <h2>Move to Inventory - Order #{moveToInventoryData.orderId}</h2>
           <form onSubmit={handleMoveToInventorySubmit}>
             <div className="form-grid">
+              {(() => {
+                const invOrder = orders.find((o) => o.id === moveToInventoryData.orderId);
+                if (invOrder && invOrder.advance_payment_amount > 0) {
+                  return (
+                    <p style={{ gridColumn: '1 / -1', color: '#555', margin: 0, fontSize: '0.92em' }}>
+                      Advance on this order:{' '}
+                      <strong>
+                        {formatDisplayAmount(
+                          invOrder.advance_payment_amount,
+                          invOrder.advance_payment_currency || 'USD',
+                        )}
+                      </strong>
+                      {invOrder.advance_payment_currency
+                        ? ` (recorded as ${String(invOrder.advance_payment_currency).toUpperCase()})`
+                        : ''}
+                    </p>
+                  );
+                }
+                return null;
+              })()}
               <div className="form-group">
                 <label>
                   <input
@@ -965,6 +1006,40 @@ const Orders = () => {
                   {' '}Return advance payment to customer
                 </label>
               </div>
+              {moveToInventoryData.return_advance && (
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <label>Return advance from</label>
+                  <p style={{ margin: '0 0 8px', fontSize: '0.85em', color: '#666' }}>
+                    Select which currency cash balance to deduct (same amount as the advance on the order).
+                  </p>
+                  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="return_payment_currency"
+                        value="USD"
+                        checked={moveToInventoryData.return_payment_currency === 'USD'}
+                        onChange={() =>
+                          setMoveToInventoryData({ ...moveToInventoryData, return_payment_currency: 'USD' })
+                        }
+                      />
+                      USD
+                    </label>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="return_payment_currency"
+                        value="UZS"
+                        checked={moveToInventoryData.return_payment_currency === 'UZS'}
+                        onChange={() =>
+                          setMoveToInventoryData({ ...moveToInventoryData, return_payment_currency: 'UZS' })
+                        }
+                      />
+                      UZS
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -975,7 +1050,7 @@ const Orders = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowMoveToInventoryForm(false);
-                  setMoveToInventoryData({ orderId: null, return_advance: false });
+                  setMoveToInventoryData({ orderId: null, return_advance: false, return_payment_currency: 'USD' });
                 }}
               >
                 Cancel
@@ -1039,7 +1114,8 @@ const Orders = () => {
         <div className="form-card">
           <h2>New Order</h2>
           <form onSubmit={handleSubmit}>
-            <div className="form-grid">
+            <div className="orders-new-order-form">
+              <div className="orders-new-order-row orders-new-order-row--5">
               <div className="form-group">
                 <label>Order Type</label>
                 <select
@@ -1290,7 +1366,10 @@ const Orders = () => {
                   </div>
                 )}
               </div>
-              <div className="form-group">
+              </div>
+
+              <div className="orders-new-order-row orders-new-order-row--qty-prices">
+              <div className="form-group orders-new-order-field--qty">
                 <label>Ordered Quantity</label>
                 <input
                   type="number"
@@ -1300,86 +1379,97 @@ const Orders = () => {
                   required
                 />
               </div>
-              <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                <div style={{ display: 'flex', gap: '20px' }}>
-                  {/* Selling price per unit */}
-                  <div style={{ flex: 1 }}>
-                    <label style={{ marginBottom: '6px', display: 'block' }}>
-                      Selling price per unit (USD) <span style={{ color: '#e53e3e', fontWeight: 400 }}>*</span>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="USD / unit"
-                      value={formData.selling_usd_per_unit}
-                      onChange={(e) => setFormData({ ...formData, selling_usd_per_unit: e.target.value })}
-                      style={{ width: '100%' }}
-                    />
-                    {numOrZero(formData.selling_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
-                      <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
-                        = ${(parseFloat(formData.selling_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} total
-                      </div>
-                    )}
-                  </div>
-                  {/* Cost per unit */}
-                  <div style={{ flex: 1 }}>
-                    <label style={{ marginBottom: '6px', display: 'block' }}>
-                      Cost per unit (USD){' '}
-                      <span style={{ color: '#999', fontWeight: 400, fontSize: '11px' }}>optional</span>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="USD / unit"
-                      value={formData.cost_usd_per_unit}
-                      onChange={(e) => setFormData({ ...formData, cost_usd_per_unit: e.target.value })}
-                      style={{ width: '100%' }}
-                    />
-                    {numOrZero(formData.cost_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
-                      <div style={{ fontSize: '11px', color: '#718096', marginTop: '3px' }}>
-                        = ${(parseFloat(formData.cost_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} total
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
               <div className="form-group">
                 <label>
+                  Selling price per unit (USD){' '}
+                  <span style={{ color: '#e53e3e', fontWeight: 400 }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="USD / unit"
+                  value={formData.selling_usd_per_unit}
+                  onChange={(e) => setFormData({ ...formData, selling_usd_per_unit: e.target.value })}
+                />
+                {numOrZero(formData.selling_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
+                  <span className="orders-field-hint">
+                    = ${(parseFloat(formData.selling_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} line total
+                  </span>
+                )}
+              </div>
+              <div className="form-group">
+                <label>Cost per unit (USD)</label>
+                <span className="orders-field-hint">
+                  {formData.order_type === 'on_demand'
+                    ? 'Leave blank if supplier cost is not confirmed yet; you can record it when paying the order.'
+                    : 'Optional until you have the supplier invoice; leave blank and pay later from the list.'}
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="USD / unit"
+                  value={formData.cost_usd_per_unit}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData((prev) => ({
+                      ...prev,
+                      cost_usd_per_unit: v,
+                      ...(numOrZero(v) <= 0 && prev.order_is_paid ? { order_is_paid: false } : {}),
+                    }));
+                  }}
+                />
+                {numOrZero(formData.cost_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
+                  <span className="orders-field-hint">
+                    = ${(parseFloat(formData.cost_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} line total
+                  </span>
+                )}
+              </div>
+              </div>
+
+              <div className="orders-new-order-row orders-new-order-row--payment-flags">
+              <div className="form-group orders-new-order-checkbox-row">
+                <label
+                  title={
+                    numOrZero(formData.cost_usd_per_unit)
+                      ? undefined
+                      : 'Enter a USD cost per unit above, or leave this unchecked and use Pay for the Order after you know the price.'
+                  }
+                >
                   <input
                     type="checkbox"
                     checked={formData.order_is_paid}
+                    disabled={!numOrZero(formData.cost_usd_per_unit)}
                     onChange={(e) => setFormData({ ...formData, order_is_paid: e.target.checked })}
                   />
-                  {' '}Order payment is already made <span style={{ color: '#666', fontWeight: 400 }}>(USD only)</span>
+                  Order payment is already made <span style={{ color: '#666', fontWeight: 400 }}>(USD only)</span>
                 </label>
               </div>
               {formData.order_is_paid && (
-                <>
-                  <div className="form-group">
-                    <label>Payment Currency</label>
-                    <select
-                      value={formData.order_payment_currency}
-                      onChange={(e) => setFormData({ ...formData, order_payment_currency: e.target.value })}
-                      required
-                    >
-                      <option value="USD">USD</option>
-                    </select>
-                  </div>
-                </>
+                <div className="form-group">
+                  <label>Payment Currency</label>
+                  <select
+                    value={formData.order_payment_currency}
+                    onChange={(e) => setFormData({ ...formData, order_payment_currency: e.target.value })}
+                    required
+                  >
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
               )}
-              {/* Customer and advance payment fields for on-demand orders */}
+              </div>
+
               {formData.order_type === 'on_demand' && (
-                <>
+              <div className="orders-new-order-row orders-new-order-row--on-demand">
                   <div className="form-group">
                     <label>Customer *</label>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
                       <select
                         value={formData.customer}
                         onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
-                        style={{ flex: 1 }}
-                        required
+                        style={{ flex: 1, minWidth: 0 }}
+                        required={formData.order_type === 'on_demand'}
                       >
                         <option value="">Select or add customer</option>
                         {customers.map((customer) => (
@@ -1392,36 +1482,34 @@ const Orders = () => {
                         type="button"
                         className="btn-edit"
                         onClick={() => setShowCustomerForm(true)}
-                        style={{ whiteSpace: 'nowrap' }}
+                        style={{ whiteSpace: 'nowrap', alignSelf: 'center' }}
                       >
                         + New
                       </button>
                     </div>
                   </div>
                   <div className="form-group">
-                    <label>Advance Payment Amount</label>
+                    <label>Advance payment amount</label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       value={formData.advance_payment_amount}
                       onChange={(e) => setFormData({ ...formData, advance_payment_amount: e.target.value })}
-                      placeholder="Enter advance payment if customer paid"
+                      placeholder="0 if none"
                     />
                   </div>
-                  {formData.advance_payment_amount && parseFloat(formData.advance_payment_amount) > 0 && (
-                    <div className="form-group">
-                      <label>Advance Payment Currency</label>
-                      <select
-                        value={formData.advance_payment_currency}
-                        onChange={(e) => setFormData({ ...formData, advance_payment_currency: e.target.value })}
-                      >
-                        <option value="USD">USD</option>
-                        <option value="UZS">UZS</option>
-                      </select>
-                    </div>
-                  )}
-                </>
+                  <div className="form-group">
+                    <label>Advance currency</label>
+                    <select
+                      value={formData.advance_payment_currency}
+                      onChange={(e) => setFormData({ ...formData, advance_payment_currency: e.target.value })}
+                    >
+                      <option value="USD">USD</option>
+                      <option value="UZS">UZS</option>
+                    </select>
+                  </div>
+              </div>
               )}
             </div>
             <div className="form-actions">
@@ -1682,7 +1770,6 @@ const Orders = () => {
               <th>ID</th>
               <th>Actions</th>
               <th>Category</th>
-              <th>Name</th>
               <th>Brand</th>
               <th>Model</th>
               <th>Size</th>
@@ -1706,7 +1793,7 @@ const Orders = () => {
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="22" style={{ textAlign: 'center' }}>
+                <td colSpan="21" style={{ textAlign: 'center' }}>
                   No orders found
                 </td>
               </tr>
@@ -1783,7 +1870,6 @@ const Orders = () => {
                     )}
                   </td>
                   <td>{order.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>{order.product_detail?.name || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>{order.product_detail?.brand || '-'}</td>
                   <td>{order.product_detail?.model || '-'}</td>
                   <td><strong>{order.product_detail?.size || '-'}</strong></td>
