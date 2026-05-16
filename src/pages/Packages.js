@@ -1,6 +1,39 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
+
+const PKG_STOCK_SORT = {
+  package_type: (r) => String(r.package_type ?? '').toLowerCase(),
+  quantity: (r) => Number(r.quantity) || 0,
+  cost_uzs_unit: (r) => parseFloat(r.cost_per_unit_uzs) || 0,
+  cost_usd_unit: (r) => parseFloat(r.cost_per_unit_usd) || 0,
+  total_uzs: (r) => (parseFloat(r.quantity) || 0) * (parseFloat(r.cost_per_unit_uzs) || 0),
+  total_usd: (r) => (parseFloat(r.quantity) || 0) * (parseFloat(r.cost_per_unit_usd) || 0),
+  updated_at: (r) => new Date(r.updated_at).getTime() || 0,
+};
+
+const PKG_HIST_SORT = {
+  id: (h) => Number(h.id) || 0,
+  package_type: (h) => String(h.package_detail?.package_type ?? h.package ?? '').toLowerCase(),
+  quantity_added: (h) => {
+    const qr = h.quantity_received != null ? parseFloat(h.quantity_received) : NaN;
+    const qa = parseFloat(h.quantity_added) || 0;
+    return Number.isFinite(qr) ? qr : qa;
+  },
+  cost_unit_key: (h) =>
+    (parseFloat(h.cost_per_unit_uzs) || 0) + (parseFloat(h.cost_per_unit_usd) || 0) * 1e9,
+  total_cost_key: (h) =>
+    (parseFloat(h.total_cost_uzs) || 0) + (parseFloat(h.total_cost_usd) || 0) * 1e9,
+  status: (h) => String(h.status ?? '').toLowerCase(),
+  uzs_paid: (h) =>
+    (parseFloat(h.payment_uzs_cash) || 0) + (parseFloat(h.payment_uzs_card) || 0),
+  usd_paid: (h) =>
+    (parseFloat(h.payment_usd_cash) || 0) + (parseFloat(h.payment_usd_card) || 0),
+  added_by: (h) => String(h.created_by_detail?.username ?? '').toLowerCase(),
+  date: (h) => new Date(h.created_at).getTime() || 0,
+};
 
 const defaultPaymentState = {
   payment_uzs: '',
@@ -259,6 +292,17 @@ const Packages = () => {
     }
   };
 
+  const pkgStockSort = useClientTableSort(PKG_STOCK_SORT);
+  const pkgHistSort = useClientTableSort(PKG_HIST_SORT);
+  const displayPackages = useMemo(
+    () => pkgStockSort.sortRows(packages),
+    [packages, pkgStockSort]
+  );
+  const displayPackageHistory = useMemo(
+    () => pkgHistSort.sortRows(packageHistory),
+    [packageHistory, pkgHistSort]
+  );
+
   if (loading) {
     return <div className="page-container">Loading...</div>;
   }
@@ -460,13 +504,27 @@ const Packages = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Package Type</th>
-              <th>Quantity</th>
-              <th>Cost / unit (UZS)</th>
-              <th>Cost / unit (USD)</th>
-              <th>Total (UZS)</th>
-              <th>Total (USD)</th>
-              <th>Updated</th>
+              <SortableTh columnId="package_type" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+                Package Type
+              </SortableTh>
+              <SortableTh columnId="quantity" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+                Quantity
+              </SortableTh>
+              <SortableTh columnId="cost_uzs_unit" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+                Cost / unit (UZS)
+              </SortableTh>
+              <SortableTh columnId="cost_usd_unit" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+                Cost / unit (USD)
+              </SortableTh>
+              <SortableTh columnId="total_uzs" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+                Total (UZS)
+              </SortableTh>
+              <SortableTh columnId="total_usd" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+                Total (USD)
+              </SortableTh>
+              <SortableTh columnId="updated_at" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+                Updated
+              </SortableTh>
               <th>Actions</th>
             </tr>
           </thead>
@@ -478,7 +536,7 @@ const Packages = () => {
                 </td>
               </tr>
             ) : (
-              packages.map((packageItem) => (
+              displayPackages.map((packageItem) => (
                 <tr key={packageItem.id}>
                   <td><strong>Package {packageItem.package_type}</strong></td>
                   <td>{packageItem.quantity}</td>
@@ -532,16 +590,36 @@ const Packages = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Package Type</th>
-              <th>Quantity Added</th>
-              <th>Cost / unit</th>
-              <th>Total cost</th>
-              <th>Status</th>
-              <th>UZS Paid</th>
-              <th>USD Paid</th>
-              <th>Added By</th>
-              <th>Date</th>
+              <SortableTh columnId="id" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                ID
+              </SortableTh>
+              <SortableTh columnId="package_type" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                Package Type
+              </SortableTh>
+              <SortableTh columnId="quantity_added" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                Quantity Added
+              </SortableTh>
+              <SortableTh columnId="cost_unit_key" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                Cost / unit
+              </SortableTh>
+              <SortableTh columnId="total_cost_key" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                Total cost
+              </SortableTh>
+              <SortableTh columnId="status" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                Status
+              </SortableTh>
+              <SortableTh columnId="uzs_paid" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                UZS Paid
+              </SortableTh>
+              <SortableTh columnId="usd_paid" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                USD Paid
+              </SortableTh>
+              <SortableTh columnId="added_by" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                Added By
+              </SortableTh>
+              <SortableTh columnId="date" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
+                Date
+              </SortableTh>
               <th>Actions</th>
             </tr>
           </thead>
@@ -553,7 +631,7 @@ const Packages = () => {
                 </td>
               </tr>
             ) : (
-              packageHistory.map((historyItem) => {
+              displayPackageHistory.map((historyItem) => {
                 const showPay = historyItem.is_paid || historyItem.status === 'paid';
                 const cpuU = parseFloat(historyItem.cost_per_unit_uzs) || 0;
                 const cpuD = parseFloat(historyItem.cost_per_unit_usd) || 0;

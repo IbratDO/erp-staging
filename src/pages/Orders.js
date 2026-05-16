@@ -2,61 +2,17 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount, cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import { uniqueSupplierCountriesFromOrdersAndProducts } from '../utils/supplierCountries';
-import { prefillPayOrderFromSupplier } from '../utils/orderPayPrefill';
+import { prefillPayOrderSimpleTotals } from '../utils/orderPayPrefill';
+import {
+  numOrZero,
+  plannedSellingSummary,
+  plannedSupplierPerUnit,
+  plannedSupplierTotal,
+  plannedSupplierPaymentTotals,
+} from '../utils/orderPlannedPricing';
 import './TablePage.css';
-
-function numOrZero(v) {
-  const n = typeof v === 'number' ? v : parseFloat(v);
-  return n > 0 && !Number.isNaN(n) ? n : 0;
-}
-
-/** Selling price per unit (USD only). */
-function plannedSellingSummary(order) {
-  const qi = Math.max(parseInt(order.ordered_quantity, 10) || 1, 1);
-  const usdTotal = numOrZero(order.selling_usd_cash) + numOrZero(order.selling_usd_card);
-  if (usdTotal > 0) return `$${(usdTotal / qi).toFixed(2)}/u`;
-  const pu = parseFloat(order.selling_price);
-  if (order.selling_price != null && order.selling_price !== '' && !Number.isNaN(pu) && pu > 0) {
-    return `$${pu.toFixed(2)}/u`;
-  }
-  return '';
-}
-
-function plannedSupplierPerUnit(order) {
-  const qi = parseInt(order.ordered_quantity, 10) || 1;
-  const uzs = numOrZero(order.supplier_cost_uzs_cash) + numOrZero(order.supplier_cost_uzs_card);
-  const usdTot = parseFloat(order.cost_total) || 0;
-  const usdPu = parseFloat(order.cost_per_unit) || 0;
-  if (usdTot > 0 && uzs <= 0 && !Number.isNaN(usdPu)) return `$${usdPu.toFixed(2)}`;
-  if (uzs > 0 && usdTot <= 0) {
-    const per = uzs / qi;
-    return `${per.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS/u`;
-  }
-  return '—';
-}
-
-function plannedSupplierTotal(order) {
-  const usdTot = parseFloat(order.cost_total) || 0;
-  if (usdTot > 0) return `$${usdTot.toFixed(2)}`;
-  return '';
-}
-
-/**
- * Planned supplier payment totals for confirm dialogs (UZS buckets, USD buckets, legacy cost_total USD).
- */
-function plannedSupplierPaymentTotals(order) {
-  if (!order) return { uzs: 0, usd: 0 };
-  const usdBuckets =
-    numOrZero(order.supplier_cost_usd_cash) + numOrZero(order.supplier_cost_usd_card);
-  const uzsBuckets =
-    numOrZero(order.supplier_cost_uzs_cash) + numOrZero(order.supplier_cost_uzs_card);
-  const fromCostTotal = parseFloat(order.cost_total) || 0;
-  if (uzsBuckets > 0) {
-    return { uzs: uzsBuckets, usd: usdBuckets };
-  }
-  const usd = usdBuckets > 0 ? usdBuckets : fromCostTotal;
-  return { uzs: 0, usd };
-}
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
 
 function payTotalsMatchPlanned(expUzs, expUsd, uzsCash, uzsCard, usdCash, usdCard) {
   const inUzs = (uzsCash || 0) + (uzsCard || 0);
@@ -135,6 +91,92 @@ function productOrderPickerLabel(p) {
   const bits = [p.brand, p.model, p.size ? `size ${p.size}` : null, p.color].filter(Boolean);
   return bits.join(' · ');
 }
+
+const BUILTIN_ESHOP_SLUGS = new Set([
+  'zalando',
+  'best_secret',
+  'adidas',
+  'unidays',
+  'nike',
+  'asos',
+  'other',
+  'client',
+]);
+
+function isClientEshopSlug(eshop) {
+  return String(eshop || '').trim().toLowerCase() === 'client';
+}
+
+/** Built-in slug → table / display label */
+const KNOWN_ESHOP_LABELS = {
+  zalando: 'Zalando',
+  best_secret: 'Best Secret',
+  adidas: 'Adidas',
+  unidays: 'UniDays',
+  nike: 'Nike',
+  asos: 'ASOS',
+  other: 'Other',
+  client: 'Client',
+};
+
+function formatEshopDisplay(eshop) {
+  const raw = String(eshop ?? '').trim();
+  if (!raw) return '';
+  const key = raw.toLowerCase();
+  return KNOWN_ESHOP_LABELS[key] ?? raw;
+}
+
+function orderSellingUsdPerUnitForSort(order) {
+  const qi = parseInt(order.ordered_quantity, 10) || 0;
+  const ud = numOrZero(order.selling_usd_cash) + numOrZero(order.selling_usd_card);
+  if (qi > 0 && ud > 0) return ud / qi;
+  const legacyPu = parseFloat(order.selling_price);
+  const hasLegacy =
+    order.selling_price != null &&
+    order.selling_price !== '' &&
+    !Number.isNaN(legacyPu) &&
+    legacyPu > 0;
+  return hasLegacy ? legacyPu : 0;
+}
+
+function orderCostPerUnitForSort(order) {
+  const qi = parseInt(order.ordered_quantity, 10) || 1;
+  const uzs = numOrZero(order.supplier_cost_uzs_cash) + numOrZero(order.supplier_cost_uzs_card);
+  const usdTot = parseFloat(order.cost_total) || 0;
+  const usdPu = parseFloat(order.cost_per_unit) || 0;
+  if (usdTot > 0 && uzs <= 0 && !Number.isNaN(usdPu)) return usdPu;
+  if (uzs > 0 && usdTot <= 0) return uzs / qi;
+  return 0;
+}
+
+/** Main orders grid — must match `<SortableTh columnId>` values. Actions excluded. */
+const ORDER_SORT_ACCESSORS = {
+  id: (o) => Number(o.id) || 0,
+  status: (o) => String(o.status ?? '').toLowerCase(),
+  category: (o) => String(o.product_detail?.category ?? '').toLowerCase(),
+  brand: (o) => String(o.product_detail?.brand ?? '').toLowerCase(),
+  model: (o) => String(o.product_detail?.model ?? '').toLowerCase(),
+  size: (o) => String(o.product_detail?.size ?? '').toLowerCase(),
+  color: (o) => String(o.product_detail?.color ?? '').toLowerCase(),
+  supplier_country: (o) => String(o.supplier_country ?? '').toLowerCase(),
+  eshop: (o) => String(o.eshop ?? '').toLowerCase(),
+  order_type: (o) => String(o.order_type ?? '').toLowerCase(),
+  customer: (o) => String(o.customer_detail?.name ?? '').toLowerCase(),
+  qty: (o) => parseInt(o.ordered_quantity, 10) || 0,
+  selling_price_unit: (o) => orderSellingUsdPerUnitForSort(o),
+  cost_per_unit: (o) => orderCostPerUnitForSort(o),
+  total_cost: (o) => parseFloat(o.cost_total) || 0,
+  order_uzs: (o) =>
+    (parseFloat(o.order_payment_uzs_cash) || 0) + (parseFloat(o.order_payment_uzs_card) || 0),
+  order_usd: (o) =>
+    (parseFloat(o.order_payment_usd_cash) || 0) + (parseFloat(o.order_payment_usd_card) || 0),
+  cargo_uzs: (o) =>
+    (parseFloat(o.cargo_payment_uzs_cash) || 0) + (parseFloat(o.cargo_payment_uzs_card) || 0),
+  cargo_usd: (o) =>
+    (parseFloat(o.cargo_payment_usd_cash) || 0) + (parseFloat(o.cargo_payment_usd_card) || 0),
+  created_by: (o) => String(o.created_by_detail?.username ?? '').toLowerCase(),
+  order_date: (o) => new Date(o.order_date || o.created_at).getTime() || 0,
+};
 const Orders = () => {
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
@@ -158,6 +200,7 @@ const Orders = () => {
     product: '',
     supplier_country: '',
     eshop: '',
+    client_eshop_notes: '',
     ordered_quantity: '',
     selling_usd_per_unit: '',
     cost_usd_per_unit: '',
@@ -173,10 +216,8 @@ const Orders = () => {
 
   const [paymentFormData, setPaymentFormData] = useState({
     orderId: null,
-    uzs_cash: '',
-    uzs_card: '',
-    usd_cash: '',
-    usd_card: '',
+    uzs: '',
+    usd: '',
     is_pay_order: false,
     is_received_and_pay: false,
     status_notes: '',
@@ -185,10 +226,8 @@ const Orders = () => {
   
   const [cargoFormData, setCargoFormData] = useState({
     orderId: null,
-    uzs_cash: '',
-    uzs_card: '',
-    usd_cash: '',
-    usd_card: '',
+    uzs: '',
+    usd: '',
   });
   const [showCargoForm, setShowCargoForm] = useState(false);
   
@@ -208,6 +247,8 @@ const Orders = () => {
     return_advance: false,
     /** Which cash ledger leg to debit when refunding advance (UZS vs USD buckets). */
     return_payment_currency: 'USD',
+    /** Editable refund amount when returning advance (defaults to booked advance when opening modal). */
+    return_advance_amount: '',
   });
   
   const [customers, setCustomers] = useState([]);
@@ -387,6 +428,21 @@ const Orders = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
+  const orderSort = useClientTableSort(ORDER_SORT_ACCESSORS);
+
+  const sortedFilteredOrders = useMemo(() => {
+    const rows = filteredOrders;
+    if (!rows?.length) return rows;
+    if (orderSort.sortCol && ORDER_SORT_ACCESSORS[orderSort.sortCol]) {
+      return orderSort.sortRows(rows);
+    }
+    return [...rows].sort((a, b) => {
+      const ta = new Date(a.order_date || a.created_at).getTime() || 0;
+      const tb = new Date(b.order_date || b.created_at).getTime() || 0;
+      return tb - ta;
+    });
+  }, [filteredOrders, orderSort]);
+
   const orderColumnTotals = useMemo(() => {
     const list = filteredOrders;
     if (!list.length) {
@@ -403,6 +459,10 @@ const Orders = () => {
         cargoUzsCard: 0,
         cargoUsdCash: 0,
         cargoUsdCard: 0,
+        orderUzs: 0,
+        orderUsd: 0,
+        cargoUzs: 0,
+        cargoUsd: 0,
       };
     }
     let quantity = 0;
@@ -454,6 +514,10 @@ const Orders = () => {
       cargoUzsCard,
       cargoUsdCash,
       cargoUsdCard,
+      orderUzs: orderUzsCash + orderUzsCard,
+      orderUsd: orderUsdCash + orderUsdCard,
+      cargoUzs: cargoUzsCash + cargoUzsCard,
+      cargoUsd: cargoUsdCash + cargoUsdCard,
     };
   }, [filteredOrders]);
 
@@ -476,6 +540,11 @@ const Orders = () => {
       }
       if (!formData.supplier_country.trim()) {
         showNotification('Please select or enter a Supplier Country.', 'error');
+        return;
+      }
+
+      if (isClientEshopSlug(formData.eshop) && !String(formData.client_eshop_notes || '').trim()) {
+        showNotification('Enter notes — required when eShop is Client.', 'error');
         return;
       }
 
@@ -536,6 +605,7 @@ const Orders = () => {
         product: parseInt(formData.product, 10),
         supplier_country: formData.supplier_country || null,
         eshop: formData.eshop || '',
+        client_eshop_notes: String(formData.client_eshop_notes || '').trim(),
         ordered_quantity: qty,
         selling_uzs_cash: 0,
         selling_uzs_card: 0,
@@ -567,6 +637,7 @@ const Orders = () => {
         product: '',
         supplier_country: '',
         eshop: '',
+        client_eshop_notes: '',
         ordered_quantity: '',
         selling_usd_per_unit: '',
         cost_usd_per_unit: '',
@@ -607,7 +678,7 @@ const Orders = () => {
 
   const handlePayOrder = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
-    const pref = prefillPayOrderFromSupplier(order);
+    const pref = prefillPayOrderSimpleTotals(order);
     setPaymentFormData({
       orderId: orderId,
       uzs: pref.uzs,
@@ -776,32 +847,54 @@ const Orders = () => {
     }
   };
 
-  const handleSellProduct = async (orderId) => {
-    const order = orders.find(o => o.id === orderId);
+  /**
+   * Creates pending sale from on-demand order (table “Sell the Product” button only).
+   * @returns {Promise<boolean>}
+   */
+  const sellProductFromOrder = async (orderId, { confirm: showConfirm = true } = {}) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return false;
 
-    if (!order?.order_is_paid) {
+    if (!order.order_is_paid) {
       showNotification(
         'Pay for the supplier order first (Pay for the Order) before selling this on‑demand product.',
         'error',
       );
-      return;
+      return false;
     }
-    if (!order?.cargo_is_paid) {
+    if (!order.cargo_is_paid) {
       showNotification(
         'Pay for the cargo first (use zero totals in that form if there is no freight). You cannot sell this on‑demand item until cargo is marked paid.',
         'error',
       );
-      return;
+      return false;
+    }
+
+    if (showConfirm) {
+      const ok = window.confirm(
+        `Sell the product from order #${orderId}?\n` +
+          `A pending sale will be created — complete it in Sales.`,
+      );
+      if (!ok) return false;
     }
 
     try {
       const response = await api.post(`/orders/${orderId}/sell_product/`);
-      showNotification(response.data.message || 'Sale created successfully! Please check the Sales tab to complete the payment.', 'success');
+      showNotification(
+        response.data.message || 'Sale created! Open the Sales tab to complete payment.',
+        'success',
+      );
       await fetchOrders();
+      return true;
     } catch (error) {
       console.error('Error selling product:', error);
       showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error selling product', 'error');
+      return false;
     }
+  };
+
+  const handleSellProduct = async (orderId) => {
+    await sellProductFromOrder(orderId, { confirm: true });
   };
 
   const handleMoveToInventoryFromOrder = async (orderId) => {
@@ -828,6 +921,10 @@ const Orders = () => {
         orderId: orderId,
         return_advance: false,
         return_payment_currency: advCur === 'UZS' ? 'UZS' : 'USD',
+        return_advance_amount:
+          order.advance_payment_amount != null && order.advance_payment_amount !== ''
+            ? String(Number(order.advance_payment_amount))
+            : '',
       });
       setShowMoveToInventoryForm(true);
       setTimeout(() => moveToInventoryFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -844,10 +941,18 @@ const Orders = () => {
       if (returnAdvance) {
         const ccy = String(options.return_payment_currency || 'USD').toUpperCase();
         payload.return_payment_currency = ccy === 'UZS' ? 'UZS' : 'USD';
+        if (options.return_advance_amount != null && Number.isFinite(options.return_advance_amount)) {
+          payload.return_advance_amount = options.return_advance_amount;
+        }
       }
       await api.post(`/orders/${orderId}/move_to_inventory_from_order/`, payload);
       setShowMoveToInventoryForm(false);
-      setMoveToInventoryData({ orderId: null, return_advance: false, return_payment_currency: 'USD' });
+      setMoveToInventoryData({
+        orderId: null,
+        return_advance: false,
+        return_payment_currency: 'USD',
+        return_advance_amount: '',
+      });
       await fetchOrders();
       showNotification('Order moved to inventory successfully!', 'success');
     } catch (error) {
@@ -858,9 +963,44 @@ const Orders = () => {
 
   const handleMoveToInventorySubmit = async (e) => {
     e.preventDefault();
+
+    const invOrder = orders.find((o) => o.id === moveToInventoryData.orderId);
+    if (moveToInventoryData.return_advance && invOrder) {
+      const booked = parseFloat(invOrder.advance_payment_amount) || 0;
+      const amt = parseFloat(String(moveToInventoryData.return_advance_amount ?? '').trim()) || 0;
+      if (!(amt > 0)) {
+        showNotification('Enter how much advance to return (greater than zero).', 'error');
+        return;
+      }
+      if (amt > booked) {
+        showNotification(`Return amount cannot exceed the recorded advance (${booked}).`, 'error');
+        return;
+      }
+      const ccy = moveToInventoryData.return_payment_currency === 'UZS' ? 'UZS' : 'USD';
+      const available = getAvailableBalance(ccy);
+      if (amt > available) {
+        showNotification(formatInsufficientLedgerMessage(ccy, available, amt), 'error');
+        return;
+      }
+      const bookedAdvLabel = formatDisplayAmount(
+        booked,
+        invOrder.advance_payment_currency ? String(invOrder.advance_payment_currency).toUpperCase() : 'USD',
+      );
+      const payingLabel = formatDisplayAmount(amt, ccy);
+      const ok = window.confirm(
+        `Return advance?\n\n` +
+          `Order #${invOrder.id}\n` +
+          `Recorded advance: ${bookedAdvLabel}\n` +
+          `Paying amount: ${payingLabel}`,
+      );
+      if (!ok) return;
+    }
     await moveToInventoryFromOrder(moveToInventoryData.orderId, {
       return_advance: moveToInventoryData.return_advance,
       return_payment_currency: moveToInventoryData.return_payment_currency,
+      return_advance_amount: moveToInventoryData.return_advance
+        ? parseFloat(String(moveToInventoryData.return_advance_amount ?? '').trim()) || undefined
+        : undefined,
     });
   };
 
@@ -981,16 +1121,13 @@ const Orders = () => {
                 if (invOrder && invOrder.advance_payment_amount > 0) {
                   return (
                     <p style={{ gridColumn: '1 / -1', color: '#555', margin: 0, fontSize: '0.92em' }}>
-                      Advance on this order:{' '}
+                      Advance:{' '}
                       <strong>
                         {formatDisplayAmount(
                           invOrder.advance_payment_amount,
                           invOrder.advance_payment_currency || 'USD',
                         )}
                       </strong>
-                      {invOrder.advance_payment_currency
-                        ? ` (recorded as ${String(invOrder.advance_payment_currency).toUpperCase()})`
-                        : ''}
                     </p>
                   );
                 }
@@ -1001,43 +1138,75 @@ const Orders = () => {
                   <input
                     type="checkbox"
                     checked={moveToInventoryData.return_advance}
-                    onChange={(e) => setMoveToInventoryData({ ...moveToInventoryData, return_advance: e.target.checked })}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      const o = orders.find((x) => x.id === moveToInventoryData.orderId);
+                      let amtStr = moveToInventoryData.return_advance_amount;
+                      if (checked && !(String(amtStr ?? '').trim()) && o && o.advance_payment_amount != null && o.advance_payment_amount !== '') {
+                        amtStr = String(Number(o.advance_payment_amount));
+                      }
+                      setMoveToInventoryData({
+                        ...moveToInventoryData,
+                        return_advance: checked,
+                        return_advance_amount: amtStr,
+                      });
+                    }}
                   />
                   {' '}Return advance payment to customer
                 </label>
               </div>
               {moveToInventoryData.return_advance && (
-                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label>Return advance from</label>
-                  <p style={{ margin: '0 0 8px', fontSize: '0.85em', color: '#666' }}>
-                    Select which currency cash balance to deduct (same amount as the advance on the order).
-                  </p>
-                  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      flexWrap: 'wrap',
+                      gap: '14px',
+                      alignItems: 'flex-end',
+                    }}
+                  >
+                    <div className="form-group" style={{ marginBottom: 0, width: '11rem', maxWidth: '100%' }}>
+                      <label htmlFor="move-inv-return-amt">Amount</label>
                       <input
-                        type="radio"
-                        name="return_payment_currency"
-                        value="USD"
-                        checked={moveToInventoryData.return_payment_currency === 'USD'}
-                        onChange={() =>
-                          setMoveToInventoryData({ ...moveToInventoryData, return_payment_currency: 'USD' })
+                        id="move-inv-return-amt"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        style={{ width: '100%', boxSizing: 'border-box', display: 'block', marginTop: '4px' }}
+                        value={moveToInventoryData.return_advance_amount}
+                        onChange={(e) =>
+                          setMoveToInventoryData({ ...moveToInventoryData, return_advance_amount: e.target.value })
                         }
                       />
-                      USD
-                    </label>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                      <input
-                        type="radio"
-                        name="return_payment_currency"
-                        value="UZS"
-                        checked={moveToInventoryData.return_payment_currency === 'UZS'}
-                        onChange={() =>
-                          setMoveToInventoryData({ ...moveToInventoryData, return_payment_currency: 'UZS' })
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0, minWidth: '7rem', width: '7.5rem' }}>
+                      <label htmlFor="move-inv-return-ccy">Currency</label>
+                      <select
+                        id="move-inv-return-ccy"
+                        value={moveToInventoryData.return_payment_currency}
+                        onChange={(e) =>
+                          setMoveToInventoryData({
+                            ...moveToInventoryData,
+                            return_payment_currency: e.target.value === 'UZS' ? 'UZS' : 'USD',
+                          })
                         }
-                      />
-                      UZS
-                    </label>
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          borderRadius: '4px',
+                          border: '1px solid #ccc',
+                          boxSizing: 'border-box',
+                          marginTop: '4px',
+                        }}
+                      >
+                        <option value="USD">USD</option>
+                        <option value="UZS">UZS</option>
+                      </select>
+                    </div>
                   </div>
+                  <p style={{ margin: '8px 0 0', fontSize: '0.82em', color: '#666' }}>
+                    ≤ advance above · deducted from chosen cash · no FX
+                  </p>
                 </div>
               )}
             </div>
@@ -1050,7 +1219,12 @@ const Orders = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowMoveToInventoryForm(false);
-                  setMoveToInventoryData({ orderId: null, return_advance: false, return_payment_currency: 'USD' });
+                  setMoveToInventoryData({
+                    orderId: null,
+                    return_advance: false,
+                    return_payment_currency: 'USD',
+                    return_advance_amount: '',
+                  });
                 }}
               >
                 Cancel
@@ -1313,7 +1487,12 @@ const Orders = () => {
                         setIsNewEshop(true);
                         setFormData({ ...formData, eshop: '' });
                       } else {
-                        setFormData({ ...formData, eshop: e.target.value });
+                        const v = e.target.value;
+                        setFormData({
+                          ...formData,
+                          eshop: v,
+                          ...(!isClientEshopSlug(v) ? { client_eshop_notes: '' } : {}),
+                        });
                       }
                     }}
                   >
@@ -1329,10 +1508,11 @@ const Orders = () => {
                     {[...new Set(
                       orders
                         .map(o => o.eshop)
-                        .filter(e => e && !['zalando','best_secret','adidas','unidays','nike','asos','other'].includes(e))
+                        .filter((e) => e && !BUILTIN_ESHOP_SLUGS.has(String(e).toLowerCase()))
                     )].sort().map(eshop => (
                       <option key={eshop} value={eshop}>{eshop}</option>
                     ))}
+                    <option value="client">Client</option>
                     <option value="other">Other</option>
                     <option value="__new__">+ Add new eShop...</option>
                   </select>
@@ -1342,7 +1522,14 @@ const Orders = () => {
                       type="text"
                       placeholder="Enter new eShop name"
                       value={formData.eshop}
-                      onChange={(e) => setFormData({ ...formData, eshop: e.target.value })}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setFormData({
+                          ...formData,
+                          eshop: v,
+                          ...(!isClientEshopSlug(v) ? { client_eshop_notes: '' } : {}),
+                        });
+                      }}
                       autoFocus
                       style={{ flex: 1 }}
                     />
@@ -1367,6 +1554,26 @@ const Orders = () => {
                 )}
               </div>
               </div>
+
+              {isClientEshopSlug(formData.eshop) && (
+                <div className="orders-new-order-row orders-new-order-row--notes">
+                  <div className="form-group">
+                    <label>
+                      Notes <span style={{ color: '#e53e3e' }}>*</span>
+                    </label>
+                    <textarea
+                      className="orders-client-notes-field"
+                      value={formData.client_eshop_notes}
+                      onChange={(e) =>
+                        setFormData({ ...formData, client_eshop_notes: e.target.value })
+                      }
+                      required
+                      rows={2}
+                      placeholder="Who / reference / sourcing (required when eShop is Client)"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="orders-new-order-row orders-new-order-row--qty-prices">
               <div className="form-group orders-new-order-field--qty">
@@ -1531,6 +1738,7 @@ const Orders = () => {
                     product: '',
                     supplier_country: '',
                     eshop: '',
+                    client_eshop_notes: '',
                     ordered_quantity: '',
                     selling_usd_per_unit: '',
                     cost_usd_per_unit: '',
@@ -1767,40 +1975,42 @@ const Orders = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
+              <SortableTh columnId="id" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>ID</SortableTh>
               <th>Actions</th>
-              <th>Category</th>
-              <th>Brand</th>
-              <th>Model</th>
-              <th>Size</th>
-              <th>Color</th>
-              <th>Supplier Country</th>
-              <th>Order Type</th>
-              <th>Customer</th>
-              <th>Qty</th>
-              <th>Selling price/unit</th>
-              <th>Cost Per Unit</th>
-              <th>Total Cost</th>
-              <th>Order UZS</th>
-              <th>Order USD</th>
-              <th>Cargo UZS</th>
-              <th>Cargo USD</th>
-              <th>Status</th>
-              <th>Created By</th>
-              <th>Date</th>
+              <SortableTh columnId="status" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Status</SortableTh>
+              <SortableTh columnId="category" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Category</SortableTh>
+              <SortableTh columnId="brand" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Brand</SortableTh>
+              <SortableTh columnId="model" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Model</SortableTh>
+              <SortableTh columnId="size" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Size</SortableTh>
+              <SortableTh columnId="color" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Color</SortableTh>
+              <SortableTh columnId="supplier_country" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Supplier Country</SortableTh>
+              <SortableTh columnId="eshop" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>eShop</SortableTh>
+              <SortableTh columnId="order_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Order Type</SortableTh>
+              <SortableTh columnId="customer" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Customer</SortableTh>
+              <SortableTh columnId="qty" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Qty</SortableTh>
+              <SortableTh columnId="selling_price_unit" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Selling price/unit</SortableTh>
+              <SortableTh columnId="cost_per_unit" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Cost Per Unit</SortableTh>
+              <SortableTh columnId="total_cost" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Total Cost</SortableTh>
+              <SortableTh columnId="order_uzs" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Order UZS</SortableTh>
+              <SortableTh columnId="order_usd" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Order USD</SortableTh>
+              <SortableTh columnId="cargo_uzs" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Cargo UZS</SortableTh>
+              <SortableTh columnId="cargo_usd" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Cargo USD</SortableTh>
+              <SortableTh columnId="created_by" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Created By</SortableTh>
+              <SortableTh columnId="order_date" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Date</SortableTh>
             </tr>
           </thead>
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="21" style={{ textAlign: 'center' }}>
+                <td colSpan="22" style={{ textAlign: 'center' }}>
                   No orders found
                 </td>
               </tr>
             ) : (
-              filteredOrders.map((order) => {
+              sortedFilteredOrders.map((order) => {
                 const plannedSellingLabel = plannedSellingSummary(order);
                 const plannedSupplierTotalLabel = plannedSupplierTotal(order);
+                const eshopLabel = formatEshopDisplay(order.eshop);
                 return (
                 <tr key={order.id}>
                   <td>#{order.id}</td>
@@ -1869,12 +2079,24 @@ const Orders = () => {
                       </>
                     )}
                   </td>
+                  <td>
+                    <span className={`status-badge ${order.status}`}>
+                      {order.status.replace('_', ' ')}
+                    </span>
+                  </td>
                   <td>{order.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>{order.product_detail?.brand || '-'}</td>
                   <td>{order.product_detail?.model || '-'}</td>
                   <td><strong>{order.product_detail?.size || '-'}</strong></td>
                   <td><strong>{order.product_detail?.color || '-'}</strong></td>
                   <td>{order.supplier_country || <span style={{ color: '#999' }}>—</span>}</td>
+                  <td title={order.client_eshop_notes ? String(order.client_eshop_notes) : eshopLabel || ''}>
+                    {eshopLabel ? (
+                      <span>{eshopLabel}</span>
+                    ) : (
+                      <span style={{ color: '#bbb' }}>—</span>
+                    )}
+                  </td>
                   <td>
                     <span className={`status-badge ${order.order_type === 'stock' ? 'confirmed' : 'pending'}`}>
                       {order.order_type === 'stock' ? 'Stock' : 'On-Demand'}
@@ -1945,11 +2167,6 @@ const Orders = () => {
                       return v > 0 ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>${v.toFixed(2)}</span> : <span style={{ color: '#bbb' }}>—</span>;
                     })()}
                   </td>
-                  <td>
-                    <span className={`status-badge ${order.status}`}>
-                      {order.status.replace('_', ' ')}
-                    </span>
-                  </td>
                   <td>{order.created_by_detail?.username || '-'}</td>
                   <td>{new Date(order.order_date || order.created_at).toLocaleString()}</td>
                 </tr>
@@ -1959,7 +2176,7 @@ const Orders = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="11" style={{ textAlign: 'right' }}>
+              <td colSpan="12" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td style={{ fontWeight: 600 }}>{orderColumnTotals.quantity.toLocaleString()}</td>
@@ -1991,7 +2208,7 @@ const Orders = () => {
               <td style={{ fontWeight: 600 }}>
                 {orderColumnTotals.cargoUsd > 0 ? `$${orderColumnTotals.cargoUsd.toFixed(2)}` : '—'}
               </td>
-              <td colSpan="3">—</td>
+              <td colSpan="2">—</td>
             </tr>
           </tfoot>
         </table>

@@ -10,6 +10,8 @@ import {
 } from '../utils/tableTotals';
 import { formatDisplayAmount } from '../utils/currencyFormat';
 import './TablePage.css';
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
 
 const SALE_TYPE_LABELS = {
   bought_from_shop: 'Shop',
@@ -92,6 +94,107 @@ function signedForFinanceRecordLeg(record, leg) {
   if (raw === 0) return 0;
   return record.record_type === 'income' ? raw : -raw;
 }
+
+function financeRecordRecipientSortKey(record) {
+  if (!record.recipient_detail) return '';
+  const d = record.recipient_detail;
+  const extra = [d.first_name, d.last_name].filter(Boolean).join(' ').trim();
+  return `${d.username || ''} ${extra}`.trim().toLowerCase();
+}
+
+const FINANCE_RECORD_SORT_ACCESSORS = {
+  id: (r) => Number(r.id) || 0,
+  record_type: (r) => String(r.record_type ?? '').toLowerCase(),
+  expense_type: (r) => String(r.expense_type ?? '').replace(/_/g, ' ').toLowerCase(),
+  status: (r) => String(r.status ?? '').toLowerCase(),
+  related_order: (r) => Number(r.order) || 0,
+  related_sale: (r) => Number(r.sale) || 0,
+  related_dispatch: (r) => Number(r.dispatch) || 0,
+  recipient_key: (r) => financeRecordRecipientSortKey(r),
+  notes: (r) => String(r.notes ?? '').toLowerCase(),
+  transaction_date: (r) => new Date(r.transaction_date).getTime() || 0,
+};
+for (const leg of BALANCE_TABLE_LEGS) {
+  FINANCE_RECORD_SORT_ACCESSORS[`leg_${leg}`] = (r) => {
+    const v = signedForFinanceRecordLeg(r, leg);
+    return v === null ? 0 : v;
+  };
+}
+
+function receivableSaleProductKey(sd) {
+  if (!sd?.product_detail) return '';
+  const p = sd.product_detail;
+  return `${p.brand || ''} ${p.model || ''}`.trim().toLowerCase();
+}
+
+const RECEIVABLE_TABLE_SORT_ACCESSORS = {
+  id: (rcv) => Number(rcv.id) || 0,
+  customer: (rcv) => String(rcv.sale_detail?.customer_detail?.name ?? '').toLowerCase(),
+  sale: (rcv) => Number(rcv.sale) || 0,
+  product: (rcv) => receivableSaleProductKey(rcv.sale_detail),
+  sale_type: (rcv) => String(rcv.sale_detail?.sale_type ?? '').toLowerCase(),
+  from_order: (rcv) => Number(rcv.sale_detail?.order) || 0,
+  dispatch: (rcv) => receivableDispatchLabel(rcv.sale_detail).toLowerCase(),
+  amount: (rcv) => parseFloat(rcv.amount) || 0,
+  currency: (rcv) => String(rcv.currency ?? rcv.sale_detail?.sale_currency ?? '').toLowerCase(),
+  status: (rcv) => String(rcv.status ?? '').toLowerCase(),
+  created_at: (rcv) => new Date(rcv.created_at).getTime() || 0,
+  paid_date: (rcv) => {
+    const d = rcv.paid_date;
+    return d ? new Date(d).getTime() : Number.POSITIVE_INFINITY;
+  },
+};
+
+function payableProductSortKey(p) {
+  const od = p.order_detail?.product_detail;
+  if (od) return `${od.brand || ''} ${od.model || ''}`.trim().toLowerCase();
+  const sd = p.dispatch_detail?.sale_detail?.product_detail;
+  if (sd) return `${sd.brand || ''} ${sd.model || ''}`.trim().toLowerCase();
+  const pkg = p.package_history_detail?.package_detail?.package_type;
+  if (pkg) return String(pkg).toLowerCase();
+  return '';
+}
+
+const PAYABLE_TABLE_SORT_ACCESSORS = {
+  id: (p) => Number(p.id) || 0,
+  payable_kind: (p) => payableKind(p).kind.toLowerCase(),
+  ref: (p) => payableKind(p).ref.toLowerCase(),
+  customer: (p) => payableCustomerName(p).toLowerCase(),
+  product: (p) => payableProductSortKey(p),
+  context: (p) => payableContext(p).toLowerCase(),
+  amount: (p) => parseFloat(p.amount) || 0,
+  currency: (p) => String(p.currency ?? '').toLowerCase(),
+  status: (p) => String(p.status ?? '').toLowerCase(),
+  created_at: (p) => new Date(p.created_at).getTime() || 0,
+  paid_date: (p) => {
+    const d = p.paid_date;
+    return d ? new Date(d).getTime() : Number.POSITIVE_INFINITY;
+  },
+};
+
+const PROFIT_LOSS_SALE_SORT_ACCESSORS = {
+  sale_id: (item) => Number(item.sale_id) || 0,
+  product: (item) => String(item.product ?? '').toLowerCase(),
+  quantity: (item) => Number(item.quantity) || 0,
+  income_usd: (item) => Number(item.income_usd) || 0,
+  income_uzs: (item) => Number(item.income_uzs) || 0,
+  cogs_usd: (item) => Number(item.total_cogs_usd) || 0,
+  cogs_uzs: (item) => Number(item.total_cogs_uzs) || 0,
+  profit_usd: (item) => Number(item.profit_usd) || 0,
+  profit_uzs: (item) => Number(item.profit_uzs) || 0,
+};
+
+const OPERATING_EXPENSE_SORT_ACCESSORS = {
+  expense_type_label: (item) => String(item.type ?? '').toLowerCase(),
+  amount_usd: (item) => Number(item.amount_usd) || 0,
+  amount_uzs: (item) => Number(item.amount_uzs) || 0,
+  date: (item) => {
+    const s = item.date;
+    if (s == null || s === '') return 0;
+    const t = new Date(`${s}T12:00:00`).getTime();
+    return Number.isFinite(t) ? t : String(s).toLowerCase();
+  },
+};
 
 function FinanceLegCell({ record, leg }) {
   const v = signedForFinanceRecordLeg(record, leg);
@@ -473,6 +576,36 @@ const Finance = () => {
   const payablePendingByCurrency = useMemo(
     () => sumAmountsByCurrency(payables.filter((p) => p.status === 'pending')),
     [payables]
+  );
+
+  const financeRecordsSort = useClientTableSort(FINANCE_RECORD_SORT_ACCESSORS);
+  const sortedRecords = useMemo(
+    () => financeRecordsSort.sortRows(records || []),
+    [records, financeRecordsSort],
+  );
+
+  const receivablesSort = useClientTableSort(RECEIVABLE_TABLE_SORT_ACCESSORS);
+  const sortedReceivableRows = useMemo(
+    () => receivablesSort.sortRows(receivables || []),
+    [receivables, receivablesSort],
+  );
+
+  const payablesTableSort = useClientTableSort(PAYABLE_TABLE_SORT_ACCESSORS);
+  const sortedPayableRows = useMemo(
+    () => payablesTableSort.sortRows(payables || []),
+    [payables, payablesTableSort],
+  );
+
+  const profitLossSalesSort = useClientTableSort(PROFIT_LOSS_SALE_SORT_ACCESSORS);
+  const sortedProfitLossSales = useMemo(
+    () => profitLossSalesSort.sortRows(profitLoss?.sales || []),
+    [profitLoss?.sales, profitLossSalesSort],
+  );
+
+  const operatingExpenseSort = useClientTableSort(OPERATING_EXPENSE_SORT_ACCESSORS);
+  const sortedOperatingExpenses = useMemo(
+    () => operatingExpenseSort.sortRows(profitLoss?.operating_expenses || []),
+    [profitLoss?.operating_expenses, operatingExpenseSort],
   );
 
   if (loading) {
@@ -926,19 +1059,19 @@ const Finance = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Type</th>
-                <th>Expense Type</th>
+                <SortableTh columnId="id" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>ID</SortableTh>
+                <SortableTh columnId="record_type" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Type</SortableTh>
+                <SortableTh columnId="expense_type" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Expense Type</SortableTh>
                 {BALANCE_TABLE_LEGS.map((leg) => (
-                  <th key={leg}>{financeLegHeader(leg)}</th>
+                  <SortableTh key={leg} columnId={`leg_${leg}`} sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{financeLegHeader(leg)}</SortableTh>
                 ))}
-                <th>Status</th>
-                <th>Related Order</th>
-                <th>Related Sale</th>
-                <th>Related Dispatch</th>
-                <th>Recipient</th>
-                <th>Notes</th>
-                <th>Date</th>
+                <SortableTh columnId="status" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Status</SortableTh>
+                <SortableTh columnId="related_order" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Related Order</SortableTh>
+                <SortableTh columnId="related_sale" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Related Sale</SortableTh>
+                <SortableTh columnId="related_dispatch" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Related Dispatch</SortableTh>
+                <SortableTh columnId="recipient_key" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Recipient</SortableTh>
+                <SortableTh columnId="notes" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Notes</SortableTh>
+                <SortableTh columnId="transaction_date" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Date</SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -949,7 +1082,7 @@ const Finance = () => {
                   </td>
                 </tr>
               ) : (
-                records.map((record) => (
+                sortedRecords.map((record) => (
                   <tr key={record.id}>
                     <td>#{record.id}</td>
                     <td>
@@ -1097,18 +1230,18 @@ const Finance = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Customer</th>
-                <th>Sale</th>
-                <th>Product</th>
-                <th>Sale type</th>
-                <th>From order</th>
-                <th>Delivery (BTS / Dostavshik)</th>
-                <th>Amount</th>
-                <th>Currency</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Paid date</th>
+                <SortableTh columnId="id" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>ID</SortableTh>
+                <SortableTh columnId="customer" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Customer</SortableTh>
+                <SortableTh columnId="sale" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Sale</SortableTh>
+                <SortableTh columnId="product" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Product</SortableTh>
+                <SortableTh columnId="sale_type" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Sale type</SortableTh>
+                <SortableTh columnId="from_order" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>From order</SortableTh>
+                <SortableTh columnId="dispatch" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Delivery (BTS / Dostavshik)</SortableTh>
+                <SortableTh columnId="amount" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Amount</SortableTh>
+                <SortableTh columnId="currency" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Currency</SortableTh>
+                <SortableTh columnId="status" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Status</SortableTh>
+                <SortableTh columnId="created_at" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Created</SortableTh>
+                <SortableTh columnId="paid_date" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Paid date</SortableTh>
                 <th>Action</th>
               </tr>
             </thead>
@@ -1120,7 +1253,7 @@ const Finance = () => {
                   </td>
                 </tr>
               ) : (
-                receivables.map((receivable) => {
+                sortedReceivableRows.map((receivable) => {
                   const sd = receivable.sale_detail;
                   return (
                   <tr key={receivable.id}>
@@ -1210,17 +1343,17 @@ const Finance = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Payable type</th>
-                <th>Ref</th>
-                <th>Customer</th>
-                <th>Product</th>
-                <th>Context</th>
-                <th>Amount</th>
-                <th>Currency</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Paid date</th>
+                <SortableTh columnId="id" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>ID</SortableTh>
+                <SortableTh columnId="payable_kind" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Payable type</SortableTh>
+                <SortableTh columnId="ref" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Ref</SortableTh>
+                <SortableTh columnId="customer" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Customer</SortableTh>
+                <SortableTh columnId="product" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Product</SortableTh>
+                <SortableTh columnId="context" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Context</SortableTh>
+                <SortableTh columnId="amount" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Amount</SortableTh>
+                <SortableTh columnId="currency" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Currency</SortableTh>
+                <SortableTh columnId="status" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Status</SortableTh>
+                <SortableTh columnId="created_at" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Created</SortableTh>
+                <SortableTh columnId="paid_date" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Paid date</SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -1231,7 +1364,7 @@ const Finance = () => {
                   </td>
                 </tr>
               ) : (
-                payables.map((payable) => {
+                sortedPayableRows.map((payable) => {
                   const { kind, ref } = payableKind(payable);
                   return (
                   <tr key={payable.id}>
@@ -1361,15 +1494,15 @@ const Finance = () => {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Sale ID</th>
-                      <th>Product</th>
-                      <th>Qty</th>
-                      <th>Income USD</th>
-                      <th>Income UZS</th>
-                      <th>COGS USD</th>
-                      <th>COGS UZS</th>
-                      <th>Profit USD</th>
-                      <th>Profit UZS</th>
+                      <SortableTh columnId="sale_id" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Sale ID</SortableTh>
+                      <SortableTh columnId="product" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Product</SortableTh>
+                      <SortableTh columnId="quantity" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Qty</SortableTh>
+                      <SortableTh columnId="income_usd" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Income USD</SortableTh>
+                      <SortableTh columnId="income_uzs" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Income UZS</SortableTh>
+                      <SortableTh columnId="cogs_usd" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>COGS USD</SortableTh>
+                      <SortableTh columnId="cogs_uzs" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>COGS UZS</SortableTh>
+                      <SortableTh columnId="profit_usd" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Profit USD</SortableTh>
+                      <SortableTh columnId="profit_uzs" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Profit UZS</SortableTh>
                     </tr>
                   </thead>
                   <tbody>
@@ -1378,7 +1511,7 @@ const Finance = () => {
                         <td colSpan="9" style={{ textAlign: 'center' }}>No sales completed in this period</td>
                       </tr>
                     ) : (
-                      profitLoss.sales.map((item, idx) => (
+                      sortedProfitLossSales.map((item, idx) => (
                         <tr key={idx}>
                           <td>#{item.sale_id}</td>
                           <td>{item.product}</td>
@@ -1422,10 +1555,10 @@ const Finance = () => {
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Type</th>
-                      <th>Amount (USD)</th>
-                      <th>Amount (UZS)</th>
-                      <th>Date</th>
+                      <SortableTh columnId="expense_type_label" sortCol={operatingExpenseSort.sortCol} sortDir={operatingExpenseSort.sortDir} onSort={operatingExpenseSort.onHeaderClick}>Type</SortableTh>
+                      <SortableTh columnId="amount_usd" sortCol={operatingExpenseSort.sortCol} sortDir={operatingExpenseSort.sortDir} onSort={operatingExpenseSort.onHeaderClick}>Amount (USD)</SortableTh>
+                      <SortableTh columnId="amount_uzs" sortCol={operatingExpenseSort.sortCol} sortDir={operatingExpenseSort.sortDir} onSort={operatingExpenseSort.onHeaderClick}>Amount (UZS)</SortableTh>
+                      <SortableTh columnId="date" sortCol={operatingExpenseSort.sortCol} sortDir={operatingExpenseSort.sortDir} onSort={operatingExpenseSort.onHeaderClick}>Date</SortableTh>
                     </tr>
                   </thead>
                   <tbody>
@@ -1434,7 +1567,7 @@ const Finance = () => {
                         <td colSpan="4" style={{ textAlign: 'center' }}>No operating expenses in this period</td>
                       </tr>
                     ) : (
-                      profitLoss.operating_expenses.map((item, idx) => (
+                      sortedOperatingExpenses.map((item, idx) => (
                         <tr key={idx}>
                           <td>{item.type}</td>
                           <td>${(item.amount_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

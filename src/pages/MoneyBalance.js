@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
 
 /** Table columns: one per currency (legacy *_cash and *_card ledger buckets roll up here). */
@@ -80,6 +82,26 @@ function CurrencyTotalCell({ value, col }) {
     </span>
   );
 }
+
+const MONEY_BALANCE_TX_SORT_ACCESSORS = (() => {
+  const o = {
+    timestamp: (t) => new Date(t.timestamp).getTime() || 0,
+    transaction_type: (t) => String(t.transaction_type ?? '').toLowerCase(),
+    bucket: (t) => String(t.balance_detail?.balance_type ?? '').toLowerCase(),
+    operation: (t) => String(t.operation ?? '').toLowerCase(),
+    related_sale: (t) => Number(t.related_sale) || 0,
+    related_order: (t) => Number(t.related_order) || 0,
+    created_by: (t) => String(t.created_by_detail?.username ?? '').toLowerCase(),
+    notes: (t) => String(t.notes ?? '').toLowerCase(),
+  };
+  for (const col of CURRENCY_COLS) {
+    o[`amt_${col.key}`] = (t) => {
+      const v = signedForCurrencyColumn(t, col);
+      return v === null ? -Number.MAX_VALUE : v;
+    };
+  }
+  return o;
+})();
 
 const MoneyBalance = () => {
   const { isAdmin } = useAuth();
@@ -230,6 +252,12 @@ const MoneyBalance = () => {
       alert(error.response?.data?.error || 'Error adjusting balance');
     }
   };
+
+  const mbSort = useClientTableSort(MONEY_BALANCE_TX_SORT_ACCESSORS);
+  const displayTransactions = useMemo(
+    () => mbSort.sortRows(transactions),
+    [transactions, mbSort]
+  );
 
   if (loading) {
     return <div className="page-container">Loading...</div>;
@@ -439,19 +467,43 @@ const MoneyBalance = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Transaction type</th>
-                <th>Bucket</th>
-                <th>Op</th>
+                <SortableTh columnId="timestamp" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
+                  Date
+                </SortableTh>
+                <SortableTh columnId="transaction_type" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
+                  Transaction type
+                </SortableTh>
+                <SortableTh columnId="bucket" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
+                  Bucket
+                </SortableTh>
+                <SortableTh columnId="operation" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
+                  Op
+                </SortableTh>
                 {CURRENCY_COLS.map((col) => (
-                  <th key={col.key} style={{ textAlign: 'right', minWidth: '6.5rem' }}>
+                  <SortableTh
+                    key={col.key}
+                    columnId={`amt_${col.key}`}
+                    sortCol={mbSort.sortCol}
+                    sortDir={mbSort.sortDir}
+                    onSort={mbSort.onHeaderClick}
+                    align="right"
+                    style={{ minWidth: '6.5rem' }}
+                  >
                     {col.label}
-                  </th>
+                  </SortableTh>
                 ))}
-                <th>Related sale</th>
-                <th>Related order</th>
-                <th>Created by</th>
-                <th>Notes</th>
+                <SortableTh columnId="related_sale" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
+                  Related sale
+                </SortableTh>
+                <SortableTh columnId="related_order" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
+                  Related order
+                </SortableTh>
+                <SortableTh columnId="created_by" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
+                  Created by
+                </SortableTh>
+                <SortableTh columnId="notes" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
+                  Notes
+                </SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -462,7 +514,7 @@ const MoneyBalance = () => {
                   </td>
                 </tr>
               ) : (
-                transactions.map((transaction) => (
+                displayTransactions.map((transaction) => (
                   <tr key={transaction.id}>
                     <td>{new Date(transaction.timestamp).toLocaleString()}</td>
                     <td>{transaction.transaction_type.replace(/_/g, ' ')}</td>

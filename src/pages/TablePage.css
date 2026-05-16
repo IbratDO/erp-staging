@@ -91,6 +91,21 @@
   }
 }
 
+/* Full-width Notes row (Client eShop) — avoids breaking the 5-column product row grid */
+.orders-new-order-row--notes {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+
+.orders-client-notes-field {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  max-height: 8rem;
+  resize: vertical;
+  line-height: 1.4;
+}
+
 .orders-new-order-checkbox-row label {
   display: inline-flex;
   align-items: center;
@@ -214,6 +229,15 @@
   top: 0;
   z-index: 2;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.data-table-sortable:hover {
+  filter: brightness(1.08);
+}
+
+.data-table-sortable:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.65);
+  outline-offset: -2px;
 }
 
 .data-table td {

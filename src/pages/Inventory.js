@@ -1,7 +1,82 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
-import { productCostCells, productCostPickerLabel } from '../utils/productCost';
+import { productCostCells, productCostPickerLabel, productCostUzsPortion, productCostUsdPortion } from '../utils/productCost';
+import { plannedSellingSummary, plannedSupplierUnitParts } from '../utils/orderPlannedPricing';
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
+
+function inventoryCostCells(productDetail, stockingOrder) {
+  if (stockingOrder) {
+    const { uzsPerUnit, usdPerUnit } = plannedSupplierUnitParts(stockingOrder);
+    return {
+      uzsTotal:
+        uzsPerUnit != null && uzsPerUnit > 0
+          ? uzsPerUnit.toLocaleString(undefined, { maximumFractionDigits: 0 })
+          : '—',
+      usdTotal:
+        usdPerUnit != null && usdPerUnit > 0 ? `$${usdPerUnit.toFixed(2)}` : '—',
+    };
+  }
+  return productCostCells(productDetail || {});
+}
+
+function inventorySellingCell(productDetail, stockingOrder) {
+  const label = plannedSellingSummary(stockingOrder || null);
+  if (label) return label;
+  const pu = parseFloat(productDetail?.selling_price);
+  if (productDetail?.selling_price != null && !Number.isNaN(pu) && pu > 0)
+    return `$${pu.toFixed(2)}/u`;
+  return '—';
+}
+
+function invCostUzsNum(item) {
+  const so = item.stocking_order;
+  if (so) {
+    const { uzsPerUnit } = plannedSupplierUnitParts(so);
+    if (uzsPerUnit != null && uzsPerUnit > 0) return uzsPerUnit;
+  }
+  return productCostUzsPortion(item.product_detail);
+}
+
+function invCostUsdNum(item) {
+  const so = item.stocking_order;
+  if (so) {
+    const { usdPerUnit } = plannedSupplierUnitParts(so);
+    if (usdPerUnit != null && usdPerUnit > 0) return usdPerUnit;
+  }
+  return productCostUsdPortion(item.product_detail);
+}
+
+function invSellingPriceNum(item) {
+  const so = item.stocking_order;
+  if (so?.selling_price != null && String(so.selling_price).trim() !== '') {
+    const n = parseFloat(so.selling_price);
+    return Number.isFinite(n) ? n : 0;
+  }
+  const pu = parseFloat(item.product_detail?.selling_price);
+  return Number.isFinite(pu) ? pu : 0;
+}
+
+const INVENTORY_SORT_ACCESSORS = {
+  category: (it) => String(it.product_detail?.category ?? '').toLowerCase(),
+  rec_no: (it) => Number(it.product_detail?.id ?? it.product) || 0,
+  product: (it) =>
+    it.product_detail
+      ? `${it.product_detail.brand} ${it.product_detail.model}`.toLowerCase()
+      : String(it.product ?? ''),
+  brand: (it) => String(it.product_detail?.brand ?? '').toLowerCase(),
+  model: (it) => String(it.product_detail?.model ?? '').toLowerCase(),
+  size: (it) => String(it.product_detail?.size ?? '').toLowerCase(),
+  color: (it) => String(it.product_detail?.color ?? '').toLowerCase(),
+  cost_uzs: (it) => invCostUzsNum(it),
+  cost_usd: (it) => invCostUsdNum(it),
+  selling: (it) => invSellingPriceNum(it),
+  quantity: (it) => Number(it.quantity) || 0,
+  status: (it) => String(it.status ?? '').toLowerCase(),
+  location: (it) => String(it.location ?? '').toLowerCase(),
+  updated_at: (it) => new Date(it.updated_at).getTime() || 0,
+};
 
 const Inventory = () => {
   const [inventory, setInventory] = useState([]);
@@ -116,11 +191,23 @@ const Inventory = () => {
       const q = parseInt(item.quantity, 10) || 0;
       const p = item.product_detail || {};
       quantity += q;
-      uzsTotal += ((parseFloat(p.cost_uzs_cash) || 0) + (parseFloat(p.cost_uzs_card) || 0)) * q;
-      usdTotal += ((parseFloat(p.cost_usd_cash) || 0) + (parseFloat(p.cost_usd_card) || 0)) * q;
+      if (item.stocking_order) {
+        const { uzsPerUnit, usdPerUnit } = plannedSupplierUnitParts(item.stocking_order);
+        uzsTotal += (uzsPerUnit || 0) * q;
+        usdTotal += (usdPerUnit || 0) * q;
+      } else {
+        uzsTotal += ((parseFloat(p.cost_uzs_cash) || 0) + (parseFloat(p.cost_uzs_card) || 0)) * q;
+        usdTotal += ((parseFloat(p.cost_usd_cash) || 0) + (parseFloat(p.cost_usd_card) || 0)) * q;
+      }
     }
     return { quantity, uzsTotal, usdTotal };
   }, [filteredInventory]);
+
+  const invSort = useClientTableSort(INVENTORY_SORT_ACCESSORS);
+  const displayInventory = useMemo(
+    () => invSort.sortRows(filteredInventory),
+    [filteredInventory, invSort]
+  );
 
   const fetchProducts = async () => {
     try {
@@ -382,31 +469,62 @@ const Inventory = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Category</th>
-              <th>Rec #</th>
-              <th>Product</th>
-              <th>Brand</th>
-              <th>Model</th>
-              <th>Size</th>
-              <th>Color</th>
-              <th>Cost (UZS) / unit</th>
-              <th>Cost (USD) / unit</th>
-              <th>Quantity</th>
-              <th>Status</th>
-              <th>Location</th>
-              <th>Updated</th>
+              <SortableTh columnId="category" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Category
+              </SortableTh>
+              <SortableTh columnId="rec_no" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Rec #
+              </SortableTh>
+              <SortableTh columnId="product" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Product
+              </SortableTh>
+              <SortableTh columnId="brand" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Brand
+              </SortableTh>
+              <SortableTh columnId="model" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Model
+              </SortableTh>
+              <SortableTh columnId="size" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Size
+              </SortableTh>
+              <SortableTh columnId="color" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Color
+              </SortableTh>
+              <SortableTh columnId="cost_uzs" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Cost (UZS) / unit
+              </SortableTh>
+              <SortableTh columnId="cost_usd" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Cost (USD) / unit
+              </SortableTh>
+              <SortableTh columnId="selling" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Selling price / unit
+              </SortableTh>
+              <SortableTh columnId="quantity" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Quantity
+              </SortableTh>
+              <SortableTh columnId="status" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Status
+              </SortableTh>
+              <SortableTh columnId="location" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Location
+              </SortableTh>
+              <SortableTh columnId="updated_at" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Updated
+              </SortableTh>
             </tr>
           </thead>
           <tbody>
             {filteredInventory.length === 0 ? (
               <tr>
-                <td colSpan="13" style={{ textAlign: 'center' }}>
+                <td colSpan="14" style={{ textAlign: 'center' }}>
                   No inventory items found
                 </td>
               </tr>
             ) : (
-              filteredInventory.map((item) => {
-                const cost = productCostCells(item.product_detail || {});
+              displayInventory.map((item) => {
+                const cost = inventoryCostCells(item.product_detail, item.stocking_order);
+                const sell = inventorySellingCell(item.product_detail, item.stocking_order);
+                const sellTip = plannedSellingSummary(item.stocking_order) || '';
                 return (
                 <tr key={item.id}>
                   <td>{item.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
@@ -422,6 +540,9 @@ const Inventory = () => {
                   <td><strong>{item.product_detail?.color || '-'}</strong></td>
                   <td style={{ fontSize: '0.9em' }}>{cost.uzsTotal}</td>
                   <td style={{ fontSize: '0.9em' }}>{cost.usdTotal}</td>
+                  <td style={{ fontSize: '0.9em', color: '#2c3e50' }} title={sellTip || undefined}>
+                    {sell}
+                  </td>
                   <td>{item.quantity}</td>
                   <td>
                     <span className={`status-badge ${item.status}`}>
@@ -450,6 +571,7 @@ const Inventory = () => {
                   ? `$${inventoryColumnTotals.usdTotal.toFixed(2)}`
                   : '—'}
               </td>
+              <td style={{ fontWeight: 600, fontSize: '0.9em', color: '#999' }}>—</td>
               <td style={{ fontWeight: 600 }}>{inventoryColumnTotals.quantity.toLocaleString()}</td>
               <td colSpan="3">—</td>
             </tr>

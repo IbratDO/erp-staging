@@ -1,6 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
+
+const PRODUCTS_SORT_ACCESSORS = {
+  id: (p) => Number(p.id) || 0,
+  category: (p) => String(p.category ?? '').toLowerCase(),
+  brand: (p) => String(p.brand ?? '').toLowerCase(),
+  model: (p) => String(p.model ?? '').toLowerCase(),
+  size: (p) => String(p.size ?? '').toLowerCase(),
+  color: (p) => String(p.color ?? '').toLowerCase(),
+};
 
 const COMMON_COLORS = [
   'Black', 'White', 'Grey', 'Navy', 'Red', 'Blue', 'Brown', 'Beige', 'Green', 'Pink',
@@ -111,6 +122,7 @@ const Products = () => {
   const [selectedSizes, setSelectedSizes] = useState([]);
   const [selectedColors, setSelectedColors] = useState([]);
   const [pendingCustomColor, setPendingCustomColor] = useState('');
+  const [pendingCustomSize, setPendingCustomSize] = useState('');
   const [sizeDropdownOpen, setSizeDropdownOpen] = useState(false);
   const [colorDropdownOpen, setColorDropdownOpen] = useState(false);
   const sizeDropdownRef = useRef(null);
@@ -135,6 +147,18 @@ const Products = () => {
     if (!c) return;
     setSelectedColors((prev) => (prev.includes(c) ? prev : [...prev, c]));
     setPendingCustomColor('');
+  };
+
+  /** Product.size is CharField(max_length=20); allow free text like colors for new-product flow. */
+  const addPendingCustomSize = () => {
+    const raw = pendingCustomSize.trim();
+    if (!raw) return;
+    if (raw.length > 20) {
+      showNotification('Size must be 20 characters or less.', 'error');
+      return;
+    }
+    setSelectedSizes((prev) => (prev.includes(raw) ? prev : [...prev, raw]));
+    setPendingCustomSize('');
   };
 
   // Close size/color dropdowns when clicking outside either panel
@@ -230,6 +254,23 @@ const Products = () => {
     const s = new Set([...colorOptions, ...selectedColors]);
     return [...s].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [colorOptions, selectedColors]);
+
+  /**
+   * Letter/number presets are listed above. Everything else: sizes already on products (persisted)
+   * plus any non-preset size selected this session (before save) — same idea as pickerColorOptions.
+   */
+  const pickerExtraSizes = useMemo(() => {
+    const fromDb = [
+      ...new Set(
+        products
+          .map((p) => String(p.size ?? '').trim())
+          .filter(Boolean)
+          .filter((s) => !ALL_EDITOR_SIZE_OPTIONS.includes(s)),
+      ),
+    ];
+    const fromSession = selectedSizes.filter((s) => !ALL_EDITOR_SIZE_OPTIONS.includes(s));
+    return sortSizesCanonical([...new Set([...fromDb, ...fromSession])]);
+  }, [products, selectedSizes]);
 
   const existingVariantKeys = useMemo(() => {
     const set = new Set();
@@ -334,6 +375,7 @@ const Products = () => {
       setSelectedSizes([]);
       setSelectedColors([]);
       setPendingCustomColor('');
+      setPendingCustomSize('');
       setColorDropdownOpen(false);
       setSizeDropdownOpen(false);
       setFormData({
@@ -363,6 +405,7 @@ const Products = () => {
     const initialColor = product.color != null ? String(product.color).trim() : '';
     setSelectedColors(initialColor ? [initialColor] : []);
     setPendingCustomColor('');
+    setPendingCustomSize('');
     setColorDropdownOpen(false);
     setSizeDropdownOpen(false);
     setFormData({
@@ -387,6 +430,12 @@ const Products = () => {
       }
     }
   };
+
+  const productSort = useClientTableSort(PRODUCTS_SORT_ACCESSORS);
+  const displayProducts = useMemo(
+    () => productSort.sortRows(filteredProducts),
+    [filteredProducts, productSort]
+  );
 
   if (loading) {
     return <div className="page-container">Loading...</div>;
@@ -417,6 +466,7 @@ const Products = () => {
             setSelectedSizes([]);
             setSelectedColors([]);
             setPendingCustomColor('');
+            setPendingCustomSize('');
             setColorDropdownOpen(false);
             setSizeDropdownOpen(false);
             setFormData({
@@ -695,6 +745,82 @@ const Products = () => {
                             </div>
                           );
                         })}
+                        {pickerExtraSizes.length > 0 && (
+                          <>
+                            <div style={{
+                              flexBasis: '100%',
+                              marginTop: '10px',
+                              marginBottom: '4px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              color: '#555',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.06em',
+                            }}>
+                              Saved & other sizes
+                            </div>
+                            {pickerExtraSizes.map((size) => {
+                              const isSelected = selectedSizes.includes(size);
+                              return (
+                                <div
+                                  key={`extra-${size}`}
+                                  onClick={() => toggleSize(size)}
+                                  style={{
+                                    padding: '6px 14px', borderRadius: '4px', cursor: 'pointer',
+                                    fontWeight: 600, fontSize: '0.95em', userSelect: 'none',
+                                    border: isSelected ? '2px solid #1976d2' : '2px solid #ddd',
+                                    background: isSelected ? '#1976d2' : '#f5f5f5',
+                                    color: isSelected ? '#fff' : '#333',
+                                    transition: 'all 0.15s',
+                                  }}
+                                >
+                                  {size}
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
+                        <div style={{
+                          flexBasis: '100%',
+                          marginTop: '10px',
+                          paddingTop: '10px',
+                          borderTop: '1px solid #eee',
+                          display: 'flex',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                          alignItems: 'center',
+                        }}>
+                          <input
+                            type="text"
+                            placeholder="Custom size (e.g. 37.5, 3XL)"
+                            value={pendingCustomSize}
+                            onChange={(e) => setPendingCustomSize(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addPendingCustomSize();
+                              }
+                            }}
+                            maxLength={20}
+                            style={{
+                              flex: 1,
+                              minWidth: '140px',
+                              padding: '6px 10px',
+                              border: '1px solid #ccc',
+                              borderRadius: '4px',
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="btn-edit"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              addPendingCustomSize();
+                            }}
+                          >
+                            Add size
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1033,12 +1159,24 @@ const Products = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Category</th>
-              <th>Brand</th>
-              <th>Model</th>
-              <th>Size</th>
-              <th>Color</th>
+              <SortableTh columnId="id" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
+                ID
+              </SortableTh>
+              <SortableTh columnId="category" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
+                Category
+              </SortableTh>
+              <SortableTh columnId="brand" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
+                Brand
+              </SortableTh>
+              <SortableTh columnId="model" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
+                Model
+              </SortableTh>
+              <SortableTh columnId="size" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
+                Size
+              </SortableTh>
+              <SortableTh columnId="color" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
+                Color
+              </SortableTh>
               <th>Actions</th>
             </tr>
           </thead>
@@ -1050,7 +1188,7 @@ const Products = () => {
                 </td>
               </tr>
             ) : (
-              filteredProducts.map((product) => {
+              displayProducts.map((product) => {
                 return (
                 <tr key={product.id}>
                   <td>#{product.id}</td>

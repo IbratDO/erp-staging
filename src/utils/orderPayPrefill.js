@@ -27,6 +27,19 @@ export function prefillPayOrderFromSupplier(order) {
 }
 
 /**
+ * Two-field totals for Orders.js payment form (UZS / USD), from planned supplier buckets.
+ */
+export function prefillPayOrderSimpleTotals(order) {
+  const b = prefillPayOrderFromSupplier(order);
+  const uzs = (parseFloat(b.uzs_cash) || 0) + (parseFloat(b.uzs_card) || 0);
+  const usd = (parseFloat(b.usd_cash) || 0) + (parseFloat(b.usd_card) || 0);
+  return {
+    uzs: uzs > 0 ? String(Number(uzs.toFixed(2))) : '',
+    usd: usd > 0 ? String(Number(usd.toFixed(2))) : '',
+  };
+}
+
+/**
  * Prefill payment buckets from planned selling (for status flows that align with sale totals).
  */
 export function prefillPayOrderFromSelling(order) {

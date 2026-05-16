@@ -1,7 +1,40 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import api from '../utils/api';
 import { cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
+
+function returnProductPickerLabel(p) {
+  if (!p) return '';
+  return `${p.brand} ${p.model} - Size ${p.size} (${p.color})`;
+}
+
+const RETURNS_SORT_ACCESSORS = {
+  id: (r) => Number(r.id) || 0,
+  category: (r) => String(r.product_detail?.category ?? '').toLowerCase(),
+  product: (r) =>
+    r.product_detail
+      ? `${r.product_detail.brand} ${r.product_detail.model}`.toLowerCase()
+      : String(r.product ?? ''),
+  brand: (r) => String(r.product_detail?.brand ?? '').toLowerCase(),
+  model: (r) => String(r.product_detail?.model ?? '').toLowerCase(),
+  size: (r) => String(r.product_detail?.size ?? '').toLowerCase(),
+  color: (r) => String(r.product_detail?.color ?? '').toLowerCase(),
+  sale: (r) => Number(r.sale) || 0,
+  customer: (r) => String(r.customer_detail?.name ?? '').toLowerCase(),
+  phone: (r) => String(r.customer_detail?.telephone ?? '').toLowerCase(),
+  quantity: (r) => Number(r.quantity) || 0,
+  reason: (r) => String(r.reason ?? '').toLowerCase(),
+  refund_uzs: (r) =>
+    (parseFloat(r.refund_uzs_cash) || 0) + (parseFloat(r.refund_uzs_card) || 0),
+  refund_usd: (r) =>
+    (parseFloat(r.refund_usd_cash) || 0) + (parseFloat(r.refund_usd_card) || 0),
+  refund_status: (r) => String(r.refund_status ?? '').toLowerCase(),
+  notes: (r) => String(r.notes ?? '').toLowerCase(),
+  processed_by: (r) => String(r.processed_by_detail?.username ?? '').toLowerCase(),
+  return_date: (r) => new Date(r.return_date).getTime() || 0,
+};
 
 const Returns = () => {
   const [returns, setReturns] = useState([]);
@@ -42,6 +75,28 @@ const Returns = () => {
     usd: '',
   });
   const [showRefundForm, setShowRefundForm] = useState(false);
+
+  const productDropdownRef = useRef(null);
+  const [productSearch, setProductSearch] = useState('');
+  const [productDropdownOpen, setProductDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (!showForm) {
+      setProductSearch('');
+      setProductDropdownOpen(false);
+    }
+  }, [showForm]);
+
+  useEffect(() => {
+    if (!productDropdownOpen) return;
+    const handleClickOutside = (e) => {
+      if (productDropdownRef.current && !productDropdownRef.current.contains(e.target)) {
+        setProductDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [productDropdownOpen]);
 
   useEffect(() => {
     fetchReturns();
@@ -340,6 +395,12 @@ const Returns = () => {
     }
   };
 
+  const returnsSort = useClientTableSort(RETURNS_SORT_ACCESSORS);
+  const displayReturns = useMemo(
+    () => returnsSort.sortRows(filteredReturns),
+    [filteredReturns, returnsSort]
+  );
+
   if (loading) {
     return <div className="page-container">Loading...</div>;
   }
@@ -380,6 +441,19 @@ const Returns = () => {
 
                 const availableCategories = [...new Set(availableProducts.map((p) => p.category).filter(Boolean))].sort();
 
+                const filteredByCategory = availableProducts.filter(
+                  (p) => !formCategory || p.category === formCategory,
+                );
+                const searchLower = productSearch.toLowerCase();
+                const filteredProductOptions = filteredByCategory.filter((p) => {
+                  if (!productSearch) return true;
+                  const haystack = `${p.id} ${p.brand ?? ''} ${p.model ?? ''} ${p.size ?? ''} ${p.color ?? ''}`.toLowerCase();
+                  return haystack.includes(searchLower);
+                });
+                const selectedReturnProduct =
+                  filteredByCategory.find((p) => p.id === parseInt(formData.product, 10)) ||
+                  availableProducts.find((p) => p.id === parseInt(formData.product, 10));
+
                 return (
                   <>
                   <div className="form-group">
@@ -388,6 +462,8 @@ const Returns = () => {
                       value={formData.customer}
                       onChange={(e) => {
                         setFormCategory('');
+                        setProductSearch('');
+                        setProductDropdownOpen(false);
                         setFormData({ ...formData, customer: e.target.value, sale: '', product: '' });
                       }}
                     >
@@ -403,7 +479,12 @@ const Returns = () => {
                     <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
                     <select
                       value={formCategory}
-                      onChange={(e) => { setFormCategory(e.target.value); setFormData({ ...formData, product: '', sale: '' }); }}
+                      onChange={(e) => {
+                        setProductSearch('');
+                        setProductDropdownOpen(false);
+                        setFormCategory(e.target.value);
+                        setFormData({ ...formData, product: '', sale: '' });
+                      }}
                     >
                       <option value="">All Categories</option>
                       {availableCategories.map(cat => (
@@ -411,31 +492,127 @@ const Returns = () => {
                       ))}
                     </select>
                   </div>
-                  <div className="form-group">
+                  <div className="form-group" ref={productDropdownRef} style={{ position: 'relative' }}>
                     <label>Product</label>
-                    <select
-                      value={formData.product}
-                      onChange={(e) => setFormData({ ...formData, product: e.target.value, sale: '' })}
-                      required
-                    >
-                      <option value="">Select a product</option>
-                      {availableProducts
-                        .filter(p => !formCategory || p.category === formCategory)
-                        .map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.brand} {product.model} - Size {product.size} ({product.color})
-                          </option>
-                        ))}
-                    </select>
-                    {!formData.customer ? (
-                      <small style={{ color: '#718096', marginTop: '4px', display: 'block' }}>
-                        Only products from sales that still have returnable quantity (not fully covered by existing returns).
-                      </small>
-                    ) : (
+                    <>
+                      <div
+                        onClick={() => {
+                          setProductDropdownOpen((o) => !o);
+                          setProductSearch('');
+                        }}
+                        style={{
+                          border: '1px solid #ddd',
+                          borderRadius: '5px',
+                          padding: '10px 12px',
+                          cursor: 'pointer',
+                          background: 'white',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          minHeight: '40px',
+                          userSelect: 'none',
+                        }}
+                      >
+                        <span style={{ color: selectedReturnProduct ? '#333' : '#999' }}>
+                          {selectedReturnProduct
+                            ? returnProductPickerLabel(selectedReturnProduct)
+                            : 'Select a product'}
+                        </span>
+                        <span style={{ color: '#666', fontSize: '0.8em' }}>{productDropdownOpen ? '▲' : '▼'}</span>
+                      </div>
+                      {productDropdownOpen && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            background: 'white',
+                            border: '1px solid #ddd',
+                            borderRadius: '5px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                            zIndex: 100,
+                            maxHeight: '320px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            marginTop: '4px',
+                          }}
+                        >
+                          <div style={{ padding: '8px', borderBottom: '1px solid #eee' }}>
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Search product..."
+                              value={productSearch}
+                              onChange={(e) => setProductSearch(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                border: '1px solid #ccc',
+                                borderRadius: '5px',
+                                fontSize: '14px',
+                                boxSizing: 'border-box',
+                              }}
+                            />
+                          </div>
+                          <div style={{ overflowY: 'auto', flex: 1 }}>
+                            {filteredProductOptions.length === 0 ? (
+                              <div
+                                style={{
+                                  padding: '12px',
+                                  color: '#999',
+                                  textAlign: 'center',
+                                  fontSize: '14px',
+                                }}
+                              >
+                                No products found
+                              </div>
+                            ) : (
+                              filteredProductOptions.map((product) => (
+                                <div
+                                  key={product.id}
+                                  role="presentation"
+                                  onClick={() => {
+                                    setFormData({
+                                      ...formData,
+                                      product: String(product.id),
+                                      sale: '',
+                                    });
+                                    setProductDropdownOpen(false);
+                                    setProductSearch('');
+                                  }}
+                                  style={{
+                                    padding: '9px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    borderBottom: '1px solid #f0f0f0',
+                                    background:
+                                      parseInt(formData.product, 10) === product.id ? '#e8f4fd' : 'white',
+                                    fontWeight: parseInt(formData.product, 10) === product.id ? 600 : 400,
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (parseInt(formData.product, 10) !== product.id)
+                                      e.currentTarget.style.background = '#f5f5f5';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (parseInt(formData.product, 10) !== product.id)
+                                      e.currentTarget.style.background = 'white';
+                                  }}
+                                >
+                                  {returnProductPickerLabel(product)}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                    {formData.customer && (
                       <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
                         Showing only products purchased by{' '}
-                        <strong>{customers.find((c) => c.id === parseInt(formData.customer, 10))?.name}</strong> that still have
-                        returnable quantity.
+                        <strong>{customers.find((c) => c.id === parseInt(formData.customer, 10))?.name}</strong> that
+                        still have returnable quantity.
                       </small>
                     )}
                   </div>
@@ -727,25 +904,61 @@ const Returns = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
+              <SortableTh columnId="id" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                ID
+              </SortableTh>
               <th>Actions</th>
-              <th>Category</th>
-              <th>Product</th>
-              <th>Brand</th>
-              <th>Model</th>
-              <th>Size</th>
-              <th>Color</th>
-              <th>Sale</th>
-              <th>Customer</th>
-              <th>Phone</th>
-              <th>Quantity</th>
-              <th>Reason</th>
-              <th>Refund UZS</th>
-              <th>Refund USD</th>
-              <th>Refund Status</th>
-              <th>Notes</th>
-              <th>Processed By</th>
-              <th>Date</th>
+              <SortableTh columnId="category" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Category
+              </SortableTh>
+              <SortableTh columnId="product" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Product
+              </SortableTh>
+              <SortableTh columnId="brand" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Brand
+              </SortableTh>
+              <SortableTh columnId="model" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Model
+              </SortableTh>
+              <SortableTh columnId="size" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Size
+              </SortableTh>
+              <SortableTh columnId="color" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Color
+              </SortableTh>
+              <SortableTh columnId="sale" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Sale
+              </SortableTh>
+              <SortableTh columnId="customer" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Customer
+              </SortableTh>
+              <SortableTh columnId="phone" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Phone
+              </SortableTh>
+              <SortableTh columnId="quantity" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Quantity
+              </SortableTh>
+              <SortableTh columnId="reason" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Reason
+              </SortableTh>
+              <SortableTh columnId="refund_uzs" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Refund UZS
+              </SortableTh>
+              <SortableTh columnId="refund_usd" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Refund USD
+              </SortableTh>
+              <SortableTh columnId="refund_status" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Refund Status
+              </SortableTh>
+              <SortableTh columnId="notes" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Notes
+              </SortableTh>
+              <SortableTh columnId="processed_by" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Processed By
+              </SortableTh>
+              <SortableTh columnId="return_date" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Date
+              </SortableTh>
             </tr>
           </thead>
           <tbody>
@@ -756,7 +969,7 @@ const Returns = () => {
                 </td>
               </tr>
             ) : (
-              filteredReturns.map((returnItem) => (
+              displayReturns.map((returnItem) => (
                 <tr key={returnItem.id}>
                   <td>#{returnItem.id}</td>
                   <td>

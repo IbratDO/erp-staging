@@ -135,3 +135,29 @@ export function buildCompleteSaleRequest(paymentFormData, meta) {
   }
   return requestData;
 }
+
+/** Shop batch delivery after dispatch: 3-step settlement instead of single Complete & Pay. */
+export function shopDeliverySettlementRequired(sale) {
+  if (!sale || sale.status !== 'dispatched') return false;
+  if (sale.sale_type !== 'delivery') return false;
+  if (sale.order != null && sale.order !== '') return false;
+  return !!sale.dispatch_info;
+}
+
+/** 1–3 which settlement step applies; 0 if every timestamp exists (usually sale is completed). Null if not eligible. */
+export function shopDeliverySettlementActiveStep(sale) {
+  if (!shopDeliverySettlementRequired(sale)) return null;
+  if (!sale.delivery_customer_paid_at) return 1;
+  if (!sale.delivery_shop_remittance_at) return 2;
+  if (!sale.delivery_dispatcher_fee_completed_at) return 3;
+  return 0;
+}
+
+/** Primary label for the third settlement action (dispatch fee vs no fee). */
+export function shopDeliverySettlementStep3Label(sale) {
+  const d = sale?.dispatch_info || null;
+  const uzFee = d ? parseFloat(d.delivery_cost_uzs ?? 0) || 0 : 0;
+  const usFee = d ? parseFloat(d.delivery_cost ?? 0) || 0 : 0;
+  const needsDispatchFeePayment = !!(d && !d.is_paid && (uzFee > 0 || usFee > 0));
+  return needsDispatchFeePayment ? 'Pay for dispatch & complete sale' : 'Complete sale';
+}

@@ -1,7 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat';
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
+
+const WORKERS_SORT = {
+  id: (w) => Number(w.id) || 0,
+  name: (w) => String(w.name ?? '').toLowerCase(),
+  telephone: (w) => String(w.telephone ?? '').toLowerCase(),
+  notes: (w) => String(w.notes ?? '').toLowerCase(),
+};
+
+const WORKER_PERF_SALES_SORT = {
+  date: (s) => new Date(s.sale_date).getTime() || 0,
+  product: (s) =>
+    s.product_detail
+      ? `${s.product_detail.brand} ${s.product_detail.model}`.toLowerCase()
+      : String(s.product ?? ''),
+  quantity: (s) => Number(s.quantity) || 0,
+  price: (s) => Number(s.selling_price) || 0,
+  total: (s) => Number(s.total_amount) || 0,
+  type: (s) => String(s.sale_type ?? '').toLowerCase(),
+  status: (s) => String(s.status ?? '').toLowerCase(),
+  customer: (s) => String(s.customer_detail?.name ?? '').toLowerCase(),
+};
+
+const WORKER_TX_SORT = {
+  date: (r) => new Date(r.transaction_date).getTime() || 0,
+  type: (r) => String(r.expense_type ?? '').toLowerCase(),
+  amount: (r) => Number(r.amount) || 0,
+  currency: (r) => String(r.currency ?? '').toLowerCase(),
+  notes: (r) => String(r.notes ?? '').toLowerCase(),
+};
 
 const Workers = () => {
   const [workers, setWorkers] = useState([]);
@@ -113,6 +144,23 @@ const Workers = () => {
     }
   };
 
+  const workerSort = useClientTableSort(WORKERS_SORT);
+  const perfSaleSort = useClientTableSort(WORKER_PERF_SALES_SORT);
+  const workerTxSort = useClientTableSort(WORKER_TX_SORT);
+
+  const displayWorkers = useMemo(
+    () => workerSort.sortRows(workers),
+    [workers, workerSort]
+  );
+  const displayPerfSales = useMemo(
+    () => perfSaleSort.sortRows(workerPerformance?.sales || []),
+    [workerPerformance?.sales, perfSaleSort]
+  );
+  const displayWorkerTx = useMemo(
+    () => workerTxSort.sortRows(workerTransactions?.finance_records || []),
+    [workerTransactions?.finance_records, workerTxSort]
+  );
+
   if (loading) {
     return <div className="page-container">Loading...</div>;
   }
@@ -189,10 +237,18 @@ const Workers = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Telephone</th>
-              <th>Notes</th>
+              <SortableTh columnId="id" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
+                ID
+              </SortableTh>
+              <SortableTh columnId="name" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
+                Name
+              </SortableTh>
+              <SortableTh columnId="telephone" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
+                Telephone
+              </SortableTh>
+              <SortableTh columnId="notes" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
+                Notes
+              </SortableTh>
               <th>Actions</th>
             </tr>
           </thead>
@@ -204,7 +260,7 @@ const Workers = () => {
                 </td>
               </tr>
             ) : (
-              workers.map((worker) => (
+              displayWorkers.map((worker) => (
                 <tr key={worker.id}>
                   <td>#{worker.id}</td>
                   <td>{worker.name}</td>
@@ -362,14 +418,30 @@ const Workers = () => {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Product</th>
-                    <th>Quantity</th>
-                    <th>Price</th>
-                    <th>Total</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Customer</th>
+                    <SortableTh columnId="date" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
+                      Date
+                    </SortableTh>
+                    <SortableTh columnId="product" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
+                      Product
+                    </SortableTh>
+                    <SortableTh columnId="quantity" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
+                      Quantity
+                    </SortableTh>
+                    <SortableTh columnId="price" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
+                      Price
+                    </SortableTh>
+                    <SortableTh columnId="total" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
+                      Total
+                    </SortableTh>
+                    <SortableTh columnId="type" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
+                      Type
+                    </SortableTh>
+                    <SortableTh columnId="status" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
+                      Status
+                    </SortableTh>
+                    <SortableTh columnId="customer" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
+                      Customer
+                    </SortableTh>
                   </tr>
                 </thead>
                 <tbody>
@@ -380,7 +452,7 @@ const Workers = () => {
                       </td>
                     </tr>
                   ) : (
-                    workerPerformance.sales.map((sale) => (
+                    displayPerfSales.map((sale) => (
                       <tr key={sale.id}>
                         <td>{new Date(sale.sale_date).toLocaleString()}</td>
                         <td>
@@ -466,11 +538,21 @@ const Workers = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Amount</th>
-                <th>Currency</th>
-                <th>Notes</th>
+                <SortableTh columnId="date" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
+                  Date
+                </SortableTh>
+                <SortableTh columnId="type" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
+                  Type
+                </SortableTh>
+                <SortableTh columnId="amount" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
+                  Amount
+                </SortableTh>
+                <SortableTh columnId="currency" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
+                  Currency
+                </SortableTh>
+                <SortableTh columnId="notes" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
+                  Notes
+                </SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -481,7 +563,7 @@ const Workers = () => {
                   </td>
                 </tr>
               ) : (
-                workerTransactions.finance_records.map((record) => (
+                displayWorkerTx.map((record) => (
                   <tr key={record.id}>
                     <td>{new Date(record.transaction_date).toLocaleString()}</td>
                     <td>

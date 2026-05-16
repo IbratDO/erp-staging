@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../utils/api';
 import SaleCompletePayForm from '../components/SaleCompletePayForm';
+import SaleDeliverySettlementForm from '../components/SaleDeliverySettlementForm';
+import ShopDeliverySettlementButtons from '../components/ShopDeliverySettlementButtons';
+import { shopDeliverySettlementRequired } from '../utils/saleCompletePayHelpers';
 import './TablePage.css';
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
 
 const canCompleteAndPay = (sale) => !!(sale && sale.status === 'dispatched');
 
@@ -24,6 +29,61 @@ const productLine = (sale) => {
   if (!sale?.product_detail) return '—';
   const p = sale.product_detail;
   return `${p.brand || ''} ${p.model || ''}`.trim() + (p.size ? ` · ${p.size}` : '') + (p.color ? ` (${p.color})` : '');
+};
+
+/** Lowercase key for client-side sort (matches visual product column). */
+function productLineSortKey(sale) {
+  if (!sale?.product_detail) return '';
+  const p = sale.product_detail;
+  return `${p.brand || ''} ${p.model || ''} ${p.size || ''} ${p.color || ''}`.trim().toLowerCase();
+}
+
+/** Rough single-number sort for mixed UZS + USD delivery cost display column. */
+function dispatchCostSortApprox(row) {
+  return (parseFloat(row.delivery_cost_uzs) || 0) / 12500 + (parseFloat(row.delivery_cost) || 0);
+}
+
+const PARTNER_DISPATCHER_SORT_ACCESSORS = {
+  name: (d) => String(d.name ?? '').toLowerCase(),
+  telephone: (d) => String(d.telephone ?? '').toLowerCase(),
+  loads: (d) => Number(d.dispatch_count) || 0,
+  active: (d) => (d.is_active !== false ? 1 : 0),
+};
+
+const DISPATCH_SHIPMENT_SORT_ACCESSORS = {
+  sale_id: (row) => Number(row.sale_detail?.id) || 0,
+  product: (row) => productLineSortKey(row.sale_detail),
+  customer: (row) => String(row.sale_detail?.customer_detail?.name ?? '').toLowerCase(),
+  sale_status: (row) => String(row.sale_detail?.status ?? '').toLowerCase(),
+  dispatch_date: (row) => new Date(row.dispatch_date).getTime() || 0,
+  dispatch_type_key: (row) => String(row.dispatch_type ?? '').toLowerCase(),
+  delivery_cost_key: (row) => dispatchCostSortApprox(row),
+  is_paid: (row) => (row.is_paid ? 1 : 0),
+  status: (row) => String(row.status ?? '').toLowerCase(),
+  delivered_at: (row) => new Date(row.delivered_at).getTime() || 0,
+  tracking_number: (row) => String(row.tracking_number ?? '').toLowerCase(),
+  logistics_notes: (row) => String(row.logistics_notes ?? '').toLowerCase(),
+};
+
+const ALL_DELIVERIES_SORT_ACCESSORS = {
+  sale_id: (row) => Number(row.sale_detail?.id) || 0,
+  product: (row) => productLineSortKey(row.sale_detail),
+  customer: (row) => String(row.sale_detail?.customer_detail?.name ?? '').toLowerCase(),
+  dispatch_type_key: (row) => String(row.dispatch_type ?? '').toLowerCase(),
+  delivery_cost_key: (row) => dispatchCostSortApprox(row),
+  dispatcher_name: (row) => String(row.dispatcher_detail?.name ?? '').toLowerCase(),
+  status: (row) => String(row.status ?? '').toLowerCase(),
+  delivered_at: (row) => new Date(row.delivered_at).getTime() || 0,
+  logistics_notes: (row) => String(row.logistics_notes ?? '').toLowerCase(),
+};
+
+const STATUS_TIMELINE_SORT_ACCESSORS = {
+  timestamp: (log) => new Date(log.timestamp).getTime() || 0,
+  dispatch_num: (log) => Number(log.object_id) || 0,
+  previous_status: (log) => String(log.previous_status ?? '').toLowerCase(),
+  new_status: (log) => String(log.new_status ?? '').toLowerCase(),
+  changed_by: (log) => String(log.changed_by_detail?.username ?? '').toLowerCase(),
+  notes: (log) => String(log.notes ?? '').toLowerCase(),
 };
 
 const formatCost = (d) => {
@@ -307,10 +367,10 @@ const Dispatchers = () => {
     }
   };
 
-  const openCompleteAndPay = async (sale) => {
-    if (!sale?.id) return;
+  const openCompleteAndPay = async (saleId) => {
+    if (!saleId) return;
     try {
-      const res = await api.get(`/sales/${sale.id}/`);
+      const res = await api.get(`/sales/${saleId}/`);
       setCompletePaySale(res.data);
     } catch (e) {
       console.error(e);
@@ -329,14 +389,36 @@ const Dispatchers = () => {
     return { uzs, usd };
   }, [dispatcherDetail]);
 
-  const detailDispatches = dispatcherDetail?.dispatches || [];
+  const btsFromApi = useMemo(() => dispatchers.find((d) => d.is_bts_channel), [dispatchers]);
+  const partnersWithoutBts = useMemo(() => dispatchers.filter((d) => !d.is_bts_channel), [dispatchers]);
+
+  const partnerSort = useClientTableSort(PARTNER_DISPATCHER_SORT_ACCESSORS);
+  const sortedPartnersWithoutBts = useMemo(
+    () => partnerSort.sortRows(partnersWithoutBts || []),
+    [partnersWithoutBts, partnerSort],
+  );
+
+  const shipmentSort = useClientTableSort(DISPATCH_SHIPMENT_SORT_ACCESSORS);
+  const sortedDetailDispatches = useMemo(
+    () => shipmentSort.sortRows(dispatcherDetail?.dispatches || []),
+    [dispatcherDetail?.dispatches, shipmentSort],
+  );
+
+  const allDeliveriesSort = useClientTableSort(ALL_DELIVERIES_SORT_ACCESSORS);
+  const sortedAllDeliveriesRows = useMemo(
+    () => allDeliveriesSort.sortRows(dispatches || []),
+    [dispatches, allDeliveriesSort],
+  );
+
+  const statusTimelineSort = useClientTableSort(STATUS_TIMELINE_SORT_ACCESSORS);
+  const sortedStatusChangeLogs = useMemo(
+    () => statusTimelineSort.sortRows(dispatcherDetail?.status_change_logs || []),
+    [dispatcherDetail?.status_change_logs, statusTimelineSort],
+  );
 
   if (loading && dispatches.length === 0) {
     return <div className="page-container">Loading...</div>;
   }
-
-  const btsFromApi = dispatchers.find((d) => d.is_bts_channel);
-  const partnersWithoutBts = dispatchers.filter((d) => !d.is_bts_channel);
 
   return (
     <div className="page-container">
@@ -360,7 +442,19 @@ const Dispatchers = () => {
         </div>
       )}
 
-      {completePaySale && (
+      {completePaySale && shopDeliverySettlementRequired(completePaySale) && (
+        <SaleDeliverySettlementForm
+          sale={completePaySale}
+          onClose={() => setCompletePaySale(null)}
+          onAfterStepRecorded={afterDispatchMutation}
+          onSuccess={async () => {
+            setCompletePaySale(null);
+            await afterDispatchMutation();
+          }}
+          showNotification={showNotification}
+        />
+      )}
+      {completePaySale && !shopDeliverySettlementRequired(completePaySale) && (
         <SaleCompletePayForm
           sale={completePaySale}
           onClose={() => setCompletePaySale(null)}
@@ -444,19 +538,13 @@ const Dispatchers = () => {
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
         <div className="table-card" style={{ flex: selectedDispatcher ? '0 0 42%' : '1', minWidth: 0 }}>
           <h2>Delivery partners</h2>
-          <p style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#555' }}>
-            The <strong>BTS</strong> line is a normal partner record (company delivery): you can <strong>Delete</strong>{' '}
-            it like any other name. BTS <em>dispatches</em> still use type BTS; use <strong>Restore BTS</strong> if the
-            row is missing. Named partners are Dostavshik couriers; both appear in the workspace and in the right-hand
-            detail.
-          </p>
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Loads</th>
-                <th>Active</th>
+                <SortableTh columnId="name" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Name</SortableTh>
+                <SortableTh columnId="telephone" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Phone</SortableTh>
+                <SortableTh columnId="loads" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Loads</SortableTh>
+                <SortableTh columnId="active" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Active</SortableTh>
                 <th onClick={(e) => e.stopPropagation()}>Actions</th>
               </tr>
             </thead>
@@ -547,7 +635,7 @@ const Dispatchers = () => {
                   </td>
                 </tr>
               ) : (
-                partnersWithoutBts.map((d) => (
+                sortedPartnersWithoutBts.map((d) => (
                   <tr
                     key={d.id}
                     onClick={() => handleRowSelect(d)}
@@ -661,30 +749,30 @@ const Dispatchers = () => {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Sale</th>
-                        <th>Product</th>
-                        <th>Customer</th>
-                        <th>Sale status</th>
-                        <th>Dispatch date</th>
-                        <th>Type</th>
-                        <th>Delivery cost</th>
-                        <th>Paid</th>
-                        <th>Dispatch status</th>
-                        <th>Delivered</th>
-                        <th>Tracking</th>
-                        <th>Notes</th>
+                        <SortableTh columnId="sale_id" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Sale</SortableTh>
+                        <SortableTh columnId="product" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Product</SortableTh>
+                        <SortableTh columnId="customer" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Customer</SortableTh>
+                        <SortableTh columnId="sale_status" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Sale status</SortableTh>
+                        <SortableTh columnId="dispatch_date" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Dispatch date</SortableTh>
+                        <SortableTh columnId="dispatch_type_key" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Type</SortableTh>
+                        <SortableTh columnId="delivery_cost_key" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Delivery cost</SortableTh>
+                        <SortableTh columnId="is_paid" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Paid</SortableTh>
+                        <SortableTh columnId="status" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Dispatch status</SortableTh>
+                        <SortableTh columnId="delivered_at" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Delivered</SortableTh>
+                        <SortableTh columnId="tracking_number" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Tracking</SortableTh>
+                        <SortableTh columnId="logistics_notes" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Notes</SortableTh>
                         <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {detailDispatches.length === 0 ? (
+                      {sortedDetailDispatches.length === 0 ? (
                         <tr>
                           <td colSpan={13} style={{ textAlign: 'center' }}>
                             No dispatches assigned yet.
                           </td>
                         </tr>
                       ) : (
-                        detailDispatches.map((row) => {
+                        sortedDetailDispatches.map((row) => {
                           const sale = row.sale_detail;
                           return (
                             <tr key={row.id}>
@@ -724,15 +812,18 @@ const Dispatchers = () => {
                                 />
                               </td>
                               <td onClick={(e) => e.stopPropagation()}>
-                                {canCompleteAndPay(sale) && (
-                                  <button
-                                    type="button"
-                                    className="btn-status"
-                                    onClick={() => openCompleteAndPay(sale)}
-                                  >
-                                    Complete &amp; Pay
-                                  </button>
-                                )}
+                                {canCompleteAndPay(sale) &&
+                                  (shopDeliverySettlementRequired(sale) ? (
+                                    <ShopDeliverySettlementButtons sale={sale} onOpenSettlement={openCompleteAndPay} />
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="btn-status"
+                                      onClick={() => openCompleteAndPay(sale.id)}
+                                    >
+                                      Complete & Pay
+                                    </button>
+                                  ))}
                               </td>
                             </tr>
                           );
@@ -770,12 +861,12 @@ const Dispatchers = () => {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Time</th>
-                        <th>Dispatch #</th>
-                        <th>From</th>
-                        <th>To</th>
-                        <th>By</th>
-                        <th>Notes</th>
+                        <SortableTh columnId="timestamp" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>Time</SortableTh>
+                        <SortableTh columnId="dispatch_num" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>Dispatch #</SortableTh>
+                        <SortableTh columnId="previous_status" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>From</SortableTh>
+                        <SortableTh columnId="new_status" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>To</SortableTh>
+                        <SortableTh columnId="changed_by" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>By</SortableTh>
+                        <SortableTh columnId="notes" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>Notes</SortableTh>
                       </tr>
                     </thead>
                     <tbody>
@@ -786,7 +877,7 @@ const Dispatchers = () => {
                           </td>
                         </tr>
                       ) : (
-                        dispatcherDetail.status_change_logs.map((log) => (
+                        sortedStatusChangeLogs.map((log) => (
                           <tr key={log.id}>
                             <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
                               {log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}
@@ -810,10 +901,6 @@ const Dispatchers = () => {
 
       <div className="table-card" style={{ marginTop: '24px' }}>
         <h2>All deliveries (workspace)</h2>
-        <p style={{ margin: '0 0 10px', fontSize: '0.9rem', color: '#555' }}>
-          Filter and update any dispatch. Includes <strong>BTS</strong> (company) and <strong>Dostavshik</strong> (named
-          partner) — reassign or add notes the same way for both.
-        </p>
         <div className="filter-toolbar filter-toolbar--tight filter-toolbar--bleed">
           <div className="filter-field">
             <label>Status</label>
@@ -859,15 +946,15 @@ const Dispatchers = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Sale</th>
-                <th>Product</th>
-                <th>Customer</th>
-                <th>Type</th>
-                <th>Cost</th>
-                <th>Dispatcher</th>
-                <th>Status</th>
-                <th>Delivered</th>
-                <th>Logistics notes</th>
+                <SortableTh columnId="sale_id" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Sale</SortableTh>
+                <SortableTh columnId="product" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Product</SortableTh>
+                <SortableTh columnId="customer" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Customer</SortableTh>
+                <SortableTh columnId="dispatch_type_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Type</SortableTh>
+                <SortableTh columnId="delivery_cost_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Cost</SortableTh>
+                <SortableTh columnId="dispatcher_name" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Dispatcher</SortableTh>
+                <SortableTh columnId="status" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Status</SortableTh>
+                <SortableTh columnId="delivered_at" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Delivered</SortableTh>
+                <SortableTh columnId="logistics_notes" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Logistics notes</SortableTh>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -879,7 +966,7 @@ const Dispatchers = () => {
                   </td>
                 </tr>
               ) : (
-                dispatches.map((row) => {
+                sortedAllDeliveriesRows.map((row) => {
                   const sale = row.sale_detail;
                   return (
                     <tr key={row.id}>
@@ -927,15 +1014,18 @@ const Dispatchers = () => {
                         />
                       </td>
                       <td>
-                        {canCompleteAndPay(sale) && (
-                          <button
-                            type="button"
-                            className="btn-status"
-                            onClick={() => openCompleteAndPay(sale)}
-                          >
-                            Complete &amp; Pay
-                          </button>
-                        )}
+                        {canCompleteAndPay(sale) &&
+                          (shopDeliverySettlementRequired(sale) ? (
+                            <ShopDeliverySettlementButtons sale={sale} onOpenSettlement={openCompleteAndPay} />
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-status"
+                              onClick={() => openCompleteAndPay(sale.id)}
+                            >
+                              Complete & Pay
+                            </button>
+                          ))}
                       </td>
                     </tr>
                   );

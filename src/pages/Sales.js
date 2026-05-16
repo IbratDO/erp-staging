@@ -2,8 +2,74 @@ import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat';
 import SaleCompletePayForm from '../components/SaleCompletePayForm';
+import SaleDeliverySettlementForm from '../components/SaleDeliverySettlementForm';
+import { shopDeliverySettlementRequired } from '../utils/saleCompletePayHelpers';
+import ShopDeliverySettlementButtons from '../components/ShopDeliverySettlementButtons';
 import ProductSearchableSelect from '../components/ProductSearchableSelect';
+import { plannedSellingUsdPerUnit, plannedSellingUzsPerUnit } from '../utils/orderPlannedPricing';
 import './TablePage.css';
+import SortableTh from '../components/SortableTh';
+import { useClientTableSort } from '../utils/tableSort';
+
+/** Column accessors — match main sales grid header `columnId`s. Actions column excluded. */
+const SALE_SORT_ACCESSORS = {
+  id: (s) => Number(s.id) || 0,
+  status: (s) => String(s.status ?? '').toLowerCase(),
+  category: (s) => String(s.product_detail?.category ?? '').toLowerCase(),
+  product: (s) =>
+    s.product_detail
+      ? `${s.product_detail.brand ?? ''} ${s.product_detail.model ?? ''}`.trim().toLowerCase()
+      : String(s.product ?? '').toLowerCase(),
+  brand: (s) => String(s.product_detail?.brand ?? '').toLowerCase(),
+  model: (s) => String(s.product_detail?.model ?? '').toLowerCase(),
+  size: (s) => String(s.product_detail?.size ?? '').toLowerCase(),
+  color: (s) => String(s.product_detail?.color ?? '').toLowerCase(),
+  sale_type: (s) => String(s.sale_type ?? '').toLowerCase(),
+  package: (s) => {
+    const lines = s.package_lines;
+    if (Array.isArray(lines) && lines.length) {
+      return lines.map((pl) => `${pl.package_type ?? ''}:${pl.quantity ?? ''}`).join('|').toLowerCase();
+    }
+    if (s.package_type) {
+      const q = s.package_quantity != null ? s.package_quantity : s.quantity;
+      return `${String(s.package_type)}:${q}`.toLowerCase();
+    }
+    return '';
+  },
+  quantity: (s) => parseInt(s.quantity, 10) || 0,
+  selling_price: (s) => parseFloat(s.selling_price) || 0,
+  total_amount: (s) => parseFloat(s.total_amount) || 0,
+  discount_credit: (s) =>
+    `${String(s.balance_shortfall_type ?? '')}:${parseFloat(s.balance_shortfall_amount) || 0}`,
+  uzs_pay: (s) =>
+    (parseFloat(s.payment_uzs_cash) || 0) + (parseFloat(s.payment_uzs_card) || 0),
+  usd_pay: (s) =>
+    (parseFloat(s.payment_usd_cash) || 0) + (parseFloat(s.payment_usd_card) || 0),
+  customer: (s) => String(s.customer_detail?.name ?? '').toLowerCase(),
+  phone: (s) => String(s.customer_detail?.telephone ?? '').toLowerCase(),
+  salesman: (s) => String(s.salesman_detail?.username ?? '').toLowerCase(),
+  dispatcher: (s) => {
+    const d = s.dispatch_info;
+    if (!d) return '';
+    if (d.dispatch_type === 'bts' && !d.dispatcher_name) return 'bts';
+    return String(d.dispatcher_name ?? '').toLowerCase();
+  },
+  sale_date: (s) => new Date(s.sale_date).getTime() || 0,
+};
+
+function stockingOrderFromInventory(productId, inventoryList) {
+  if (productId == null || Number.isNaN(Number(productId))) return null;
+  const rows = inventoryList.filter(
+    (it) =>
+      Number(it.product) === Number(productId) &&
+      it.status === 'in_inventory' &&
+      Number(it.quantity) > 0
+  );
+  for (const r of rows) {
+    if (r.stocking_order) return r.stocking_order;
+  }
+  return null;
+}
 
 /** Same shortfall rules as Complete & Pay — reserved balance uses total_amount − deposit. */
 function computeReservedCompletionShortfall(sale, uzsStr, usdStr) {
@@ -106,9 +172,6 @@ const Sales = () => {
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Multi-package lines for the new-sale form
-  const [formPackageLines, setFormPackageLines] = useState(EMPTY_PKG_LINES());
-  const [showForm, setShowForm] = useState(false);
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [batchFormCategory, setBatchFormCategory] = useState('');
   const [batchCustomer, setBatchCustomer] = useState('');
@@ -117,7 +180,6 @@ const Sales = () => {
     sale_currency: 'USD',
   });
   const [batchLines, setBatchLines] = useState([]);
-  const [formCategory, setFormCategory] = useState('');
   const [filters, setFilters] = useState({
     category: '',
     brand: '',
@@ -129,19 +191,6 @@ const Sales = () => {
     year: '',
     month: '',
   });
-  const [formData, setFormData] = useState({
-    product: '',
-    quantity: '',
-    selling_price: '',
-    sale_currency: 'USD',
-    sale_type: 'bought_from_shop',
-    customer: '',
-    status: 'pending',
-    deposit_received: false,
-    deposit_amount: '',
-    deposit_currency: 'USD',
-  });
-  
   const [customers, setCustomers] = useState([]);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [newCustomerData, setNewCustomerData] = useState({
@@ -212,20 +261,29 @@ const Sales = () => {
   
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
-    if (!String(newCustomerData.notes || '').trim()) {
-      showNotification('Please enter customer notes.', 'error');
+    const name = String(newCustomerData.name || '').trim();
+    const telephone = String(newCustomerData.telephone || '').trim();
+    if (!name) {
+      showNotification('Please enter the customer name.', 'error');
+      return;
+    }
+    if (!telephone) {
+      showNotification('Please enter the customer telephone.', 'error');
       return;
     }
     try {
-      const response = await api.post('/customers/', { ...newCustomerData, notes: String(newCustomerData.notes).trim() });
+      const response = await api.post('/customers/', {
+        ...newCustomerData,
+        name,
+        telephone,
+        notes: String(newCustomerData.notes || '').trim(),
+      });
       await fetchCustomers();
       if (showBatchForm) {
         setBatchCustomer(String(response.data.id));
-      } else {
-        setFormData({ ...formData, customer: response.data.id });
       }
       setShowCustomerForm(false);
-      setNewCustomerData({ name: '', telephone: '', instagram: '', notes: '' });
+      setNewCustomerData({ name: '', telephone: '+998', instagram: '', region: 'tashkent_city', notes: '' });
       showNotification('Customer created successfully!', 'success');
     } catch (error) {
       console.error('Error creating customer:', error);
@@ -301,16 +359,6 @@ const Sales = () => {
       });
     }
 
-    // Open / actionable rows first so completed sales do not bury work in progress
-    filtered = [...filtered].sort((a, b) => {
-      const aDone = a.status === 'completed' ? 1 : 0;
-      const bDone = b.status === 'completed' ? 1 : 0;
-      if (aDone !== bDone) return aDone - bDone;
-      const ta = new Date(a.sale_date).getTime() || 0;
-      const tb = new Date(b.sale_date).getTime() || 0;
-      return tb - ta;
-    });
-
     setFilteredSales(filtered);
   };
 
@@ -320,6 +368,24 @@ const Sales = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
+
+  const saleSort = useClientTableSort(SALE_SORT_ACCESSORS);
+
+  const sortedFilteredSales = useMemo(() => {
+    const rows = filteredSales;
+    if (!rows?.length) return rows;
+    if (saleSort.sortCol && SALE_SORT_ACCESSORS[saleSort.sortCol]) {
+      return saleSort.sortRows(rows);
+    }
+    return [...rows].sort((a, b) => {
+      const aDone = a.status === 'completed' ? 1 : 0;
+      const bDone = b.status === 'completed' ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      const ta = new Date(a.sale_date).getTime() || 0;
+      const tb = new Date(b.sale_date).getTime() || 0;
+      return tb - ta;
+    });
+  }, [filteredSales, saleSort]);
 
   const salesColumnTotals = useMemo(() => {
     const list = filteredSales;
@@ -346,24 +412,15 @@ const Sales = () => {
     const ids = new Set();
     for (const item of inventory) {
       if (item.status === 'in_inventory' && Number(item.quantity) > 0) {
-        ids.add(item.product);
+        ids.add(Number(item.product));
       }
     }
     return ids;
   }, [inventory]);
 
   const productsAvailableForSale = useMemo(
-    () => products.filter((p) => productIdsWithPositiveInventory.has(p.id)),
+    () => products.filter((p) => productIdsWithPositiveInventory.has(Number(p.id))),
     [products, productIdsWithPositiveInventory]
-  );
-
-  const newSaleProductsForPicker = useMemo(
-    () =>
-      productsAvailableForSale
-        .filter((p) => !formCategory || p.category === formCategory)
-        .slice()
-        .sort((a, b) => b.id - a.id),
-    [productsAvailableForSale, formCategory]
   );
 
   const batchProductsForPicker = useMemo(
@@ -371,23 +428,14 @@ const Sales = () => {
       productsAvailableForSale
         .filter((p) => !batchFormCategory || p.category === batchFormCategory)
         .slice()
-        .sort((a, b) => b.id - a.id),
+        .sort((a, b) => Number(b.id) - Number(a.id)),
     [productsAvailableForSale, batchFormCategory]
   );
 
   useEffect(() => {
-    if (!showForm || !formData.product) return;
-    const id = parseInt(formData.product, 10);
-    if (Number.isNaN(id)) return;
-    if (!newSaleProductsForPicker.some((p) => p.id === id)) {
-      setFormData((prev) => ({ ...prev, product: '', selling_price: '' }));
-    }
-  }, [showForm, formData.product, newSaleProductsForPicker]);
-
-  useEffect(() => {
     if (!showBatchForm) return;
     setBatchLines((lines) => {
-      const allowed = new Set(batchProductsForPicker.map((p) => p.id));
+      const allowed = new Set(batchProductsForPicker.map((p) => Number(p.id)));
       let changed = false;
       const next = lines.map((line) => {
         if (!line.product) return line;
@@ -420,97 +468,51 @@ const Sales = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.customer) {
-      showNotification('Please select a customer before creating a sale.', 'error');
-      return;
-    }
-    if (!formData.product) {
-      showNotification('Please select a product.', 'error');
-      return;
-    }
-    try {
-      const itemQty = parseInt(formData.quantity, 10) || 1;
-      // Check inventory availability for the selected product
-      const selectedProduct = products.find(p => p.id === parseInt(formData.product));
-      if (selectedProduct) {
-        // Find inventory items for this product with status 'in_inventory'
-        const inventoryItems = inventory.filter(
-          item => item.product === parseInt(formData.product) && item.status === 'in_inventory'
-        );
-        const totalAvailable = inventoryItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-        
-        if (totalAvailable < itemQty) {
-          showNotification(`Insufficient inventory! Available: ${totalAvailable}, Requested: ${formData.quantity}. This product is sold out or has insufficient stock.`, 'error');
-          return;
-        }
-      }
-      
-      // Validate multi-package lines
-      const activeLines = formPackageLines.filter((l) => l.package_type && l.quantity > 0);
-      for (const line of activeLines) {
-        const pkg = packages.find((p) => p.package_type === line.package_type);
-        if (!pkg) {
-          showNotification(`Package type "${line.package_type}" does not exist.`, 'error');
-          return;
-        }
-        const totalNeeded = activeLines
-          .filter((l) => l.package_type === line.package_type)
-          .reduce((s, l) => s + l.quantity, 0);
-        if (pkg.quantity < totalNeeded) {
-          showNotification(`Insufficient stock for package "${line.package_type}": need ${totalNeeded}, have ${pkg.quantity}.`, 'error');
-          return;
-        }
-      }
-
-      const salePayload = {
-        ...formData,
-        product: parseInt(formData.product, 10),
-        quantity: itemQty,
-        customer: parseInt(formData.customer, 10),
-        package_type: null,
-        package_quantity: null,
-        ...(activeLines.length > 0 ? { package_lines: activeLines.map(({ package_type, quantity }) => ({ package_type, quantity })) } : {}),
-      };
-      await api.post('/sales/', salePayload);
-      setShowForm(false);
-      setFormCategory('');
-      setFormPackageLines(EMPTY_PKG_LINES());
-      setFormData({
-        product: '',
-        quantity: '',
-        selling_price: '',
-        sale_currency: 'USD',
-        sale_type: 'bought_from_shop',
-        customer: '',
-        status: 'pending',
-        deposit_received: false,
-        deposit_amount: '',
-        deposit_currency: 'USD',
-      });
-      fetchSales();
-      fetchInventory(); // Refresh inventory after sale
-      showNotification('Sale created successfully!', 'success');
-    } catch (error) {
-      console.error('Error creating sale:', error);
-      showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error creating sale', 'error');
-    }
-  };
-
   const updateBatchLine = (key, field, value) => {
     setBatchLines((lines) =>
       lines.map((l) => {
         if (l.key !== key) return l;
         if (field === 'product') {
-          const p = value && products.find((x) => x.id === parseInt(value, 10));
           const next = { ...l, product: value };
-          if (p && p.selling_price != null) {
-            next.selling_price = String(p.selling_price);
-          }
           if (!value) {
             next.selling_price = '';
             next.packageLines = EMPTY_PKG_LINES();
+            return next;
+          }
+          const pid = parseInt(value, 10);
+          const p = products.find((x) => Number(x.id) === pid);
+          const saleCur = batchDefaults.sale_currency || 'USD';
+          const stocking = stockingOrderFromInventory(pid, inventory);
+
+          let priceNum = null;
+          if (stocking) {
+            if (saleCur === 'UZS') {
+              priceNum = plannedSellingUzsPerUnit(stocking);
+              if (priceNum == null || priceNum <= 0) {
+                priceNum = plannedSellingUsdPerUnit(stocking);
+              }
+            } else {
+              priceNum = plannedSellingUsdPerUnit(stocking);
+              if (priceNum == null || priceNum <= 0) {
+                priceNum = plannedSellingUzsPerUnit(stocking);
+              }
+            }
+          }
+          if (priceNum != null && priceNum > 0) {
+            next.selling_price =
+              saleCur === 'UZS'
+                ? String(Math.round(priceNum))
+                : String(Number(priceNum.toFixed(2)));
+          } else if (p) {
+            const sp = parseFloat(p.selling_price);
+            if (p.selling_price != null && p.selling_price !== '' && !Number.isNaN(sp) && sp > 0) {
+              next.selling_price =
+                saleCur === 'UZS' ? String(Math.round(sp)) : String(Number(sp.toFixed(2)));
+            } else {
+              next.selling_price = '';
+            }
+          } else {
+            next.selling_price = '';
           }
           return next;
         }
@@ -679,6 +681,16 @@ const Sales = () => {
     deposit_amount: '',
     deposit_currency: 'USD',
   });
+
+  const openDeliverySettlementModal = async (saleId) => {
+    try {
+      const res = await api.get(`/sales/${saleId}/`);
+      setCompletePaySale(res.data);
+    } catch (e) {
+      console.error(e);
+      showNotification(e.response?.data?.detail || e.response?.data?.error || 'Could not load sale', 'error');
+    }
+  };
 
   const handleStatusUpdate = async (saleId, newStatus) => {
     try {
@@ -1044,56 +1056,37 @@ const Sales = () => {
 
       <div className="page-header">
         <h1>Sales</h1>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              if (showForm) {
-                setShowForm(false);
-                setFormCategory('');
-              } else {
-                setShowBatchForm(false);
-                setShowForm(true);
-              }
-            }}
-          >
-            {showForm ? 'Cancel' : '+ New sale'}
-          </button>
-          <button
-            type="button"
-            className="btn-edit"
-            onClick={() => {
-              if (showBatchForm) {
-                setShowBatchForm(false);
-                setBatchFormCategory('');
-                setBatchLines([]);
-              } else {
-                setShowForm(false);
-                setFormCategory('');
-                setShowBatchForm(true);
-                setBatchFormCategory('');
-                setBatchCustomer('');
-                setBatchDefaults({
-                  sale_type: 'bought_from_shop',
-                  sale_currency: 'USD',
-                });
-                setBatchLines([
-                  {
-                    key: `${Date.now()}-0`,
-                    product: '',
-                    quantity: '1',
-                    selling_price: '',
-                    package_type: '',
-                    package_quantity: '',
-                  },
-                ]);
-              }
-            }}
-          >
-            {showBatchForm ? 'Close' : 'Multi-item (one customer)'}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => {
+            if (showBatchForm) {
+              setShowBatchForm(false);
+              setBatchFormCategory('');
+              setBatchLines([]);
+            } else {
+              setShowBatchForm(true);
+              setBatchFormCategory('');
+              setBatchCustomer('');
+              setBatchDefaults({
+                sale_type: 'bought_from_shop',
+                sale_currency: 'USD',
+              });
+              setBatchLines([
+                {
+                  key: `${Date.now()}-0`,
+                  product: '',
+                  quantity: '1',
+                  selling_price: '',
+                  package_type: '',
+                  package_quantity: '',
+                },
+              ]);
+            }
+          }}
+        >
+          {showBatchForm ? 'Cancel' : '+ New sale'}
+        </button>
       </div>
 
       {showDispatchForm && (
@@ -1397,7 +1390,19 @@ const Sales = () => {
         </div>
       )}
 
-      {completePaySale && (
+      {completePaySale && shopDeliverySettlementRequired(completePaySale) && (
+        <SaleDeliverySettlementForm
+          sale={completePaySale}
+          onClose={() => setCompletePaySale(null)}
+          onAfterStepRecorded={() => fetchSales()}
+          onSuccess={() => {
+            setCompletePaySale(null);
+            fetchSales();
+          }}
+          showNotification={showNotification}
+        />
+      )}
+      {completePaySale && !shopDeliverySettlementRequired(completePaySale) && (
         <SaleCompletePayForm
           sale={completePaySale}
           onClose={() => setCompletePaySale(null)}
@@ -1471,233 +1476,6 @@ const Sales = () => {
         </div>
       )}
 
-      {showForm && (
-        <div className="form-card">
-          <h2>New Sale</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="form-grid">
-              <div className="form-group">
-                <label>Filter by category</label>
-                <select
-                  value={formCategory}
-                  onChange={(e) => {
-                    setFormCategory(e.target.value);
-                    setFormData({ ...formData, product: '', selling_price: '' });
-                  }}
-                >
-                  <option value="">All Categories</option>
-                  {[...new Set(productsAvailableForSale.map((p) => p.category).filter(Boolean))].sort().map((cat) => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Product</label>
-                <ProductSearchableSelect
-                  products={newSaleProductsForPicker}
-                  value={formData.product}
-                  onChange={(id) => {
-                    const selectedProduct = products.find((p) => p.id === parseInt(id, 10));
-                    const sp =
-                      selectedProduct &&
-                      selectedProduct.selling_price != null &&
-                      selectedProduct.selling_price !== ''
-                        ? String(selectedProduct.selling_price)
-                        : '';
-                    setFormData({
-                      ...formData,
-                      product: id,
-                      selling_price: selectedProduct ? sp : formData.selling_price,
-                    });
-                  }}
-                  placeholder="Select a product…"
-                  aria-label="Product"
-                  emptyHint={
-                    productsAvailableForSale.length === 0 ? (
-                      <span style={{ color: '#c62828' }}>Add or receive stock first.</span>
-                    ) : null
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>In Inventory</label>
-                <input
-                  type="number"
-                  value={
-                    formData.product
-                      ? (() => {
-                          const inventoryItems = inventory.filter(
-                            item => item.product === parseInt(formData.product) && item.status === 'in_inventory'
-                          );
-                          const n = inventoryItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-                          return Number.isFinite(n) ? String(n) : '';
-                        })()
-                      : ''
-                  }
-                  readOnly
-                  style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
-                />
-              </div>
-              <div className="form-group">
-                <label>Quantity</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={formData.quantity ?? ''}
-                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Currency</label>
-                <select
-                  value={formData.sale_currency}
-                  onChange={(e) => setFormData({ ...formData, sale_currency: e.target.value })}
-                  required
-                >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Selling Price ({formData.sale_currency})</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.selling_price ?? ''}
-                  onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Sale Type</label>
-                <select
-                  value={formData.sale_type}
-                  onChange={(e) => {
-                    const newSaleType = e.target.value;
-                    setFormData({ 
-                      ...formData, 
-                      sale_type: newSaleType,
-                      // Set status to 'reserved' if sale type is reserved
-                      status: newSaleType === 'reserved' ? 'reserved' : 'pending',
-                    });
-                  }}
-                  required
-                >
-                  <option value="bought_from_shop">Bought from Shop</option>
-                  <option value="delivery">Delivery</option>
-                  <option value="reserved">Reserved</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Packages <span style={{ fontWeight: 400, color: '#a0aec0', fontSize: '12px' }}>(optional)</span></label>
-                <PackageLinesSelector
-                  lines={formPackageLines}
-                  onChange={setFormPackageLines}
-                  packages={packages}
-                />
-              </div>
-              {/* Deposit fields for Reserved sales */}
-              {formData.sale_type === 'reserved' && (
-                <>
-                  <div className="form-group">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={formData.deposit_received}
-                        onChange={(e) => setFormData({ ...formData, deposit_received: e.target.checked })}
-                      />
-                      {' '}Customer deposited money
-                    </label>
-                  </div>
-                  {formData.deposit_received && (
-                    <>
-                      <div className="form-group">
-                        <label>Deposit Amount</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={formData.deposit_amount}
-                          onChange={(e) => setFormData({ ...formData, deposit_amount: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Deposit Currency</label>
-                        <select
-                          value={formData.deposit_currency}
-                          onChange={(e) => setFormData({ ...formData, deposit_currency: e.target.value })}
-                          required
-                        >
-                          <option value="USD">USD</option>
-                          <option value="UZS">UZS</option>
-                        </select>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-              <div className="form-group">
-                <label>Customer</label>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-                  <select
-                    value={formData.customer}
-                    onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
-                    style={{ flex: 1, borderColor: !formData.customer ? '#f44336' : undefined }}
-                    required
-                  >
-                    <option value="">— Select a customer (required) —</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name} {customer.telephone ? `(${customer.telephone})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="btn-edit"
-                    onClick={() => setShowCustomerForm(true)}
-                    style={{ whiteSpace: 'nowrap', padding: '10px 14px', fontSize: '14px', borderRadius: '5px' }}
-                  >
-                    + New
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="form-actions">
-              <button type="submit" className="btn-primary">
-                Create Sale
-              </button>
-              <button
-                type="button"
-                className="btn-edit"
-                onClick={() => {
-                  setShowForm(false);
-                  setFormCategory('');
-                  setFormData({
-                    product: '',
-                    quantity: '',
-                    selling_price: '',
-                    sale_currency: 'USD',
-                    sale_type: 'bought_from_shop',
-                    package_type: '',
-                    package_quantity: '',
-                    customer: '',
-                    status: 'pending',
-                    deposit_received: false,
-                    deposit_amount: '',
-                    deposit_currency: 'USD',
-                  });
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {showBatchForm && (
         <div className="form-card" style={{ marginBottom: 20 }}>
@@ -1788,21 +1566,7 @@ const Sales = () => {
                   </colgroup>
                   <thead>
                     <tr>
-                      <th scope="col">
-                        Product
-                        <span
-                          className="batch-sale-lines__empty"
-                          style={{
-                            fontWeight: 400,
-                            fontSize: 11,
-                            display: 'block',
-                            lineHeight: 1.3,
-                            marginTop: 4,
-                          }}
-                        >
-                          In-stock only — search inside picker
-                        </span>
-                      </th>
+                      <th scope="col">Product</th>
                       <th className="batch-sale-lines__th--num" title="In inventory">
                         Stock
                       </th>
@@ -1817,7 +1581,9 @@ const Sales = () => {
                       const pid = line.product ? parseInt(line.product, 10) : null;
                       const stock = pid
                         ? inventory
-                            .filter((x) => x.product === pid && x.status === 'in_inventory')
+                            .filter(
+                              (x) => Number(x.product) === pid && x.status === 'in_inventory'
+                            )
                             .reduce((s, it) => s + (it.quantity || 0), 0)
                         : null;
                       return (
@@ -1913,11 +1679,12 @@ const Sales = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Telephone</label>
+                <label>Telephone *</label>
                 <input
                   type="text"
                   value={newCustomerData.telephone}
                   onChange={(e) => setNewCustomerData({ ...newCustomerData, telephone: e.target.value })}
+                  required
                 />
               </div>
               <div className="form-group">
@@ -1942,12 +1709,11 @@ const Sales = () => {
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes *</label>
+                <label>Notes</label>
                 <textarea
                   value={newCustomerData.notes}
                   onChange={(e) => setNewCustomerData({ ...newCustomerData, notes: e.target.value })}
                   rows="3"
-                  required
                 />
               </div>
             </div>
@@ -1960,7 +1726,7 @@ const Sales = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowCustomerForm(false);
-                  setNewCustomerData({ name: '', telephone: '', instagram: '', notes: '' });
+                  setNewCustomerData({ name: '', telephone: '+998', instagram: '', region: 'tashkent_city', notes: '' });
                 }}
               >
                 Cancel
@@ -1971,7 +1737,7 @@ const Sales = () => {
       )}
 
       {/* Filters */}
-      {!showForm && !showBatchForm && !showCustomerForm && !showDispatchForm && !completePaySale && !showCompleteFromOrderForm && !showSellReservedForm && (
+      {!showBatchForm && !showCustomerForm && !showDispatchForm && !completePaySale && !showCompleteFromOrderForm && !showSellReservedForm && (
         <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
           <h3 className="filter-card__title">Filters</h3>
         <div className="filter-toolbar">
@@ -2139,28 +1905,28 @@ const Sales = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
+              <SortableTh columnId="id" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>ID</SortableTh>
               <th>Actions</th>
-              <th>Category</th>
-              <th>Product</th>
-              <th>Brand</th>
-              <th>Model</th>
-              <th>Size</th>
-              <th>Color</th>
-              <th>Sale Type</th>
-              <th>Package</th>
-              <th>Quantity</th>
-              <th>Price</th>
-              <th>Total</th>
-              <th>Discount / credit</th>
-              <th>UZS</th>
-              <th>USD</th>
-              <th>Customer</th>
-              <th>Phone</th>
-              <th>Salesman</th>
-              <th>Status</th>
-              <th>Dispatcher</th>
-              <th>Date</th>
+              <SortableTh columnId="status" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Status</SortableTh>
+              <SortableTh columnId="category" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Category</SortableTh>
+              <SortableTh columnId="product" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Product</SortableTh>
+              <SortableTh columnId="brand" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Brand</SortableTh>
+              <SortableTh columnId="model" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Model</SortableTh>
+              <SortableTh columnId="size" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Size</SortableTh>
+              <SortableTh columnId="color" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Color</SortableTh>
+              <SortableTh columnId="sale_type" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Sale Type</SortableTh>
+              <SortableTh columnId="package" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Package</SortableTh>
+              <SortableTh columnId="quantity" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Quantity</SortableTh>
+              <SortableTh columnId="selling_price" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Price</SortableTh>
+              <SortableTh columnId="total_amount" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Total</SortableTh>
+              <SortableTh columnId="discount_credit" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Discount / credit</SortableTh>
+              <SortableTh columnId="uzs_pay" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>UZS</SortableTh>
+              <SortableTh columnId="usd_pay" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>USD</SortableTh>
+              <SortableTh columnId="customer" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Customer</SortableTh>
+              <SortableTh columnId="phone" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Phone</SortableTh>
+              <SortableTh columnId="salesman" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Salesman</SortableTh>
+              <SortableTh columnId="dispatcher" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Dispatcher</SortableTh>
+              <SortableTh columnId="sale_date" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Date</SortableTh>
             </tr>
           </thead>
           <tbody>
@@ -2171,7 +1937,7 @@ const Sales = () => {
                 </td>
               </tr>
             ) : (
-              filteredSales.map((sale) => (
+              sortedFilteredSales.map((sale) => (
                 <tr
                   key={sale.id}
                   style={{
@@ -2201,7 +1967,14 @@ const Sales = () => {
                         Complete & Pay
                       </button>
                     )}
-                    {sale.status === 'dispatched' && (
+                    {sale.status === 'dispatched' && shopDeliverySettlementRequired(sale) && (
+                      <ShopDeliverySettlementButtons
+                        sale={sale}
+                        classNameButton="btn-status"
+                        onOpenSettlement={openDeliverySettlementModal}
+                      />
+                    )}
+                    {sale.status === 'dispatched' && !shopDeliverySettlementRequired(sale) && (
                       <button
                         className="btn-status"
                         onClick={() => handleStatusUpdate(sale.id, 'completed')}
@@ -2247,6 +2020,11 @@ const Sales = () => {
                         Paid: {sale.payment_currency}
                       </span>
                     )}
+                  </td>
+                  <td>
+                    <span className={`status-badge ${sale.status}`}>
+                      {sale.status}
+                    </span>
                   </td>
                   <td>{sale.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>
@@ -2309,11 +2087,6 @@ const Sales = () => {
                   <td>{sale.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
                   <td>{sale.salesman_detail?.username || '-'}</td>
                   <td>
-                    <span className={`status-badge ${sale.status}`}>
-                      {sale.status}
-                    </span>
-                  </td>
-                  <td>
                     {(() => {
                       const d = sale.dispatch_info;
                       if (!d) return <span style={{ color: '#bbb' }}>—</span>;
@@ -2334,7 +2107,7 @@ const Sales = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="10" style={{ textAlign: 'right' }}>
+              <td colSpan="11" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td style={{ fontWeight: 600 }}>{salesColumnTotals.quantity.toLocaleString()}</td>
@@ -2356,7 +2129,7 @@ const Sales = () => {
               <td style={{ fontWeight: 600 }}>
                 {salesColumnTotals.usd > 0 ? `$${salesColumnTotals.usd.toFixed(2)}` : '—'}
               </td>
-              <td colSpan="6">—</td>
+              <td colSpan="5">—</td>
             </tr>
           </tfoot>
         </table>

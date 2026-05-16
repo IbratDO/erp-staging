@@ -56,14 +56,6 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         return;
       }
 
-      if (meta.needs && !String(paymentFormData.completion_notes || '').trim()) {
-        showNotification(
-          'Please enter notes when the payment is less than the amount due (the gap is booked as a discount).',
-          'error'
-        );
-        return;
-      }
-
       if (meta.hasOverpayment && meta.due != null && meta.overpaymentAmount != null) {
         const msg = [
           `Payment entered is higher than amount due.`,
@@ -209,22 +201,17 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           )}
 
           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label>Notes{shortfallMeta.needs ? ' *' : ''}</label>
+            <label>Notes</label>
             <textarea
               rows={3}
               value={paymentFormData.completion_notes ?? ''}
               onChange={(e) => setPaymentFormData({ ...paymentFormData, completion_notes: e.target.value })}
-              required={shortfallMeta.needs}
             />
-            {!shortfallMeta.needs ? (
-              <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
-                Optional when the entered payment equals or exceeds the amount due.
-              </small>
-            ) : (
-              <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
-                Required when payment is less than the amount due (remainder is a discount).
-              </small>
-            )}
+            <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
+              {shortfallMeta.needs
+                ? 'Optional. Choosing Discount still records the remainder; add a note only if you want it on the completion record.'
+                : 'Optional when the entered payment equals or exceeds the amount due.'}
+            </small>
           </div>
         </div>
         <div className="form-actions">
