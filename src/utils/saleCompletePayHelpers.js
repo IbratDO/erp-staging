@@ -136,11 +136,10 @@ export function buildCompleteSaleRequest(paymentFormData, meta) {
   return requestData;
 }
 
-/** Shop batch delivery after dispatch: 3-step settlement instead of single Complete & Pay. */
+/** Delivery after dispatch: 3-step settlement instead of single Complete & Pay (shop or from-order). */
 export function shopDeliverySettlementRequired(sale) {
   if (!sale || sale.status !== 'dispatched') return false;
   if (sale.sale_type !== 'delivery') return false;
-  if (sale.order != null && sale.order !== '') return false;
   return !!sale.dispatch_info;
 }
 

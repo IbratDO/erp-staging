@@ -20,7 +20,7 @@ export default function SaleDeliverySettlementForm({
 }) {
   const [sale, setSale] = useState(saleProp);
   const [step2, setStep2] = useState(() => emptyPaymentFormState());
-  const [step1SellingPrice, setStep1SellingPrice] = useState('');
+  const [step1TotalCollected, setStep1TotalCollected] = useState('');
   const [step1SaleCurrency, setStep1SaleCurrency] = useState('USD');
   const [step2Note, setStep2Note] = useState('');
 
@@ -57,10 +57,24 @@ export default function SaleDeliverySettlementForm({
   useEffect(() => {
     if (!sale?.id) return;
     if (!sale.delivery_customer_paid_at) {
-      setStep1SellingPrice(sale.selling_price != null && sale.selling_price !== '' ? String(sale.selling_price) : '');
+      const qty = parseFloat(sale.quantity) || 1;
+      const unit = parseFloat(sale.selling_price) || 0;
+      const lineTotal = unit * qty;
+      const advance = parseFloat(sale.advance_payment_received) || 0;
+      const expectedTotal = lineTotal > 0 ? lineTotal - advance : 0;
+      setStep1TotalCollected(
+        expectedTotal > 0 ? expectedTotal.toFixed(2) : lineTotal > 0 ? lineTotal.toFixed(2) : ''
+      );
       setStep1SaleCurrency(sale.sale_currency || 'USD');
     }
-  }, [sale?.id, sale?.delivery_customer_paid_at, sale?.selling_price, sale?.sale_currency]);
+  }, [
+    sale?.id,
+    sale?.delivery_customer_paid_at,
+    sale?.selling_price,
+    sale?.sale_currency,
+    sale?.quantity,
+    sale?.advance_payment_received,
+  ]);
 
   useEffect(() => {
     if (!sale?.id) return;
@@ -104,9 +118,9 @@ export default function SaleDeliverySettlementForm({
     : 'Product';
 
   const handleStep1 = async () => {
-    const sp = parseFloat(String(step1SellingPrice).replace(',', '.'));
-    if (Number.isNaN(sp) || sp < 0) {
-      showNotification?.('Enter a valid selling price (0 or greater).', 'error');
+    const totalCollected = parseFloat(String(step1TotalCollected).replace(',', '.'));
+    if (Number.isNaN(totalCollected) || totalCollected < 0) {
+      showNotification?.('Enter a valid total amount collected (0 or greater).', 'error');
       return;
     }
     if (step1SaleCurrency !== 'USD' && step1SaleCurrency !== 'UZS') {
@@ -114,27 +128,27 @@ export default function SaleDeliverySettlementForm({
       return;
     }
     const qty = sale.quantity ?? 1;
-    const lineTotalEntered = sp * qty;
-    const actualSpRaw = sale.selling_price;
-    const actualSp = parseFloat(actualSpRaw != null && actualSpRaw !== '' ? String(actualSpRaw).replace(',', '.') : '');
+    const actualSp = parseFloat(sale.selling_price != null && sale.selling_price !== '' ? String(sale.selling_price).replace(',', '.') : '');
     const actualCurrency = sale.sale_currency || 'USD';
-    const actualSpFmt = Number.isFinite(actualSp) ? `${actualSp.toFixed(2)} ${actualCurrency}` : '—';
-    const enteredSpFmt = `${sp.toFixed(2)} ${step1SaleCurrency}`;
-    const actualLineFmt = Number.isFinite(actualSp)
-      ? `${(actualSp * qty).toFixed(2)} ${actualCurrency}`
-      : '—';
-    const enteredLineFmt = `${lineTotalEntered.toFixed(2)} ${step1SaleCurrency}`;
+    const actualLineTotal = Number.isFinite(actualSp) ? actualSp * qty : null;
+    const advance = parseFloat(sale.advance_payment_received) || 0;
+    const actualDueAtDoor =
+      actualLineTotal != null && !Number.isNaN(actualLineTotal)
+        ? Math.max(0, actualLineTotal - advance)
+        : null;
+    const actualFmt =
+      actualDueAtDoor != null && !Number.isNaN(actualDueAtDoor)
+        ? `${actualDueAtDoor.toFixed(2)} ${actualCurrency}`
+        : '—';
+    const enteredFmt = `${totalCollected.toFixed(2)} ${step1SaleCurrency}`;
     const ok = window.confirm(
       [
         'Confirm “Payment received by dispatch”?',
         '',
         `Sale #${sale.id} · ${qty} × ${productLabel}`,
         '',
-        `Actual on record · selling price (per unit): ${actualSpFmt}`,
-        `Entered · selling price (per unit): ${enteredSpFmt}`,
-        '',
-        `Actual on record · line total (${qty} × price): ${actualLineFmt}`,
-        `Entered · line total (${qty} × price): ${enteredLineFmt}`,
+        `Expected on record (total collected from customer): ${actualFmt}`,
+        `Entered · total collected: ${enteredFmt}`,
         '',
         'This records courier hand-off only (no shop cash movement yet).',
       ].join('\n')
@@ -143,7 +157,7 @@ export default function SaleDeliverySettlementForm({
 
     try {
       await api.post(`/sales/${sale.id}/delivery_customer_paid/`, {
-        selling_price: sp,
+        total_collected: totalCollected,
         sale_currency: step1SaleCurrency,
       });
       showNotification?.('Payment received by dispatch has been recorded.', 'success');
@@ -311,18 +325,18 @@ export default function SaleDeliverySettlementForm({
       <div className="form-card" style={{ marginBottom: 20 }}>
         <h2>Payment received by dispatch</h2>
         <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
-          The courier delivered and collected payment from the customer. Recording this confirms that hand‑off only
-          (no shop cash ledger change yet). You can adjust the list price and currency before confirming.
+          The courier delivered and collected payment from the customer. Enter the full amount collected (same idea as
+          step 2). This confirms hand‑off only — no shop cash ledger change yet.
         </p>
         <div className="form-grid">
           <div className="form-group">
-            <label>Selling price (per unit)</label>
+            <label>Total amount collected ({step1SaleCurrency})</label>
             <input
               type="number"
               step="0.01"
               min="0"
-              value={step1SellingPrice}
-              onChange={(e) => setStep1SellingPrice(e.target.value)}
+              value={step1TotalCollected}
+              onChange={(e) => setStep1TotalCollected(e.target.value)}
             />
           </div>
           <div className="form-group">

@@ -1951,7 +1951,9 @@ const Sales = () => {
                 >
                   <td>#{sale.id}</td>
                   <td>
-                    {sale.status === 'pending' && sale.sale_type === 'delivery' && (
+                    {(sale.status === 'pending' || sale.status === 'confirmed') &&
+                      sale.sale_type === 'delivery' &&
+                      !sale.dispatch_info && (
                       <button
                         className="btn-status"
                         onClick={() => handleStatusUpdate(sale.id, 'dispatched')}

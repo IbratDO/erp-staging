@@ -1,24 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
-import { productCostCells, productCostPickerLabel, productCostUzsPortion, productCostUsdPortion } from '../utils/productCost';
-import { plannedSellingSummary, plannedSupplierUnitParts } from '../utils/orderPlannedPricing';
+import { productCostPickerLabel } from '../utils/productCost';
+import { plannedSellingSummary } from '../utils/orderPlannedPricing';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
 
-function inventoryCostCells(productDetail, stockingOrder) {
-  if (stockingOrder) {
-    const { uzsPerUnit, usdPerUnit } = plannedSupplierUnitParts(stockingOrder);
-    return {
-      uzsTotal:
-        uzsPerUnit != null && uzsPerUnit > 0
-          ? uzsPerUnit.toLocaleString(undefined, { maximumFractionDigits: 0 })
-          : '—',
-      usdTotal:
-        usdPerUnit != null && usdPerUnit > 0 ? `$${usdPerUnit.toFixed(2)}` : '—',
-    };
-  }
-  return productCostCells(productDetail || {});
+/** Landed unit cost for one FIFO layer row (supplier + cargo per unit). */
+function layerLandedCostCells(layer) {
+  const supUzs = parseFloat(layer.unit_supplier_cost_uzs) || 0;
+  const supUsd = parseFloat(layer.unit_supplier_cost_usd) || 0;
+  const cargoUzs = parseFloat(layer.unit_cargo_cost_uzs) || 0;
+  const cargoUsd = parseFloat(layer.unit_cargo_cost_usd) || 0;
+  const uzs = supUzs + cargoUzs;
+  const usd = supUsd + cargoUsd;
+  return {
+    uzsTotal: uzs > 0 ? uzs.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—',
+    usdTotal: usd > 0 ? `$${usd.toFixed(2)}` : '—',
+  };
+}
+
+function layerCostUzsNum(layer) {
+  return (parseFloat(layer.unit_supplier_cost_uzs) || 0) + (parseFloat(layer.unit_cargo_cost_uzs) || 0);
+}
+
+function layerCostUsdNum(layer) {
+  return (parseFloat(layer.unit_supplier_cost_usd) || 0) + (parseFloat(layer.unit_cargo_cost_usd) || 0);
 }
 
 function inventorySellingCell(productDetail, stockingOrder) {
@@ -28,24 +35,6 @@ function inventorySellingCell(productDetail, stockingOrder) {
   if (productDetail?.selling_price != null && !Number.isNaN(pu) && pu > 0)
     return `$${pu.toFixed(2)}/u`;
   return '—';
-}
-
-function invCostUzsNum(item) {
-  const so = item.stocking_order;
-  if (so) {
-    const { uzsPerUnit } = plannedSupplierUnitParts(so);
-    if (uzsPerUnit != null && uzsPerUnit > 0) return uzsPerUnit;
-  }
-  return productCostUzsPortion(item.product_detail);
-}
-
-function invCostUsdNum(item) {
-  const so = item.stocking_order;
-  if (so) {
-    const { usdPerUnit } = plannedSupplierUnitParts(so);
-    if (usdPerUnit != null && usdPerUnit > 0) return usdPerUnit;
-  }
-  return productCostUsdPortion(item.product_detail);
 }
 
 function invSellingPriceNum(item) {
@@ -69,8 +58,9 @@ const INVENTORY_SORT_ACCESSORS = {
   model: (it) => String(it.product_detail?.model ?? '').toLowerCase(),
   size: (it) => String(it.product_detail?.size ?? '').toLowerCase(),
   color: (it) => String(it.product_detail?.color ?? '').toLowerCase(),
-  cost_uzs: (it) => invCostUzsNum(it),
-  cost_usd: (it) => invCostUsdNum(it),
+  layer: (it) => Number(it.batch_id) || 0,
+  cost_uzs: (it) => layerCostUzsNum(it),
+  cost_usd: (it) => layerCostUsdNum(it),
   selling: (it) => invSellingPriceNum(it),
   quantity: (it) => Number(it.quantity) || 0,
   status: (it) => String(it.status ?? '').toLowerCase(),
@@ -100,6 +90,8 @@ const Inventory = () => {
     quantity: '',
     status: 'in_inventory',
     location: '',
+    unit_supplier_cost_usd: '',
+    unit_supplier_cost_uzs: '',
   });
 
   useEffect(() => {
@@ -110,7 +102,7 @@ const Inventory = () => {
 
   const fetchInventory = async () => {
     try {
-      const response = await api.get('/inventory/');
+      const response = await api.get('/inventory/layers/');
       const inventoryList = response.data.results || response.data;
       setInventory(inventoryList);
       applyFilters(inventoryList);
@@ -189,16 +181,9 @@ const Inventory = () => {
     let usdTotal = 0;
     for (const item of filteredInventory) {
       const q = parseInt(item.quantity, 10) || 0;
-      const p = item.product_detail || {};
       quantity += q;
-      if (item.stocking_order) {
-        const { uzsPerUnit, usdPerUnit } = plannedSupplierUnitParts(item.stocking_order);
-        uzsTotal += (uzsPerUnit || 0) * q;
-        usdTotal += (usdPerUnit || 0) * q;
-      } else {
-        uzsTotal += ((parseFloat(p.cost_uzs_cash) || 0) + (parseFloat(p.cost_uzs_card) || 0)) * q;
-        usdTotal += ((parseFloat(p.cost_usd_cash) || 0) + (parseFloat(p.cost_usd_card) || 0)) * q;
-      }
+      uzsTotal += layerCostUzsNum(item) * q;
+      usdTotal += layerCostUsdNum(item) * q;
     }
     return { quantity, uzsTotal, usdTotal };
   }, [filteredInventory]);
@@ -220,8 +205,28 @@ const Inventory = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const qty = parseInt(formData.quantity, 10) || 0;
+    const usd = parseFloat(formData.unit_supplier_cost_usd) || 0;
+    const uzs = parseFloat(formData.unit_supplier_cost_uzs) || 0;
+    if (qty > 0 && usd <= 0 && uzs <= 0) {
+      alert(
+        'Enter unit supplier cost (USD and/or UZS) for the units you are adding. ' +
+          'This creates a FIFO batch used for COGS when these items are sold.'
+      );
+      return;
+    }
     try {
-      await api.post('/inventory/', formData);
+      const payload = {
+        product: formData.product,
+        quantity: formData.quantity,
+        status: formData.status,
+        location: formData.location,
+      };
+      if (qty > 0) {
+        if (usd > 0) payload.unit_supplier_cost_usd = usd;
+        if (uzs > 0) payload.unit_supplier_cost_uzs = uzs;
+      }
+      await api.post('/inventory/', payload);
       setShowForm(false);
       setFormCategory('');
       setFormData({
@@ -229,11 +234,24 @@ const Inventory = () => {
         quantity: '',
         status: 'in_inventory',
         location: '',
+        unit_supplier_cost_usd: '',
+        unit_supplier_cost_uzs: '',
       });
       fetchInventory();
     } catch (error) {
       console.error('Error saving inventory item:', error);
-      alert('Error saving inventory item');
+      const data = error.response?.data;
+      const msg =
+        (typeof data === 'string' && data) ||
+        data?.detail ||
+        (Array.isArray(data) ? data.join('\n') : null) ||
+        (data && typeof data === 'object'
+          ? Object.entries(data)
+              .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+              .join('\n')
+          : null) ||
+        'Error saving inventory item';
+      alert(msg);
     }
   };
 
@@ -294,6 +312,42 @@ const Inventory = () => {
                   value={formData.quantity}
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   required
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  Unit supplier cost (USD){' '}
+                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>
+                    required if adding stock
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="e.g. 55.00"
+                  value={formData.unit_supplier_cost_usd}
+                  onChange={(e) =>
+                    setFormData({ ...formData, unit_supplier_cost_usd: e.target.value })
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  Unit supplier cost (UZS){' '}
+                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>
+                    and/or UZS
+                  </span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="e.g. 650000"
+                  value={formData.unit_supplier_cost_uzs}
+                  onChange={(e) =>
+                    setFormData({ ...formData, unit_supplier_cost_uzs: e.target.value })
+                  }
                 />
               </div>
               <div className="form-group">
@@ -490,11 +544,14 @@ const Inventory = () => {
               <SortableTh columnId="color" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
                 Color
               </SortableTh>
+              <SortableTh columnId="layer" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Layer #
+              </SortableTh>
               <SortableTh columnId="cost_uzs" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Cost (UZS) / unit
+                Landed cost (UZS) / unit
               </SortableTh>
               <SortableTh columnId="cost_usd" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Cost (USD) / unit
+                Landed cost (USD) / unit
               </SortableTh>
               <SortableTh columnId="selling" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
                 Selling price / unit
@@ -516,17 +573,17 @@ const Inventory = () => {
           <tbody>
             {filteredInventory.length === 0 ? (
               <tr>
-                <td colSpan="14" style={{ textAlign: 'center' }}>
-                  No inventory items found
+                <td colSpan="15" style={{ textAlign: 'center' }}>
+                  No inventory in stock
                 </td>
               </tr>
             ) : (
               displayInventory.map((item) => {
-                const cost = inventoryCostCells(item.product_detail, item.stocking_order);
+                const cost = layerLandedCostCells(item);
                 const sell = inventorySellingCell(item.product_detail, item.stocking_order);
                 const sellTip = plannedSellingSummary(item.stocking_order) || '';
                 return (
-                <tr key={item.id}>
+                <tr key={item.batch_id}>
                   <td>{item.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td><strong>#{item.product_detail?.id ?? item.product}</strong></td>
                   <td>
@@ -538,6 +595,7 @@ const Inventory = () => {
                   <td>{item.product_detail?.model || '-'}</td>
                   <td><strong>{item.product_detail?.size || '-'}</strong></td>
                   <td><strong>{item.product_detail?.color || '-'}</strong></td>
+                  <td style={{ fontSize: '0.85em', color: '#666' }}>#{item.batch_id}</td>
                   <td style={{ fontSize: '0.9em' }}>{cost.uzsTotal}</td>
                   <td style={{ fontSize: '0.9em' }}>{cost.usdTotal}</td>
                   <td style={{ fontSize: '0.9em', color: '#2c3e50' }} title={sellTip || undefined}>
@@ -558,7 +616,7 @@ const Inventory = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="7" style={{ textAlign: 'right' }}>
+              <td colSpan="8" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
@@ -573,7 +631,7 @@ const Inventory = () => {
               </td>
               <td style={{ fontWeight: 600, fontSize: '0.9em', color: '#999' }}>—</td>
               <td style={{ fontWeight: 600 }}>{inventoryColumnTotals.quantity.toLocaleString()}</td>
-              <td colSpan="3">—</td>
+              <td colSpan="4">—</td>
             </tr>
           </tfoot>
         </table>

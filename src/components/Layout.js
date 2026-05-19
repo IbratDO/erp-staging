@@ -32,6 +32,8 @@ const Layout = () => {
     { path: '/sales', label: 'Sales', icon: '💰' },
     { path: '/returns', label: 'Returns', icon: '↩️' },
     { path: '/finance', label: 'Finance', icon: '💵' },
+    { path: '/profit-loss', label: 'Profit / Loss', icon: '📈' },
+    { path: '/balance-sheet', label: 'Balance Sheet', icon: '📊' },
     { path: '/money-balance', label: 'Money Balance', icon: '💳' },
     { path: '/customers', label: 'Customers', icon: '👥' },
     { path: '/dispatchers', label: 'Dispatchers', icon: '🚚' },

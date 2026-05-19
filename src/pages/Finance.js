@@ -47,14 +47,35 @@ function payableCustomerName(p) {
   return '—';
 }
 
+function isCustomerDepositPayable(p) {
+  return p?.record_kind === 'customer_deposit';
+}
+
 function payableKind(p) {
-  if (p.order) return { kind: 'Order', ref: `#${p.order}` };
+  if (isCustomerDepositPayable(p)) {
+    return { kind: 'Customer deposit', ref: `Order #${p.order_detail?.id || p.order || '—'}` };
+  }
+  if (p.order) return { kind: 'Supplier', ref: `Order #${p.order}` };
   if (p.dispatch) return { kind: 'Dispatch', ref: `#${p.dispatch} (Sale #${p.dispatch_detail?.sale || '—'})` };
   if (p.package_history) return { kind: 'Package', ref: `History #${p.package_history}` };
   return { kind: '—', ref: '—' };
 }
 
+function formatMoneyAmount(amount, currency) {
+  const n = parseFloat(amount) || 0;
+  const ccy = String(currency || 'USD').toUpperCase();
+  if (ccy === 'UZS') return `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`;
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function receivableCustomerName(rcv) {
+  return rcv.sale_detail?.customer_detail?.name || '—';
+}
+
 function payableContext(p) {
+  if (isCustomerDepositPayable(p)) {
+    return 'On-demand prepayment — cleared when you sell from this order';
+  }
   if (p.dispatch) {
     const d = p.dispatch_detail;
     if (!d) return '—';
@@ -67,12 +88,13 @@ function payableContext(p) {
     return d.dispatcher_detail?.name || d.dispatch_type || '—';
   }
   if (p.order) {
+    const parts = [];
     if (p.order_detail?.order_type === 'on_demand') {
-      return 'On-demand (supplier order)';
+      parts.push('On-demand supplier cost');
+    } else if (p.order_detail?.order_type === 'stock') {
+      parts.push('Stock order (inventory)');
     }
-    if (p.order_detail?.order_type === 'stock') {
-      return 'Stock order (inventory)';
-    }
+    return parts.join(' · ');
   }
   if (p.package_history_detail?.package_detail) {
     const t = p.package_history_detail.package_detail.package_type;
@@ -129,7 +151,7 @@ function receivableSaleProductKey(sd) {
 
 const RECEIVABLE_TABLE_SORT_ACCESSORS = {
   id: (rcv) => Number(rcv.id) || 0,
-  customer: (rcv) => String(rcv.sale_detail?.customer_detail?.name ?? '').toLowerCase(),
+  customer: (rcv) => receivableCustomerName(rcv).toLowerCase(),
   sale: (rcv) => Number(rcv.sale) || 0,
   product: (rcv) => receivableSaleProductKey(rcv.sale_detail),
   sale_type: (rcv) => String(rcv.sale_detail?.sale_type ?? '').toLowerCase(),
@@ -156,7 +178,10 @@ function payableProductSortKey(p) {
 }
 
 const PAYABLE_TABLE_SORT_ACCESSORS = {
-  id: (p) => Number(p.id) || 0,
+  id: (p) =>
+    isCustomerDepositPayable(p)
+      ? -(Number(p.order_detail?.id) || 0)
+      : Number(p.id) || 0,
   payable_kind: (p) => payableKind(p).kind.toLowerCase(),
   ref: (p) => payableKind(p).ref.toLowerCase(),
   customer: (p) => payableCustomerName(p).toLowerCase(),
@@ -169,30 +194,6 @@ const PAYABLE_TABLE_SORT_ACCESSORS = {
   paid_date: (p) => {
     const d = p.paid_date;
     return d ? new Date(d).getTime() : Number.POSITIVE_INFINITY;
-  },
-};
-
-const PROFIT_LOSS_SALE_SORT_ACCESSORS = {
-  sale_id: (item) => Number(item.sale_id) || 0,
-  product: (item) => String(item.product ?? '').toLowerCase(),
-  quantity: (item) => Number(item.quantity) || 0,
-  income_usd: (item) => Number(item.income_usd) || 0,
-  income_uzs: (item) => Number(item.income_uzs) || 0,
-  cogs_usd: (item) => Number(item.total_cogs_usd) || 0,
-  cogs_uzs: (item) => Number(item.total_cogs_uzs) || 0,
-  profit_usd: (item) => Number(item.profit_usd) || 0,
-  profit_uzs: (item) => Number(item.profit_uzs) || 0,
-};
-
-const OPERATING_EXPENSE_SORT_ACCESSORS = {
-  expense_type_label: (item) => String(item.type ?? '').toLowerCase(),
-  amount_usd: (item) => Number(item.amount_usd) || 0,
-  amount_uzs: (item) => Number(item.amount_uzs) || 0,
-  date: (item) => {
-    const s = item.date;
-    if (s == null || s === '') return 0;
-    const t = new Date(`${s}T12:00:00`).getTime();
-    return Number.isFinite(t) ? t : String(s).toLowerCase();
   },
 };
 
@@ -246,11 +247,10 @@ function FinanceLegTotal({ value, leg }) {
 
 const Finance = () => {
   const { isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState('records'); // 'records', 'receivables', 'payables', 'profit_loss'
+  const [activeTab, setActiveTab] = useState('records'); // 'records', 'receivables', 'payables'
   const [records, setRecords] = useState([]);
   const [receivables, setReceivables] = useState([]);
   const [payables, setPayables] = useState([]);
-  const [profitLoss, setProfitLoss] = useState(null);
   const [loading, setLoading] = useState(true);
   const [collectTarget, setCollectTarget] = useState(null);
   const [collectForm, setCollectForm] = useState({
@@ -283,8 +283,6 @@ const Finance = () => {
       fetchReceivables();
     } else if (activeTab === 'payables') {
       fetchPayables();
-    } else if (activeTab === 'profit_loss') {
-      fetchProfitLoss();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, activeTab]);
@@ -482,37 +480,6 @@ const Finance = () => {
     }
   };
 
-  const fetchProfitLoss = async () => {
-    setLoading(true);
-    try {
-      let url = '/finance/profit_loss/';
-      const params = new URLSearchParams();
-      
-      // Convert year/month to date range
-      if (filter.year || filter.month) {
-        if (filter.year && filter.month) {
-          params.append('year', filter.year);
-          params.append('month', filter.month);
-        } else if (filter.year) {
-          params.append('year', filter.year);
-        } else if (filter.month) {
-          const currentYear = new Date().getFullYear();
-          params.append('year', currentYear);
-          params.append('month', filter.month);
-        }
-      }
-      
-      if (params.toString()) url += `?${params.toString()}`;
-
-      const response = await api.get(url);
-      setProfitLoss(response.data);
-    } catch (error) {
-      console.error('Error fetching profit/loss:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
     if (
@@ -562,11 +529,19 @@ const Finance = () => {
     [records]
   );
   const receivableAmountTotals = useMemo(
-    () => sumAmountsByCurrency(receivables),
+    () => sumAmountsByCurrency(receivables.filter((r) => r.status === 'pending')),
     [receivables]
   );
   const payableAmountTotals = useMemo(
     () => sumAmountsByCurrency(payables),
+    [payables]
+  );
+  const customerDepositPayableTotals = useMemo(
+    () => sumAmountsByCurrency(payables.filter((p) => isCustomerDepositPayable(p))),
+    [payables]
+  );
+  const supplierPayableTotals = useMemo(
+    () => sumAmountsByCurrency(payables.filter((p) => !isCustomerDepositPayable(p) && p.status === 'pending')),
     [payables]
   );
   const receivablePendingByCurrency = useMemo(
@@ -594,18 +569,6 @@ const Finance = () => {
   const sortedPayableRows = useMemo(
     () => payablesTableSort.sortRows(payables || []),
     [payables, payablesTableSort],
-  );
-
-  const profitLossSalesSort = useClientTableSort(PROFIT_LOSS_SALE_SORT_ACCESSORS);
-  const sortedProfitLossSales = useMemo(
-    () => profitLossSalesSort.sortRows(profitLoss?.sales || []),
-    [profitLoss?.sales, profitLossSalesSort],
-  );
-
-  const operatingExpenseSort = useClientTableSort(OPERATING_EXPENSE_SORT_ACCESSORS);
-  const sortedOperatingExpenses = useMemo(
-    () => operatingExpenseSort.sortRows(profitLoss?.operating_expenses || []),
-    [profitLoss?.operating_expenses, operatingExpenseSort],
   );
 
   if (loading) {
@@ -686,20 +649,6 @@ const Finance = () => {
           }}
         >
           Payables
-        </button>
-        <button
-          onClick={() => setActiveTab('profit_loss')}
-          style={{
-            padding: '10px 20px',
-            border: 'none',
-            background: activeTab === 'profit_loss' ? '#ff9800' : 'transparent',
-            color: activeTab === 'profit_loss' ? 'white' : '#666',
-            cursor: 'pointer',
-            borderBottom: activeTab === 'profit_loss' ? '3px solid #ff9800' : '3px solid transparent',
-            fontWeight: activeTab === 'profit_loss' ? '600' : '400',
-          }}
-        >
-          Profit/Loss
         </button>
       </div>
 
@@ -1226,6 +1175,10 @@ const Finance = () => {
           )}
         <div className="table-card">
           <h2>Accounts Receivable</h2>
+          <p style={{ color: '#666', fontSize: '0.9em', margin: '0 0 10px' }}>
+            Outstanding balances on completed sales (after any order advance). Customer prepayments before a sale
+            are listed under Payables.
+          </p>
           <div className="data-table-scroll">
           <table className="data-table">
             <thead>
@@ -1258,7 +1211,7 @@ const Finance = () => {
                   return (
                   <tr key={receivable.id}>
                     <td>#{receivable.id}</td>
-                      <td>{sd?.customer_detail?.name || '—'}</td>
+                      <td>{receivableCustomerName(receivable)}</td>
                       <td>#{receivable.sale}</td>
                       <td>
                         {sd?.product_detail
@@ -1266,7 +1219,9 @@ const Finance = () => {
                           : '—'}
                       </td>
                       <td>
-                        {sd?.sale_type ? (SALE_TYPE_LABELS[sd.sale_type] || sd.sale_type) : '—'}
+                        {sd?.sale_type
+                          ? SALE_TYPE_LABELS[sd.sale_type] || sd.sale_type
+                          : '—'}
                       </td>
                       <td>
                         {sd?.order ? (
@@ -1282,7 +1237,10 @@ const Finance = () => {
                         {receivableDispatchLabel(sd)}
                     </td>
                     <td style={{ fontWeight: '600', color: '#28a745' }}>
-                      {parseFloat(receivable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {parseFloat(receivable.amount).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                     </td>
                     <td>{receivable.currency || 'USD'}</td>
                     <td>
@@ -1317,16 +1275,12 @@ const Finance = () => {
             <tfoot>
               <tr>
                 <td colSpan="7" style={{ textAlign: 'right' }}>
-                  Total
+                  Pending balance due
                 </td>
                 <td style={{ fontWeight: 600, color: '#28a745' }}>
                   {formatMultiCurrencyAmounts(receivableAmountTotals)}
                 </td>
-                <td>—</td>
-                <td>—</td>
-                <td>—</td>
-                <td>—</td>
-                <td>—</td>
+                <td colSpan="5">—</td>
               </tr>
             </tfoot>
           </table>
@@ -1339,6 +1293,10 @@ const Finance = () => {
       {activeTab === 'payables' && (
         <div className="table-card">
           <h2>Accounts Payable</h2>
+          <p style={{ color: '#666', fontSize: '0.9em', margin: '0 0 10px' }}>
+            Supplier, courier, and package obligations, plus customer prepayments on on-demand orders until you
+            sell (deposit rows drop off once the order is sold and the advance is applied).
+          </p>
           <div className="data-table-scroll">
           <table className="data-table">
             <thead>
@@ -1366,13 +1324,15 @@ const Finance = () => {
               ) : (
                 sortedPayableRows.map((payable) => {
                   const { kind, ref } = payableKind(payable);
+                  const isDeposit = isCustomerDepositPayable(payable);
+                  const rowKey = isDeposit ? payable.virtual_id : payable.id;
                   return (
-                  <tr key={payable.id}>
-                    <td>#{payable.id}</td>
+                  <tr key={rowKey} style={isDeposit ? { backgroundColor: '#f8f4ff' } : undefined}>
+                    <td>{isDeposit ? `Order #${payable.order_detail?.id}` : `#${payable.id}`}</td>
                     <td>
                         <span
                           className="status-badge"
-                          style={{ background: '#6c757d', fontSize: '0.75rem' }}
+                          style={{ background: isDeposit ? '#5e35b1' : '#6c757d', fontSize: '0.75rem' }}
                         >
                           {kind}
                         </span>
@@ -1389,13 +1349,16 @@ const Finance = () => {
                               : '—'}
                     </td>
                       <td style={{ fontSize: '0.9rem', maxWidth: '220px' }}>{payableContext(payable)}</td>
-                    <td style={{ fontWeight: '600', color: '#dc3545' }}>
-                      {parseFloat(payable.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <td style={{ fontWeight: '600', color: isDeposit ? '#5e35b1' : '#dc3545' }}>
+                      {formatMoneyAmount(payable.amount, payable.currency)}
+                      {isDeposit && (
+                        <div style={{ fontSize: '0.78em', color: '#666', fontWeight: 400 }}>Prepaid by customer</div>
+                      )}
                     </td>
                     <td>{payable.currency || 'USD'}</td>
                     <td>
                       <span className={`status-badge ${payable.status}`}>
-                        {payable.status}
+                        {isDeposit ? 'prepaid' : payable.status}
                       </span>
                     </td>
                     <td>{new Date(payable.created_at).toLocaleString()}</td>
@@ -1412,186 +1375,27 @@ const Finance = () => {
             <tfoot>
               <tr>
                 <td colSpan="6" style={{ textAlign: 'right' }}>
-                  Total
+                  Supplier / courier / package (pending)
                 </td>
                 <td style={{ fontWeight: 600, color: '#dc3545' }}>
-                  {formatMultiCurrencyAmounts(payableAmountTotals)}
+                  {formatMultiCurrencyAmounts(supplierPayableTotals)}
                 </td>
-                <td>—</td>
-                <td>—</td>
-                <td>—</td>
-                <td>—</td>
+                <td colSpan="4">—</td>
               </tr>
+              {(customerDepositPayableTotals.USD > 0 || customerDepositPayableTotals.UZS > 0) && (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'right', color: '#666' }}>
+                    Customer deposits (on-demand, not sold yet)
+                  </td>
+                  <td style={{ fontWeight: 600, color: '#5e35b1' }}>
+                    {formatMultiCurrencyAmounts(customerDepositPayableTotals)}
+                  </td>
+                  <td colSpan="4">—</td>
+                </tr>
+              )}
             </tfoot>
           </table>
           </div>
-        </div>
-      )}
-
-      {activeTab === 'profit_loss' && (
-        <div>
-          <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Amounts stay in their original currency. Net profit is shown separately for USD and for UZS — they are not added together.
-          </p>
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px' }}>Loading...</div>
-          ) : profitLoss ? (
-            <div>
-              <div className="metrics-grid" style={{ marginBottom: '20px' }}>
-                <div className="metric-card" style={{ border: '2px solid #28a745' }}>
-                  <div className="metric-label">Total income (USD)</div>
-                  <div className="metric-value" style={{ color: '#28a745', fontSize: '1.6em' }}>
-                    ${(profitLoss.totals.total_income_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-                <div className="metric-card" style={{ border: '2px solid #28a745' }}>
-                  <div className="metric-label">Total income (UZS)</div>
-                  <div className="metric-value" style={{ color: '#28a745', fontSize: '1.6em' }}>
-                    {(profitLoss.totals.total_income_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
-                  </div>
-                </div>
-                <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-                  <div className="metric-label">Total COGS (USD)</div>
-                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
-                    ${(profitLoss.totals.total_cogs_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-                <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-                  <div className="metric-label">Total COGS (UZS)</div>
-                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
-                    {(profitLoss.totals.total_cogs_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
-                  </div>
-                </div>
-                <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-                  <div className="metric-label">Operating expenses (USD)</div>
-                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
-                    ${(profitLoss.totals.total_operating_expenses_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-                <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-                  <div className="metric-label">Operating expenses (UZS)</div>
-                  <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
-                    {(profitLoss.totals.total_operating_expenses_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
-                  </div>
-                </div>
-                <div className="metric-card" style={{ border: `2px solid ${(profitLoss.totals.net_profit_usd || 0) >= 0 ? '#28a745' : '#dc3545'}` }}>
-                  <div className="metric-label">Net profit (USD)</div>
-                  <div className="metric-value" style={{ color: (profitLoss.totals.net_profit_usd || 0) >= 0 ? '#28a745' : '#dc3545', fontSize: '1.6em' }}>
-                    ${(profitLoss.totals.net_profit_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-                <div className="metric-card" style={{ border: `2px solid ${(profitLoss.totals.net_profit_uzs || 0) >= 0 ? '#28a745' : '#dc3545'}` }}>
-                  <div className="metric-label">Net profit (UZS)</div>
-                  <div className="metric-value" style={{ color: (profitLoss.totals.net_profit_uzs || 0) >= 0 ? '#28a745' : '#dc3545', fontSize: '1.6em' }}>
-                    {(profitLoss.totals.net_profit_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
-                  </div>
-                </div>
-              </div>
-
-              <div className="table-card" style={{ marginBottom: '20px' }}>
-                <h3>Sales (by currency — no conversion)</h3>
-                <div className="data-table-scroll">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <SortableTh columnId="sale_id" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Sale ID</SortableTh>
-                      <SortableTh columnId="product" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Product</SortableTh>
-                      <SortableTh columnId="quantity" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Qty</SortableTh>
-                      <SortableTh columnId="income_usd" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Income USD</SortableTh>
-                      <SortableTh columnId="income_uzs" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Income UZS</SortableTh>
-                      <SortableTh columnId="cogs_usd" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>COGS USD</SortableTh>
-                      <SortableTh columnId="cogs_uzs" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>COGS UZS</SortableTh>
-                      <SortableTh columnId="profit_usd" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Profit USD</SortableTh>
-                      <SortableTh columnId="profit_uzs" sortCol={profitLossSalesSort.sortCol} sortDir={profitLossSalesSort.sortDir} onSort={profitLossSalesSort.onHeaderClick}>Profit UZS</SortableTh>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {profitLoss.sales.length === 0 ? (
-                      <tr>
-                        <td colSpan="9" style={{ textAlign: 'center' }}>No sales completed in this period</td>
-                      </tr>
-                    ) : (
-                      sortedProfitLossSales.map((item, idx) => (
-                        <tr key={idx}>
-                          <td>#{item.sale_id}</td>
-                          <td>{item.product}</td>
-                          <td>{item.quantity}</td>
-                          <td>${item.income_usd?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td>{(item.income_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                          <td>${item.total_cogs_usd?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td>{(item.total_cogs_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                          <td style={{ color: item.profit_usd >= 0 ? '#28a745' : '#dc3545', fontWeight: '600' }}>
-                            ${item.profit_usd?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td style={{ color: item.profit_uzs >= 0 ? '#28a745' : '#dc3545', fontWeight: '600' }}>
-                            {(item.profit_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-                  <tfoot>
-                    <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
-                      <td colSpan="3">Totals</td>
-                      <td>${(profitLoss.totals.total_income_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td>{(profitLoss.totals.total_income_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                      <td>${(profitLoss.totals.total_cogs_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td>{(profitLoss.totals.total_cogs_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                      <td style={{ color: profitLoss.totals.net_profit_usd >= 0 ? '#28a745' : '#dc3545' }}>
-                        ${(profitLoss.totals.net_profit_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td style={{ color: profitLoss.totals.net_profit_uzs >= 0 ? '#28a745' : '#dc3545' }}>
-                        {(profitLoss.totals.net_profit_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </td>
-                    </tr>
-                  </tfoot>
-          </table>
-        </div>
-              </div>
-
-              <div className="table-card">
-                <h3>Operating expenses</h3>
-                <div className="data-table-scroll">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <SortableTh columnId="expense_type_label" sortCol={operatingExpenseSort.sortCol} sortDir={operatingExpenseSort.sortDir} onSort={operatingExpenseSort.onHeaderClick}>Type</SortableTh>
-                      <SortableTh columnId="amount_usd" sortCol={operatingExpenseSort.sortCol} sortDir={operatingExpenseSort.sortDir} onSort={operatingExpenseSort.onHeaderClick}>Amount (USD)</SortableTh>
-                      <SortableTh columnId="amount_uzs" sortCol={operatingExpenseSort.sortCol} sortDir={operatingExpenseSort.sortDir} onSort={operatingExpenseSort.onHeaderClick}>Amount (UZS)</SortableTh>
-                      <SortableTh columnId="date" sortCol={operatingExpenseSort.sortCol} sortDir={operatingExpenseSort.sortDir} onSort={operatingExpenseSort.onHeaderClick}>Date</SortableTh>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {profitLoss.operating_expenses.length === 0 ? (
-                      <tr>
-                        <td colSpan="4" style={{ textAlign: 'center' }}>No operating expenses in this period</td>
-                      </tr>
-                    ) : (
-                      sortedOperatingExpenses.map((item, idx) => (
-                        <tr key={idx}>
-                          <td>{item.type}</td>
-                          <td>${(item.amount_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td>{(item.amount_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                          <td>{item.date}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
-                      <td>Total operating</td>
-                      <td>${(profitLoss.totals.total_operating_expenses_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td>{(profitLoss.totals.total_operating_expenses_uzs || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                      <td>—</td>
-                    </tr>
-                  </tfoot>
-                </table>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '40px' }}>No data available</div>
-          )}
         </div>
       )}
     </div>
