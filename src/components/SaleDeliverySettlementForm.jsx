@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import {
   buildPaymentFormDataFromSale,
@@ -26,6 +26,14 @@ export default function SaleDeliverySettlementForm({
 
   const [dispAmount, setDispAmount] = useState('');
   const [dispCurrency, setDispCurrency] = useState('UZS');
+  const cardRef = useRef(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [saleProp?.id]);
 
   useEffect(() => {
     let cancel = false;
@@ -117,6 +125,17 @@ export default function SaleDeliverySettlementForm({
     ? [sale.product_detail.brand, sale.product_detail.model].filter(Boolean).join(' ').trim() || 'Product'
     : 'Product';
 
+  const amountTolerance = (currency) => (currency === 'UZS' ? 1 : 0.02);
+
+  const paymentMatchesExpectedDue = (due, sc, uzsT, usdT) => {
+    if (due == null || Number.isNaN(due)) return false;
+    const tol = amountTolerance(sc);
+    if (sc === 'USD') {
+      return uzsT === 0 && Math.abs(usdT - due) <= tol;
+    }
+    return usdT === 0 && Math.abs(uzsT - due) <= tol;
+  };
+
   const handleStep1 = async () => {
     const totalCollected = parseFloat(String(step1TotalCollected).replace(',', '.'));
     if (Number.isNaN(totalCollected) || totalCollected < 0) {
@@ -141,19 +160,27 @@ export default function SaleDeliverySettlementForm({
         ? `${actualDueAtDoor.toFixed(2)} ${actualCurrency}`
         : '—';
     const enteredFmt = `${totalCollected.toFixed(2)} ${step1SaleCurrency}`;
-    const ok = window.confirm(
-      [
-        'Confirm “Payment received by dispatch”?',
-        '',
-        `Sale #${sale.id} · ${qty} × ${productLabel}`,
-        '',
-        `Expected on record (total collected from customer): ${actualFmt}`,
-        `Entered · total collected: ${enteredFmt}`,
-        '',
-        'This records courier hand-off only (no shop cash movement yet).',
-      ].join('\n')
-    );
-    if (!ok) return;
+    const amountChanged =
+      actualDueAtDoor == null ||
+      Number.isNaN(actualDueAtDoor) ||
+      Math.abs(totalCollected - actualDueAtDoor) > amountTolerance(actualCurrency) ||
+      step1SaleCurrency !== actualCurrency;
+    if (amountChanged) {
+      const ok = window.confirm(
+        [
+          'Confirm “Payment received by dispatch”?',
+          '',
+          `Sale #${sale.id} · ${qty} × ${productLabel}`,
+          '',
+          `Expected on record (total collected from customer): ${actualFmt}`,
+          `Entered · total collected: ${enteredFmt}`,
+          '',
+          'Amount or currency differs from the sale on record.',
+          'This records courier hand-off only (no shop cash movement yet).',
+        ].join('\n')
+      );
+      if (!ok) return;
+    }
 
     try {
       await api.post(`/sales/${sale.id}/delivery_customer_paid/`, {
@@ -190,38 +217,46 @@ export default function SaleDeliverySettlementForm({
       }
       const eu = parseFloat(step2.uzs) || 0;
       const ed = parseFloat(step2.usd) || 0;
+      const paymentChanged =
+        meta2.mixed ||
+        meta2.hasOverpayment ||
+        (meta2.needs && step2.balance_shortfall_type === 'discount') ||
+        !paymentMatchesExpectedDue(meta2.due, meta2.sc, eu, ed);
 
-      const dueLines =
-        meta2.due != null && !Number.isNaN(meta2.due) && meta2.sc
-          ? [`Amount due / actual (${meta2.sc}): ${meta2.due.toFixed(2)} ${meta2.sc}`]
-          : [];
-      const enteredMainLines =
-        meta2.paid != null && !Number.isNaN(meta2.paid) && meta2.sc
-          ? [`Payment entered (in ${meta2.sc}, from UZS + USD buckets): ${meta2.paid.toFixed(2)} ${meta2.sc}`]
-          : [];
-      const overLines =
-        meta2.hasOverpayment && meta2.due != null && meta2.paid != null && meta2.overpaymentAmount != null
-          ? [
-              '',
-              `Overpayment warning: entered is ${meta2.paid.toFixed(2)} ${meta2.sc}; due is ${meta2.due.toFixed(2)} ${meta2.sc}; excess ${meta2.overpaymentAmount.toFixed(2)} ${meta2.sc}.`,
-            ]
-          : [];
+      if (paymentChanged) {
+        const dueLines =
+          meta2.due != null && !Number.isNaN(meta2.due) && meta2.sc
+            ? [`Amount due / actual (${meta2.sc}): ${meta2.due.toFixed(2)} ${meta2.sc}`]
+            : [];
+        const enteredMainLines =
+          meta2.paid != null && !Number.isNaN(meta2.paid) && meta2.sc
+            ? [`Payment entered (in ${meta2.sc}, from UZS + USD buckets): ${meta2.paid.toFixed(2)} ${meta2.sc}`]
+            : [];
+        const overLines =
+          meta2.hasOverpayment && meta2.due != null && meta2.paid != null && meta2.overpaymentAmount != null
+            ? [
+                '',
+                `Overpayment warning: entered is ${meta2.paid.toFixed(2)} ${meta2.sc}; due is ${meta2.due.toFixed(2)} ${meta2.sc}; excess ${meta2.overpaymentAmount.toFixed(2)} ${meta2.sc}.`,
+              ]
+            : [];
 
-      const okShop = window.confirm(
-        [
-          'Confirm “Payment received by shop”?',
-          '',
-          ...dueLines,
-          ...enteredMainLines,
-          '',
-          `Entered · UZS: ${eu.toFixed(2)}`,
-          `Entered · USD: ${ed.toFixed(2)}`,
-          ...overLines,
-          '',
-          'Proceed?',
-        ].join('\n')
-      );
-      if (!okShop) return;
+        const okShop = window.confirm(
+          [
+            'Confirm “Payment received by shop”?',
+            '',
+            ...dueLines,
+            ...enteredMainLines,
+            '',
+            `Entered · UZS: ${eu.toFixed(2)}`,
+            `Entered · USD: ${ed.toFixed(2)}`,
+            ...overLines,
+            '',
+            'Amount or currency differs from what is due on record.',
+            'Proceed?',
+          ].join('\n')
+        );
+        if (!okShop) return;
+      }
 
       const body = {
         uzs: parseFloat(step2.uzs) || 0,
@@ -258,39 +293,30 @@ export default function SaleDeliverySettlementForm({
         }
         const plannedAmt = uzFee > 0 ? uzFee : usFee;
         const plannedCcy = uzFee > 0 ? 'UZS' : 'USD';
-        const plannedFmt = `${plannedAmt.toFixed(2)} ${plannedCcy}`;
-        const enteredFmt = `${amt.toFixed(2)} ${dispCurrency}`;
-        const tol = plannedCcy === 'UZS' ? 1 : 0.02;
-        const matchesOnRecord =
-          plannedCcy === dispCurrency && Math.abs(plannedAmt - amt) <= tol;
-        const step3ConfirmLines = [
-          'Confirm “Pay for dispatch & complete sale”?',
-          '',
-          `Sale #${sale.id}`,
-          '',
-          `Planned dispatch fee on record (actual): ${plannedFmt}`,
-          `Delivery payment entered: ${enteredFmt}`,
-          '',
-          matchesOnRecord
-            ? 'Entered matches dispatch on record (within rounding).'
-            : 'Entered amount or currency differs from dispatch on record — the dispatch fee will be updated to match this payment.',
-          '',
-          'This withdraws from shop balances and marks the sale completed.',
-        ];
-        const ok = window.confirm(step3ConfirmLines.join('\n'));
-        if (!ok) return;
+        const tol = amountTolerance(plannedCcy);
+        const dispatchPaymentChanged =
+          plannedCcy !== dispCurrency || Math.abs(plannedAmt - amt) > tol;
+        if (dispatchPaymentChanged) {
+          const plannedFmt = `${plannedAmt.toFixed(2)} ${plannedCcy}`;
+          const enteredFmt = `${amt.toFixed(2)} ${dispCurrency}`;
+          const ok = window.confirm(
+            [
+              'Confirm “Pay for dispatch & complete sale”?',
+              '',
+              `Sale #${sale.id}`,
+              '',
+              `Planned dispatch fee on record (actual): ${plannedFmt}`,
+              `Delivery payment entered: ${enteredFmt}`,
+              '',
+              'Entered amount or currency differs from dispatch on record — the dispatch fee will be updated to match this payment.',
+              '',
+              'This withdraws from shop balances and marks the sale completed.',
+            ].join('\n')
+          );
+          if (!ok) return;
+        }
         body.dispatch_payment_amount = amt;
         body.dispatch_payment_currency = dispCurrency;
-      } else {
-        const ok = window.confirm(
-          [
-            'Complete this sale without a dispatch fee payout?',
-            '',
-            `Sale #${sale.id}`,
-            'The sale will be marked Completed.',
-          ].join('\n')
-        );
-        if (!ok) return;
       }
       await api.post(`/sales/${sale.id}/delivery_pay_dispatch_fee/`, body);
       showNotification?.(
@@ -310,20 +336,18 @@ export default function SaleDeliverySettlementForm({
   };
 
   return (
-    <div style={{ marginBottom: 20 }}>
+    <div ref={cardRef} style={{ marginBottom: 20 }}>
       {activeStep === 0 ? (
-        <p style={{ color: '#666', marginBottom: 20, fontSize: '0.9rem' }}>
-          All settlement steps are already recorded for this sale.
-        </p>
-      ) : (
-        <p style={{ color: '#666', marginBottom: 16, fontSize: '0.88rem' }}>
-          Sale #{sale.id}
-        </p>
-      )}
+        <div className="form-card" style={{ marginBottom: 20 }}>
+          <p style={{ color: '#666', margin: 0, fontSize: '0.9rem' }}>
+            All settlement steps are already recorded for sale #{sale.id}.
+          </p>
+        </div>
+      ) : null}
 
       {activeStep === 1 ? (
       <div className="form-card" style={{ marginBottom: 20 }}>
-        <h2>Payment received by dispatch</h2>
+        <h2>Payment received by dispatch — Sale #{sale.id}</h2>
         <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
           The courier delivered and collected payment from the customer. Enter the full amount collected (same idea as
           step 2). This confirms hand‑off only — no shop cash ledger change yet.
@@ -357,7 +381,7 @@ export default function SaleDeliverySettlementForm({
 
       {activeStep === 2 ? (
       <div className="form-card" style={{ marginBottom: 20 }}>
-        <h2>Payment received by shop</h2>
+        <h2>Payment received by shop — Sale #{sale.id}</h2>
         <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
           Enter what the courier remitted to the shop (UZS and/or USD — same rules as Complete & Pay). This books
           sale income and clears receivable where applicable.
@@ -443,7 +467,11 @@ export default function SaleDeliverySettlementForm({
 
       {activeStep === 3 ? (
       <div className="form-card" style={{ marginBottom: 20 }}>
-        <h2>{needsDispatchFeePayment ? 'Pay for dispatch & complete sale' : 'Complete sale'}</h2>
+        <h2>
+          {needsDispatchFeePayment
+            ? `Pay for dispatch & complete sale — Sale #${sale.id}`
+            : `Complete sale — Sale #${sale.id}`}
+        </h2>
         <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
           {needsDispatchFeePayment
             ? 'Edit the delivery fee if needed — the planned dispatch totals will be updated to match what you confirm. Pays from shop balances and marks the sale Completed.'

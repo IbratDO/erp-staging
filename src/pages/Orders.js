@@ -12,7 +12,42 @@ import {
 } from '../utils/orderPlannedPricing';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
-import { useClientTableSort } from '../utils/tableSort';
+import { useClientTableSort, compareForSort } from '../utils/tableSort';
+
+const ORDER_STATUS_LABELS = {
+  ordered: 'Ordered',
+  order_paid: 'Order paid',
+  received: 'Received',
+  in_inventory: 'In Inventory',
+  sold: 'Sold',
+  cancelled: 'Cancelled',
+};
+
+function formatOrderStatus(status) {
+  return ORDER_STATUS_LABELS[status] || String(status ?? '').replace(/_/g, ' ');
+}
+
+function showMarkAsReceivedAction(order) {
+  return (
+    (order.status === 'ordered' || order.status === 'order_paid') &&
+    !order.has_ever_been_received
+  );
+}
+
+function orderReadyForInventoryActions(order) {
+  return (
+    (order.status === 'received' || order.status === 'order_paid') &&
+    order.order_is_paid &&
+    order.cargo_is_paid
+  );
+}
+
+/** Active orders first; finished in-inventory rows sink to the bottom. */
+function compareNonInventoryFirst(a, b) {
+  const aDone = a.status === 'in_inventory' ? 1 : 0;
+  const bDone = b.status === 'in_inventory' ? 1 : 0;
+  return aDone - bDone;
+}
 
 function payTotalsMatchPlanned(expUzs, expUsd, uzsCash, uzsCard, usdCash, usdCard) {
   const inUzs = (uzsCash || 0) + (uzsCard || 0);
@@ -82,6 +117,64 @@ function confirmOrderPayTotalsIfMismatch(order, uzsEntered, usdEntered) {
     `Planned — UZS: ${formatDisplayAmount(expZ, 'UZS')}; USD: ${formatDisplayAmount(expD, 'USD')}\n` +
     `Entered — UZS: ${formatDisplayAmount(uz, 'UZS')}; USD: ${formatDisplayAmount(us, 'USD')}\n\n` +
     'Proceed anyway with this payment?';
+
+  return window.confirm(msg);
+}
+
+function formatOrderPaymentAmounts(uzs, usd) {
+  if (uzs <= 0 && usd <= 0) return '$0.00';
+  const parts = [];
+  if (uzs > 0) parts.push(formatDisplayAmount(uzs, 'UZS'));
+  if (usd > 0) parts.push(formatDisplayAmount(usd, 'USD'));
+  return parts.length ? parts.join(' + ') : '$0.00';
+}
+
+function formatOrderDueAmount(order) {
+  const { uzs, usd } = plannedSupplierPaymentTotals(order);
+  if (uzs <= 0 && usd <= 0) {
+    return '— (no planned supplier cost recorded)';
+  }
+  return formatOrderPaymentAmounts(uzs, usd);
+}
+
+function orderDueUnitDetail(order) {
+  const qi = parseInt(order?.ordered_quantity, 10) || 0;
+  if (qi <= 0) return '';
+  const { uzs, usd } = plannedSupplierPaymentTotals(order);
+  if (uzs > 0) {
+    return `\n(${formatDisplayAmount(uzs / qi, 'UZS')} / unit × ${qi})`;
+  }
+  if (usd > 0) {
+    const pu = parseFloat(order.cost_per_unit);
+    if (Number.isFinite(pu) && pu > 0) {
+      return `\n(${formatDisplayAmount(pu, 'USD')} / unit × ${qi})`;
+    }
+  }
+  return '';
+}
+
+/** Client eShop orders: always confirm before paying (due vs entered). @returns {false} if user cancels. */
+function confirmClientOrderPay(order, uzsEntered, usdEntered) {
+  const uz = Number(uzsEntered) || 0;
+  const us = Number(usdEntered) || 0;
+  const productLabel = order?.product_detail
+    ? productOrderPickerLabel(order.product_detail)
+    : `Product #${order?.product ?? '?'}`;
+  const customerLine = order?.customer_detail?.name
+    ? `\nCustomer: ${order.customer_detail.name}`
+    : '';
+  const notesRaw = String(order?.client_eshop_notes || '').trim();
+  const notesLine = notesRaw
+    ? `\nClient notes: ${notesRaw.length > 120 ? `${notesRaw.slice(0, 120)}…` : notesRaw}`
+    : '';
+
+  const msg =
+    `Pay for Order #${order?.id ?? '?'}?\n\n` +
+    `${productLabel}\n` +
+    `Qty: ${order?.ordered_quantity ?? '—'} · eShop: Client${customerLine}${notesLine}\n\n` +
+    `Due amount: ${formatOrderDueAmount(order)}${orderDueUnitDetail(order)}\n` +
+    `Paying: ${formatOrderPaymentAmounts(uz, us)}\n\n` +
+    'Proceed with this payment?';
 
   return window.confirm(msg);
 }
@@ -434,9 +527,17 @@ const Orders = () => {
     const rows = filteredOrders;
     if (!rows?.length) return rows;
     if (orderSort.sortCol && ORDER_SORT_ACCESSORS[orderSort.sortCol]) {
-      return orderSort.sortRows(rows);
+      const get = ORDER_SORT_ACCESSORS[orderSort.sortCol];
+      const sign = orderSort.sortDir === 'desc' ? -1 : 1;
+      return [...rows].sort((a, b) => {
+        const inv = compareNonInventoryFirst(a, b);
+        if (inv !== 0) return inv;
+        return compareForSort(get(a), get(b)) * sign;
+      });
     }
     return [...rows].sort((a, b) => {
+      const inv = compareNonInventoryFirst(a, b);
+      if (inv !== 0) return inv;
       const ta = new Date(a.order_date || a.created_at).getTime() || 0;
       const tb = new Date(b.order_date || b.created_at).getTime() || 0;
       return tb - ta;
@@ -564,7 +665,7 @@ const Orders = () => {
 
       const usdSup = numOrZero(formData.cost_usd_per_unit);
 
-      if (formData.order_is_paid && !(usdSup > 0)) {
+      if (formData.order_is_paid && !(usdSup > 0) && !isClientEshopSlug(formData.eshop)) {
         showNotification(
           'To mark the order as already paid, enter a USD cost per unit, or leave unpaid and record cost later.',
           'error',
@@ -594,6 +695,31 @@ const Orders = () => {
       }
 
       const toNum = (v) => parseFloat(v) || 0;
+      const advanceAmt = toNum(formData.advance_payment_amount);
+      const advanceCcy = formData.advance_payment_currency === 'UZS' ? 'UZS' : 'USD';
+
+      if (formData.order_type === 'on_demand' && advanceAmt > 0) {
+        if (advanceCcy === 'USD') {
+          const usdSellingTotal = usdS * qty;
+          if (advanceAmt > usdSellingTotal + 0.01) {
+            showNotification(
+              `Advance cannot exceed planned USD selling total (${formatDisplayAmount(usdSellingTotal, 'USD')}).`,
+              'error',
+            );
+            return;
+          }
+        } else {
+          const usdSellingTotal = usdS * qty;
+          const ok = window.confirm(
+            `Record UZS advance payment?\n\n` +
+              `Amount: ${formatDisplayAmount(advanceAmt, 'UZS')}\n` +
+              `Planned selling (USD): ${formatDisplayAmount(usdSellingTotal, 'USD')}\n\n` +
+              `UZS advance will be credited to UZS cash. Planned selling is still recorded in USD only.`,
+          );
+          if (!ok) return;
+        }
+      }
+
       const customerRaw = formData.customer;
       const customerParsed = parseInt(customerRaw, 10);
       const customer =
@@ -619,8 +745,8 @@ const Orders = () => {
         order_payment_currency: formData.order_payment_currency,
         order_payment_type: formData.order_payment_type,
         customer,
-        advance_payment_amount: toNum(formData.advance_payment_amount),
-        advance_payment_currency: formData.advance_payment_currency,
+        advance_payment_amount: advanceAmt,
+        advance_payment_currency: advanceCcy,
         advance_payment_type: formData.advance_payment_type,
         status: formData.status,
       };
@@ -715,7 +841,9 @@ const Orders = () => {
       if (paymentFormData.is_pay_order) {
         const uzs = parseFloat(paymentFormData.uzs) || 0;
         const usd = parseFloat(paymentFormData.usd) || 0;
-        if (uzs + usd === 0) {
+        const orderForPay = orders.find((o) => o.id === paymentFormData.orderId);
+        const isClientPay = orderForPay && isClientEshopSlug(orderForPay.eshop);
+        if (uzs + usd === 0 && !isClientPay) {
           showNotification('Please enter at least one payment amount.', 'error');
           return;
         }
@@ -733,14 +861,35 @@ const Orders = () => {
             return;
           }
         }
-        const orderForPay = orders.find((o) => o.id === paymentFormData.orderId);
-        if (orderForPay && !confirmOrderPayTotalsIfMismatch(orderForPay, uzs, usd)) {
-          return;
+        if (orderForPay) {
+          const confirmed = isClientPay
+            ? confirmClientOrderPay(orderForPay, uzs, usd)
+            : confirmOrderPayTotalsIfMismatch(orderForPay, uzs, usd);
+          if (!confirmed) {
+            return;
+          }
         }
-        await api.post(`/orders/${paymentFormData.orderId}/pay_order/`, { uzs, usd });
+        const paidOrderId = paymentFormData.orderId;
+        const res = await api.post(`/orders/${paidOrderId}/pay_order/`, { uzs, usd });
+        const paidStatus = res.data?.status || 'order_paid';
+        setOrders((prev) => {
+          const next = prev.map((o) =>
+            o.id === paidOrderId
+              ? {
+                  ...o,
+                  status: paidStatus,
+                  order_is_paid: true,
+                  has_ever_been_received:
+                    o.has_ever_been_received || o.status === 'received',
+                }
+              : o,
+          );
+          applyFilters(next);
+          return next;
+        });
         setShowPaymentForm(false);
         setPaymentFormData({ orderId: null, uzs: '', usd: '', is_pay_order: false, is_received_and_pay: false, status_notes: '' });
-        fetchOrders();
+        await fetchOrders();
         showNotification('Order payment completed successfully!', 'success');
         return;
       }
@@ -919,7 +1068,7 @@ const Orders = () => {
         : 'USD';
       setMoveToInventoryData({
         orderId: orderId,
-        return_advance: false,
+        return_advance: true,
         return_payment_currency: advCur === 'UZS' ? 'UZS' : 'USD',
         return_advance_amount:
           order.advance_payment_amount != null && order.advance_payment_amount !== ''
@@ -965,18 +1114,21 @@ const Orders = () => {
     e.preventDefault();
 
     const invOrder = orders.find((o) => o.id === moveToInventoryData.orderId);
-    if (moveToInventoryData.return_advance && invOrder) {
+    if (invOrder && invOrder.advance_payment_amount > 0) {
       const booked = parseFloat(invOrder.advance_payment_amount) || 0;
       const amt = parseFloat(String(moveToInventoryData.return_advance_amount ?? '').trim()) || 0;
       if (!(amt > 0)) {
         showNotification('Enter how much advance to return (greater than zero).', 'error');
         return;
       }
-      if (amt > booked) {
+      const ccy = moveToInventoryData.return_payment_currency === 'UZS' ? 'UZS' : 'USD';
+      const bookedCur = invOrder.advance_payment_currency
+        ? String(invOrder.advance_payment_currency).toUpperCase()
+        : 'USD';
+      if (ccy === bookedCur && amt > booked) {
         showNotification(`Return amount cannot exceed the recorded advance (${booked}).`, 'error');
         return;
       }
-      const ccy = moveToInventoryData.return_payment_currency === 'UZS' ? 'UZS' : 'USD';
       const available = getAvailableBalance(ccy);
       if (amt > available) {
         showNotification(formatInsufficientLedgerMessage(ccy, available, amt), 'error');
@@ -996,11 +1148,10 @@ const Orders = () => {
       if (!ok) return;
     }
     await moveToInventoryFromOrder(moveToInventoryData.orderId, {
-      return_advance: moveToInventoryData.return_advance,
+      return_advance: true,
       return_payment_currency: moveToInventoryData.return_payment_currency,
-      return_advance_amount: moveToInventoryData.return_advance
-        ? parseFloat(String(moveToInventoryData.return_advance_amount ?? '').trim()) || undefined
-        : undefined,
+      return_advance_amount:
+        parseFloat(String(moveToInventoryData.return_advance_amount ?? '').trim()) || undefined,
     });
   };
 
@@ -1120,95 +1271,73 @@ const Orders = () => {
                 const invOrder = orders.find((o) => o.id === moveToInventoryData.orderId);
                 if (invOrder && invOrder.advance_payment_amount > 0) {
                   return (
-                    <p style={{ gridColumn: '1 / -1', color: '#555', margin: 0, fontSize: '0.92em' }}>
-                      Advance:{' '}
-                      <strong>
-                        {formatDisplayAmount(
-                          invOrder.advance_payment_amount,
-                          invOrder.advance_payment_currency || 'USD',
-                        )}
-                      </strong>
-                    </p>
+                    <>
+                      <p style={{ gridColumn: '1 / -1', color: '#555', margin: 0, fontSize: '0.92em' }}>
+                        Return advance payment to customer — recorded advance:{' '}
+                        <strong>
+                          {formatDisplayAmount(
+                            invOrder.advance_payment_amount,
+                            invOrder.advance_payment_currency || 'USD',
+                          )}
+                        </strong>
+                      </p>
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <div
+                          style={{
+                            display: 'inline-flex',
+                            flexWrap: 'wrap',
+                            gap: '14px',
+                            alignItems: 'flex-end',
+                          }}
+                        >
+                          <div className="form-group" style={{ marginBottom: 0, width: '11rem', maxWidth: '100%' }}>
+                            <label htmlFor="move-inv-return-amt">Amount</label>
+                            <input
+                              id="move-inv-return-amt"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              style={{ width: '100%', boxSizing: 'border-box', display: 'block', marginTop: '4px' }}
+                              value={moveToInventoryData.return_advance_amount}
+                              onChange={(e) =>
+                                setMoveToInventoryData({ ...moveToInventoryData, return_advance_amount: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0, minWidth: '7rem', width: '7.5rem' }}>
+                            <label htmlFor="move-inv-return-ccy">Currency</label>
+                            <select
+                              id="move-inv-return-ccy"
+                              value={moveToInventoryData.return_payment_currency}
+                              onChange={(e) =>
+                                setMoveToInventoryData({
+                                  ...moveToInventoryData,
+                                  return_payment_currency: e.target.value === 'UZS' ? 'UZS' : 'USD',
+                                })
+                              }
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                borderRadius: '4px',
+                                border: '1px solid #ccc',
+                                boxSizing: 'border-box',
+                                marginTop: '4px',
+                              }}
+                            >
+                              <option value="USD">USD</option>
+                              <option value="UZS">UZS</option>
+                            </select>
+                          </div>
+                        </div>
+                        <p style={{ margin: '8px 0 0', fontSize: '0.82em', color: '#666' }}>
+                          ≤ advance above · deducted from chosen cash · no FX
+                        </p>
+                      </div>
+                    </>
                   );
                 }
                 return null;
               })()}
-              <div className="form-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={moveToInventoryData.return_advance}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      const o = orders.find((x) => x.id === moveToInventoryData.orderId);
-                      let amtStr = moveToInventoryData.return_advance_amount;
-                      if (checked && !(String(amtStr ?? '').trim()) && o && o.advance_payment_amount != null && o.advance_payment_amount !== '') {
-                        amtStr = String(Number(o.advance_payment_amount));
-                      }
-                      setMoveToInventoryData({
-                        ...moveToInventoryData,
-                        return_advance: checked,
-                        return_advance_amount: amtStr,
-                      });
-                    }}
-                  />
-                  {' '}Return advance payment to customer
-                </label>
-              </div>
-              {moveToInventoryData.return_advance && (
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      flexWrap: 'wrap',
-                      gap: '14px',
-                      alignItems: 'flex-end',
-                    }}
-                  >
-                    <div className="form-group" style={{ marginBottom: 0, width: '11rem', maxWidth: '100%' }}>
-                      <label htmlFor="move-inv-return-amt">Amount</label>
-                      <input
-                        id="move-inv-return-amt"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        style={{ width: '100%', boxSizing: 'border-box', display: 'block', marginTop: '4px' }}
-                        value={moveToInventoryData.return_advance_amount}
-                        onChange={(e) =>
-                          setMoveToInventoryData({ ...moveToInventoryData, return_advance_amount: e.target.value })
-                        }
-                      />
-                    </div>
-                    <div className="form-group" style={{ marginBottom: 0, minWidth: '7rem', width: '7.5rem' }}>
-                      <label htmlFor="move-inv-return-ccy">Currency</label>
-                      <select
-                        id="move-inv-return-ccy"
-                        value={moveToInventoryData.return_payment_currency}
-                        onChange={(e) =>
-                          setMoveToInventoryData({
-                            ...moveToInventoryData,
-                            return_payment_currency: e.target.value === 'UZS' ? 'UZS' : 'USD',
-                          })
-                        }
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          borderRadius: '4px',
-                          border: '1px solid #ccc',
-                          boxSizing: 'border-box',
-                          marginTop: '4px',
-                        }}
-                      >
-                        <option value="USD">USD</option>
-                        <option value="UZS">UZS</option>
-                      </select>
-                    </div>
-                  </div>
-                  <p style={{ margin: '8px 0 0', fontSize: '0.82em', color: '#666' }}>
-                    ≤ advance above · deducted from chosen cash · no FX
-                  </p>
-                </div>
-              )}
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -1607,11 +1736,13 @@ const Orders = () => {
               </div>
               <div className="form-group">
                 <label>Cost per unit (USD)</label>
-                <span className="orders-field-hint">
-                  {formData.order_type === 'on_demand'
-                    ? 'Leave blank if supplier cost is not confirmed yet; you can record it when paying the order.'
-                    : 'Optional until you have the supplier invoice; leave blank and pay later from the list.'}
-                </span>
+                {!isClientEshopSlug(formData.eshop) && (
+                  <span className="orders-field-hint">
+                    {formData.order_type === 'on_demand'
+                      ? 'Leave blank if supplier cost is not confirmed yet; you can record it when paying the order.'
+                      : 'Optional until you have the supplier invoice; leave blank and pay later from the list.'}
+                  </span>
+                )}
                 <input
                   type="number"
                   step="0.01"
@@ -1639,9 +1770,11 @@ const Orders = () => {
               <div className="form-group orders-new-order-checkbox-row">
                 <label
                   title={
-                    numOrZero(formData.cost_usd_per_unit)
-                      ? undefined
-                      : 'Enter a USD cost per unit above, or leave this unchecked and use Pay for the Order after you know the price.'
+                    isClientEshopSlug(formData.eshop)
+                      ? 'Enter a USD cost per unit to mark paid at creation, or leave blank and pay later.'
+                      : numOrZero(formData.cost_usd_per_unit)
+                        ? undefined
+                        : 'Enter a USD cost per unit above, or leave this unchecked and use Pay for the Order after you know the price.'
                   }
                 >
                   <input
@@ -1914,6 +2047,7 @@ const Orders = () => {
             >
               <option value="">All Statuses</option>
               <option value="ordered">Ordered</option>
+              <option value="order_paid">Order paid</option>
               <option value="received">Received</option>
               <option value="in_inventory">In Inventory</option>
               <option value="cancelled">Cancelled</option>
@@ -2016,7 +2150,7 @@ const Orders = () => {
                   <td>#{order.id}</td>
                   <td>
                     {/* Show status update buttons based on current status */}
-                    {order.status === 'ordered' && (
+                    {showMarkAsReceivedAction(order) && (
                       <button
                         className="btn-status"
                         onClick={() => handleStatusUpdate(order.id, 'received')}
@@ -2045,8 +2179,7 @@ const Orders = () => {
                       </button>
                     )}
                     {/* Move to Inventory — only shown once both payments are done */}
-                    {order.status === 'received' && order.order_type === 'stock'
-                      && order.order_is_paid && order.cargo_is_paid && (
+                    {orderReadyForInventoryActions(order) && order.order_type === 'stock' && (
                       <button
                         className="btn-status"
                         onClick={() => handleStatusUpdate(order.id, 'in_inventory')}
@@ -2055,12 +2188,10 @@ const Orders = () => {
                         Move to Inventory
                       </button>
                     )}
-                    {/* On-demand order specific buttons when received */}
+                    {/* On-demand order specific buttons when received / order paid */}
                     {order.order_type === 'on_demand' &&
-                      order.status === 'received' &&
-                      !order.has_sale &&
-                      order.order_is_paid &&
-                      order.cargo_is_paid && (
+                      orderReadyForInventoryActions(order) &&
+                      !order.has_sale && (
                       <>
                         <button
                           className="btn-status"
@@ -2081,7 +2212,7 @@ const Orders = () => {
                   </td>
                   <td>
                     <span className={`status-badge ${order.status}`}>
-                      {order.status.replace('_', ' ')}
+                      {formatOrderStatus(order.status)}
                     </span>
                   </td>
                   <td>{order.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>

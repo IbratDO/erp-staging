@@ -352,6 +352,11 @@
   color: #383d41;
 }
 
+.status-badge.order_paid {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
 .status-badge.received {
   background-color: #d4edda;
   color: #155724;

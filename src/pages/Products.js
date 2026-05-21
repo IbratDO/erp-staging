@@ -29,47 +29,51 @@ const LETTER_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const NUMERIC_SIZES = Array.from({ length: 11 }, (_, i) => (36 + i).toString());
 const ALL_EDITOR_SIZE_OPTIONS = [...LETTER_SIZES, ...NUMERIC_SIZES];
 
-const LETTER_SIZE_RANK = new Map(
-  LETTER_SIZES.map((s, i) => [s.toUpperCase(), i]),
-);
-
-/** Order for display/filter: XS…XXL (case-insensitive), then numeric ascending, then other strings A–Z. */
-function sortSizesCanonical(values) {
-  const uniq = [...new Set(values)].filter(Boolean);
-  const numericString = (s) => /^-?\d+(\.\d+)?$/.test(String(s).trim());
-
-  return uniq.sort((a, b) => {
-    const au = String(a).toUpperCase();
-    const bu = String(b).toUpperCase();
-    const ar = LETTER_SIZE_RANK.get(au);
-    const br = LETTER_SIZE_RANK.get(bu);
-    if (ar !== undefined && br !== undefined) return ar - br;
-    if (ar !== undefined) return -1;
-    if (br !== undefined) return 1;
-    const aNum = numericString(a);
-    const bNum = numericString(b);
-    if (aNum && bNum) return Number(a) - Number(b);
-    if (aNum) return 1;
-    if (bNum) return -1;
-    return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
-  });
+function isNumericSize(value) {
+  return /^-?\d+(\.\d+)?$/.test(String(value ?? '').trim());
 }
 
-/** Split size list for grouped selects: letter / number / other. */
+function sortLetterSizes(values) {
+  return [...new Set(values)].filter(Boolean).sort((a, b) =>
+    String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }),
+  );
+}
+
+function sortNumberSizes(values) {
+  return [...new Set(values)].filter(Boolean).sort((a, b) => Number(a) - Number(b));
+}
+
+/** Letters A–Z, then numbers ascending (summary label / filters). */
+function sortSizesCanonical(values) {
+  const uniq = [...new Set(values)].filter(Boolean);
+  const letters = uniq.filter((s) => !isNumericSize(s));
+  const nums = uniq.filter(isNumericSize);
+  return [...sortLetterSizes(letters), ...sortNumberSizes(nums)];
+}
+
+/** Split size list for grouped selects: letter vs number. */
 function partitionSizesForUiGroups(sortedSizesFlat) {
-  const letterSet = new Set(LETTER_SIZES.map((s) => s.toUpperCase()));
   const letters = [];
   const nums = [];
-  const other = [];
   for (const s of sortedSizesFlat) {
     if (!s) continue;
-    const up = String(s).toUpperCase();
-    const isNum = /^-?\d+(\.\d+)?$/.test(String(s).trim());
-    if (letterSet.has(up)) letters.push(s);
-    else if (isNum) nums.push(s);
-    else other.push(s);
+    if (isNumericSize(s)) nums.push(s);
+    else letters.push(s);
   }
-  return { letters, nums, other };
+  return {
+    letters: sortLetterSizes(letters),
+    nums: sortNumberSizes(nums),
+  };
+}
+
+/** Custom sizes from inventory + current selection, excluding preset chips. */
+function customSizesFromProductsAndSelection(products, selectedSizes) {
+  const fromDb = products
+    .map((p) => String(p.size ?? '').trim())
+    .filter(Boolean);
+  return [...new Set([...fromDb, ...selectedSizes])].filter(
+    (s) => !ALL_EDITOR_SIZE_OPTIONS.includes(s),
+  );
 }
 
 function apiErrorMessage(error, fallback = 'Request failed') {
@@ -255,22 +259,23 @@ const Products = () => {
     return [...s].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [colorOptions, selectedColors]);
 
-  /**
-   * Letter/number presets are listed above. Everything else: sizes already on products (persisted)
-   * plus any non-preset size selected this session (before save) — same idea as pickerColorOptions.
-   */
-  const pickerExtraSizes = useMemo(() => {
-    const fromDb = [
-      ...new Set(
-        products
-          .map((p) => String(p.size ?? '').trim())
-          .filter(Boolean)
-          .filter((s) => !ALL_EDITOR_SIZE_OPTIONS.includes(s)),
-      ),
-    ];
-    const fromSession = selectedSizes.filter((s) => !ALL_EDITOR_SIZE_OPTIONS.includes(s));
-    return sortSizesCanonical([...new Set([...fromDb, ...fromSession])]);
-  }, [products, selectedSizes]);
+  /** Preset + saved/custom letter sizes (alphabetical), including sizes added this session. */
+  const pickerLetterSizes = useMemo(() => {
+    const extras = customSizesFromProductsAndSelection(products, selectedSizes).filter(
+      (s) => !isNumericSize(s),
+    );
+    const editExtra =
+      editingProduct && formData.size && !isNumericSize(formData.size) ? [formData.size] : [];
+    return sortLetterSizes([...new Set([...LETTER_SIZES, ...extras, ...editExtra])]);
+  }, [products, selectedSizes, editingProduct, formData.size]);
+
+  /** Preset + saved/custom number sizes (ascending), including sizes added this session. */
+  const pickerNumericSizes = useMemo(() => {
+    const extras = customSizesFromProductsAndSelection(products, selectedSizes).filter(isNumericSize);
+    const editExtra =
+      editingProduct && formData.size && isNumericSize(formData.size) ? [formData.size] : [];
+    return sortNumberSizes([...new Set([...NUMERIC_SIZES, ...extras, ...editExtra])]);
+  }, [products, selectedSizes, editingProduct, formData.size]);
 
   const existingVariantKeys = useMemo(() => {
     const set = new Set();
@@ -642,18 +647,15 @@ const Products = () => {
                   >
                     <option value="">Select Size</option>
                     <optgroup label="Letter sizes">
-                      {LETTER_SIZES.map((size) => (
+                      {pickerLetterSizes.map((size) => (
                         <option key={size} value={size}>{size}</option>
                       ))}
                     </optgroup>
-                    <optgroup label="Number sizes (36–46)">
-                      {NUMERIC_SIZES.map((size) => (
+                    <optgroup label="Number sizes">
+                      {pickerNumericSizes.map((size) => (
                         <option key={size} value={size}>{size}</option>
                       ))}
                     </optgroup>
-                    {formData.size && !ALL_EDITOR_SIZE_OPTIONS.includes(formData.size) && (
-                      <option value={formData.size}>{formData.size}</option>
-                    )}
                   </select>
                 ) : (
                   <div ref={sizeDropdownRef} style={{ position: 'relative' }}>
@@ -695,11 +697,11 @@ const Products = () => {
                         }}>
                           Letter sizes
                         </div>
-                        {LETTER_SIZES.map((size) => {
+                        {pickerLetterSizes.map((size) => {
                           const isSelected = selectedSizes.includes(size);
                           return (
                             <div
-                              key={size}
+                              key={`letter-${size}`}
                               onClick={() => toggleSize(size)}
                               style={{
                                 padding: '6px 14px', borderRadius: '4px', cursor: 'pointer',
@@ -724,13 +726,13 @@ const Products = () => {
                           textTransform: 'uppercase',
                           letterSpacing: '0.06em',
                         }}>
-                          Number sizes (36–46)
+                          Number sizes
                         </div>
-                        {NUMERIC_SIZES.map((size) => {
+                        {pickerNumericSizes.map((size) => {
                           const isSelected = selectedSizes.includes(size);
                           return (
                             <div
-                              key={size}
+                              key={`num-${size}`}
                               onClick={() => toggleSize(size)}
                               style={{
                                 padding: '6px 14px', borderRadius: '4px', cursor: 'pointer',
@@ -745,41 +747,6 @@ const Products = () => {
                             </div>
                           );
                         })}
-                        {pickerExtraSizes.length > 0 && (
-                          <>
-                            <div style={{
-                              flexBasis: '100%',
-                              marginTop: '10px',
-                              marginBottom: '4px',
-                              fontSize: '0.72rem',
-                              fontWeight: 700,
-                              color: '#555',
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.06em',
-                            }}>
-                              Saved & other sizes
-                            </div>
-                            {pickerExtraSizes.map((size) => {
-                              const isSelected = selectedSizes.includes(size);
-                              return (
-                                <div
-                                  key={`extra-${size}`}
-                                  onClick={() => toggleSize(size)}
-                                  style={{
-                                    padding: '6px 14px', borderRadius: '4px', cursor: 'pointer',
-                                    fontWeight: 600, fontSize: '0.95em', userSelect: 'none',
-                                    border: isSelected ? '2px solid #1976d2' : '2px solid #ddd',
-                                    background: isSelected ? '#1976d2' : '#f5f5f5',
-                                    color: isSelected ? '#fff' : '#333',
-                                    transition: 'all 0.15s',
-                                  }}
-                                >
-                                  {size}
-                                </div>
-                              );
-                            })}
-                          </>
-                        )}
                         <div style={{
                           flexBasis: '100%',
                           marginTop: '10px',
@@ -1060,7 +1027,7 @@ const Products = () => {
               <option value="">All Sizes</option>
               {(() => {
                 const sortedSizes = getUniqueValues(products, 'size');
-                const { letters, nums, other } = partitionSizesForUiGroups(sortedSizes);
+                const { letters, nums } = partitionSizesForUiGroups(sortedSizes);
                 return (
                   <>
                     {letters.length > 0 ? (
@@ -1073,13 +1040,6 @@ const Products = () => {
                     {nums.length > 0 ? (
                       <optgroup label="Number sizes">
                         {nums.map((size) => (
-                          <option key={size} value={size}>{size}</option>
-                        ))}
-                      </optgroup>
-                    ) : null}
-                    {other.length > 0 ? (
-                      <optgroup label="Other sizes">
-                        {other.map((size) => (
                           <option key={size} value={size}>{size}</option>
                         ))}
                       </optgroup>

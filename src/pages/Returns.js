@@ -1,13 +1,100 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import api from '../utils/api';
-import { cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
+import { cashBalanceTotalByCurrency, formatDisplayAmount, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import SortableTh from '../components/SortableTh';
+import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
 
 function returnProductPickerLabel(p) {
   if (!p) return '';
   return `${p.brand} ${p.model} - Size ${p.size} (${p.color})`;
+}
+
+function getSaleUnitPrice(sale) {
+  if (!sale || sale.selling_price == null || sale.selling_price === '') return NaN;
+  const unit = parseFloat(sale.selling_price);
+  return Number.isFinite(unit) ? unit : NaN;
+}
+
+function getSaleCurrency(sale) {
+  return sale?.sale_currency || 'USD';
+}
+
+function formatAutoSoldPrice(unitPrice, quantity, currency) {
+  const qty = parseInt(quantity, 10) || 0;
+  if (!Number.isFinite(unitPrice) || qty <= 0) return '';
+  const total = unitPrice * qty;
+  return currency === 'UZS' ? String(Math.round(total)) : total.toFixed(2);
+}
+
+function computeReturnDue(returnItem) {
+  const sale = returnItem?.sale_detail;
+  const qty = parseInt(returnItem?.quantity, 10) || 0;
+  if (!sale || qty <= 0) {
+    return { amount: null, currency: 'USD', unitPrice: NaN };
+  }
+  const currency = getSaleCurrency(sale);
+  const unitPrice = getSaleUnitPrice(sale);
+  if (!Number.isFinite(unitPrice)) {
+    return { amount: null, currency, unitPrice: NaN };
+  }
+  const raw = unitPrice * qty;
+  const amount = currency === 'UZS' ? Math.round(raw) : parseFloat(raw.toFixed(2));
+  return { amount, currency, unitPrice };
+}
+
+function computeFormReturnDue(sale, quantity) {
+  if (!sale) return { amount: null, currency: 'USD', unitPrice: NaN };
+  return computeReturnDue({ sale_detail: sale, quantity });
+}
+
+function soldPriceExceedsDue(soldPrice, soldCurrency, due) {
+  if (due.amount == null || !Number.isFinite(due.amount)) return false;
+  const soldCcy = String(soldCurrency || 'USD').toUpperCase();
+  const dueCcy = String(due.currency || 'USD').toUpperCase();
+  if (soldCcy !== dueCcy) return false;
+  const sold = parseFloat(soldPrice);
+  if (!Number.isFinite(sold)) return false;
+  const tol = soldCcy === 'UZS' ? 0.5 : 0.01;
+  return sold > due.amount + tol;
+}
+
+function formatRefundAmounts(uzs, usd) {
+  const parts = [];
+  if (uzs > 0) parts.push(formatDisplayAmount(uzs, 'UZS'));
+  if (usd > 0) parts.push(formatDisplayAmount(usd, 'USD'));
+  return parts.length ? parts.join(' + ') : '—';
+}
+
+/** @returns {false} if user cancels */
+function confirmReturnRefund(returnItem, uzsEntered, usdEntered) {
+  const uzs = Number(uzsEntered) || 0;
+  const usd = Number(usdEntered) || 0;
+  const due = computeReturnDue(returnItem);
+  const productLabel = returnItem?.product_detail
+    ? `${returnItem.product_detail.brand} ${returnItem.product_detail.model}`
+    : `Product #${returnItem?.product ?? '?'}`;
+  const customerLine = returnItem?.customer_detail?.name
+    ? `\nCustomer: ${returnItem.customer_detail.name}`
+    : '';
+  const dueLine =
+    due.amount != null
+      ? formatDisplayAmount(due.amount, due.currency)
+      : '—';
+  const unitDetail = Number.isFinite(due.unitPrice)
+    ? `\n(${formatDisplayAmount(due.unitPrice, due.currency)} / unit × ${returnItem?.quantity ?? 0})`
+    : '';
+
+  const msg =
+    `Mark Return #${returnItem?.id ?? '?'} as refunded?\n\n` +
+    `${productLabel}\n` +
+    `Qty: ${returnItem?.quantity ?? '—'}${customerLine}\n\n` +
+    `Due amount: ${dueLine}${unitDetail}\n` +
+    `Refunding: ${formatRefundAmounts(uzs, usd)}\n\n` +
+    'Proceed with this refund?';
+
+  return window.confirm(msg);
 }
 
 const RETURNS_SORT_ACCESSORS = {
@@ -66,6 +153,8 @@ const Returns = () => {
     sale: '',
     customer: '',
     quantity: '',
+    sold_price: '',
+    sold_price_currency: 'USD',
     reason: 'customer_request',
     notes: '',
   });
@@ -224,28 +313,6 @@ const Returns = () => {
     return sales.find((s) => s.id === id) || null;
   }, [formData.sale, sales]);
 
-  const soldPriceDisplay = useMemo(() => {
-    if (!selectedSaleForReturn) return '';
-    const s = selectedSaleForReturn;
-    const ccy = s.sale_currency || 'USD';
-    const unit =
-      s.selling_price != null && s.selling_price !== '' ? parseFloat(s.selling_price) : NaN;
-    const qty = parseInt(s.quantity, 10) || 0;
-    const totalRaw = s.total_amount;
-    const total =
-      totalRaw != null && totalRaw !== ''
-        ? parseFloat(totalRaw)
-        : Number.isFinite(unit) && qty
-          ? unit * qty
-          : NaN;
-    const parts = [];
-    if (Number.isFinite(unit)) parts.push(`${unit.toFixed(2)} ${ccy}/unit`);
-    else parts.push('No unit price on record');
-    if (qty) parts.push(`original qty ${qty}`);
-    if (Number.isFinite(total)) parts.push(`line total ${total.toFixed(2)} ${ccy}`);
-    return parts.join(' · ');
-  }, [selectedSaleForReturn]);
-
   const newReturnEligibleSales = useMemo(() => {
     const cid = formData.customer ? parseInt(formData.customer, 10) : null;
     return sales.filter((s) => {
@@ -256,6 +323,33 @@ const Returns = () => {
       return true;
     });
   }, [sales, formData.customer, formData.product, formCategory, getRemainingReturnQtyForSale]);
+
+  const resolveSaleForPricing = useCallback(() => {
+    if (selectedSaleForReturn) return selectedSaleForReturn;
+    if (formData.product && newReturnEligibleSales.length === 1) {
+      return newReturnEligibleSales[0];
+    }
+    return null;
+  }, [selectedSaleForReturn, formData.product, newReturnEligibleSales]);
+
+  const applyAutoSoldPrice = useCallback((sale, quantity) => {
+    const currency = getSaleCurrency(sale);
+    const unitPrice = getSaleUnitPrice(sale);
+    return {
+      sold_price: formatAutoSoldPrice(unitPrice, quantity, currency),
+      sold_price_currency: currency,
+    };
+  }, []);
+
+  const formReturnDue = useMemo(() => {
+    const sale = resolveSaleForPricing();
+    return computeFormReturnDue(sale, formData.quantity);
+  }, [resolveSaleForPricing, formData.quantity]);
+
+  const soldPriceOverDue = useMemo(
+    () => soldPriceExceedsDue(formData.sold_price, formData.sold_price_currency, formReturnDue),
+    [formData.sold_price, formData.sold_price_currency, formReturnDue],
+  );
 
   const fetchProducts = async () => {
     try {
@@ -286,8 +380,15 @@ const Returns = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!String(formData.notes || '').trim()) {
-      showNotification('Please enter notes.', 'error');
+    if (formData.reason === 'other' && !String(formData.notes || '').trim()) {
+      showNotification('Please enter notes when reason is Other.', 'error');
+      return;
+    }
+    if (soldPriceOverDue) {
+      showNotification(
+        `Sold price (${formatDisplayAmount(parseFloat(formData.sold_price), formData.sold_price_currency)}) cannot exceed the due amount (${formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}).`,
+        'error',
+      );
       return;
     }
     if (formData.sale) {
@@ -310,7 +411,7 @@ const Returns = () => {
         product: parseInt(formData.product, 10),
         quantity: parseInt(formData.quantity, 10),
         reason: formData.reason,
-        notes: String(formData.notes).trim(),
+        notes: String(formData.notes || '').trim(),
         sale: formData.sale ? parseInt(formData.sale, 10) : null,
         customer: formData.customer ? parseInt(formData.customer, 10) : null,
       };
@@ -327,6 +428,8 @@ const Returns = () => {
         sale: '',
         customer: '',
         quantity: '',
+        sold_price: '',
+        sold_price_currency: 'USD',
         reason: 'customer_request',
         notes: '',
       });
@@ -347,24 +450,26 @@ const Returns = () => {
   };
 
   const handleMarkRefunded = (returnId) => {
-    const returnItem = returns.find(r => r.id === returnId);
+    const returnItem = returns.find((r) => r.id === returnId);
+    const due = computeReturnDue(returnItem);
     setRefundFormData({
-      returnId: returnId,
-      uzs: '',
-      usd: returnItem?.sale_detail?.total_amount || '',
+      returnId,
+      uzs: due.currency === 'UZS' && due.amount != null ? String(due.amount) : '',
+      usd: due.currency === 'USD' && due.amount != null ? String(due.amount) : '',
     });
     setShowRefundForm(true);
   };
 
   const handleRefundSubmit = async (e) => {
     e.preventDefault();
+    const returnItem = returns.find((r) => r.id === refundFormData.returnId);
+    const uzs = parseFloat(refundFormData.uzs) || 0;
+    const usd = parseFloat(refundFormData.usd) || 0;
+    if (uzs + usd === 0) {
+      showNotification('Please enter at least one refund amount.', 'error');
+      return;
+    }
     try {
-      const uzs = parseFloat(refundFormData.uzs) || 0;
-      const usd = parseFloat(refundFormData.usd) || 0;
-      if (uzs + usd === 0) {
-        showNotification('Please enter at least one refund amount.', 'error');
-        return;
-      }
       const balanceResponse = await api.get('/cash-balance/');
       const balanceList = balanceResponse.data.results || balanceResponse.data;
       const balChecks = [
@@ -383,15 +488,23 @@ const Returns = () => {
           }
         }
       }
+      if (!confirmReturnRefund(returnItem, uzs, usd)) {
+        return;
+      }
       await api.post(`/returns/${refundFormData.returnId}/mark_refunded/`, {
-        uzs, usd,
+        uzs,
+        usd,
       });
       setShowRefundForm(false);
       setRefundFormData({ returnId: null, uzs: '', usd: '' });
+      showNotification('Return marked as refunded.', 'success');
       fetchReturns();
     } catch (error) {
       console.error('Error marking return as refunded:', error);
-      showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error marking return as refunded', 'error');
+      showNotification(
+        error.response?.data?.error || error.response?.data?.detail || 'Error marking return as refunded',
+        'error',
+      );
     }
   };
 
@@ -458,22 +571,27 @@ const Returns = () => {
                   <>
                   <div className="form-group">
                     <label>Customer (Optional)</label>
-                    <select
+                    <CustomerSearchableSelect
+                      customers={customers}
                       value={formData.customer}
-                      onChange={(e) => {
+                      allowEmpty
+                      emptyLabel="All customers"
+                      placeholder="All customers"
+                      aria-label="Customer"
+                      onChange={(customerId) => {
                         setFormCategory('');
                         setProductSearch('');
                         setProductDropdownOpen(false);
-                        setFormData({ ...formData, customer: e.target.value, sale: '', product: '' });
+                        setFormData({
+                          ...formData,
+                          customer: customerId,
+                          sale: '',
+                          product: '',
+                          sold_price: '',
+                          sold_price_currency: 'USD',
+                        });
                       }}
-                    >
-                      <option value="">All customers</option>
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}{c.telephone ? ` — ${c.telephone}` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                   <div className="form-group">
                     <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
@@ -483,7 +601,13 @@ const Returns = () => {
                         setProductSearch('');
                         setProductDropdownOpen(false);
                         setFormCategory(e.target.value);
-                        setFormData({ ...formData, product: '', sale: '' });
+                        setFormData({
+                          ...formData,
+                          product: '',
+                          sale: '',
+                          sold_price: '',
+                          sold_price_currency: 'USD',
+                        });
                       }}
                     >
                       <option value="">All Categories</option>
@@ -578,6 +702,8 @@ const Returns = () => {
                                       ...formData,
                                       product: String(product.id),
                                       sale: '',
+                                      sold_price: '',
+                                      sold_price_currency: 'USD',
                                     });
                                     setProductDropdownOpen(false);
                                     setProductSearch('');
@@ -623,7 +749,14 @@ const Returns = () => {
                 <label>Sale (Optional)</label>
                 <select
                   value={formData.sale}
-                  onChange={(e) => setFormData({ ...formData, sale: e.target.value })}
+                  onChange={(e) => {
+                    const saleId = e.target.value;
+                    const sale = saleId
+                      ? sales.find((s) => s.id === parseInt(saleId, 10))
+                      : null;
+                    const pricing = applyAutoSoldPrice(sale, formData.quantity);
+                    setFormData({ ...formData, sale: saleId, ...pricing });
+                  }}
                 >
                   <option value="">None</option>
                   {newReturnEligibleSales.map((sale) => (
@@ -643,20 +776,6 @@ const Returns = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Sold price</label>
-                <input
-                  type="text"
-                  readOnly
-                  value={soldPriceDisplay}
-                  placeholder="Select a sale to show unit price and line total."
-                  style={{
-                    backgroundColor: '#f5f5f5',
-                    cursor: 'not-allowed',
-                    color: soldPriceDisplay ? '#2c3e50' : '#888',
-                  }}
-                />
-              </div>
-              <div className="form-group">
                 <label>Quantity</label>
                 <input
                   type="number"
@@ -671,7 +790,12 @@ const Returns = () => {
                       : undefined
                   }
                   value={formData.quantity}
-                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                  onChange={(e) => {
+                    const quantity = e.target.value;
+                    const sale = resolveSaleForPricing();
+                    const pricing = applyAutoSoldPrice(sale, quantity);
+                    setFormData({ ...formData, quantity, ...pricing });
+                  }}
                   required
                 />
                 {formData.sale && (() => {
@@ -689,6 +813,50 @@ const Returns = () => {
                 })()}
               </div>
               <div className="form-group">
+                <label>Sold price</label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+                  <input
+                    type="number"
+                    step={formData.sold_price_currency === 'UZS' ? '1' : '0.01'}
+                    min="0"
+                    value={formData.sold_price}
+                    onChange={(e) => setFormData({ ...formData, sold_price: e.target.value })}
+                    placeholder="Auto-calculated from quantity"
+                    style={{ flex: 1 }}
+                  />
+                  <select
+                    value={formData.sold_price_currency}
+                    onChange={(e) => setFormData({ ...formData, sold_price_currency: e.target.value })}
+                    style={{ width: '96px', flexShrink: 0 }}
+                  >
+                    <option value="USD">USD</option>
+                    <option value="UZS">UZS</option>
+                  </select>
+                </div>
+                {(() => {
+                  const sale = resolveSaleForPricing();
+                  const unitPrice = getSaleUnitPrice(sale);
+                  const currency = getSaleCurrency(sale);
+                  if (!Number.isFinite(unitPrice)) {
+                    return (
+                      <small style={{ color: '#888', marginTop: '4px', display: 'block' }}>
+                        Select a sale to show sold price per unit.
+                      </small>
+                    );
+                  }
+                  return (
+                    <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
+                      Sold price/unit: <strong>{formatDisplayAmount(unitPrice, currency)}</strong>
+                    </small>
+                  );
+                })()}
+                {soldPriceOverDue && formReturnDue.amount != null && (
+                  <small style={{ color: '#e65100', marginTop: '6px', display: 'block', fontWeight: 500 }}>
+                    Warning: sold price ({formatDisplayAmount(parseFloat(formData.sold_price), formData.sold_price_currency)}) exceeds due amount ({formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}).
+                  </small>
+                )}
+              </div>
+              <div className="form-group">
                 <label>Reason</label>
                 <select
                   value={formData.reason}
@@ -703,12 +871,12 @@ const Returns = () => {
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes *</label>
+                <label>Notes{formData.reason === 'other' ? ' *' : ''}</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows="3"
-                  required
+                  required={formData.reason === 'other'}
                 />
               </div>
             </div>
@@ -911,9 +1079,6 @@ const Returns = () => {
               <SortableTh columnId="category" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
                 Category
               </SortableTh>
-              <SortableTh columnId="product" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Product
-              </SortableTh>
               <SortableTh columnId="brand" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
                 Brand
               </SortableTh>
@@ -964,7 +1129,7 @@ const Returns = () => {
           <tbody>
             {filteredReturns.length === 0 ? (
               <tr>
-                <td colSpan="19" style={{ textAlign: 'center' }}>
+                <td colSpan="18" style={{ textAlign: 'center' }}>
                   No returns found
                 </td>
               </tr>
@@ -983,11 +1148,6 @@ const Returns = () => {
                     )}
                   </td>
                   <td>{returnItem.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>
-                    {returnItem.product_detail
-                      ? `${returnItem.product_detail.brand} ${returnItem.product_detail.model}`
-                      : `Product #${returnItem.product}`}
-                  </td>
                   <td>{returnItem.product_detail?.brand || '-'}</td>
                   <td>{returnItem.product_detail?.model || '-'}</td>
                   <td><strong>{returnItem.product_detail?.size || '-'}</strong></td>
@@ -1019,7 +1179,7 @@ const Returns = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="11" style={{ textAlign: 'right' }}>
+              <td colSpan="10" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td style={{ fontWeight: 600 }}>{returnColumnTotals.quantity.toLocaleString()}</td>

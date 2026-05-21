@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
+import { cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
@@ -82,11 +83,34 @@ const Packages = () => {
     ...defaultPaymentState,
   });
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [balances, setBalances] = useState([]);
+  const [notification, setNotification] = useState({
+    show: false,
+    message: '',
+    type: 'success',
+  });
+
+  const showNotification = (message, type = 'success') => {
+    setNotification({ show: true, message, type });
+    setTimeout(() => {
+      setNotification({ show: false, message: '', type: 'success' });
+    }, 5000);
+  };
 
   useEffect(() => {
     fetchPackages();
     fetchPackageHistory();
+    fetchBalances();
   }, []);
+
+  const fetchBalances = async () => {
+    try {
+      const response = await api.get('/cash-balance/');
+      setBalances(response.data.results || response.data);
+    } catch (error) {
+      console.error('Error fetching balances:', error);
+    }
+  };
 
   const packageStockTotals = useMemo(() => {
     let quantity = 0;
@@ -180,6 +204,37 @@ const Packages = () => {
           ? parseFloat(formData.cost_per_unit_usd) || 0
           : defUsd;
 
+      let delta = quantity;
+      if (editingPackage) {
+        delta = quantity - (parseInt(editingPackage.quantity, 10) || 0);
+      }
+      if (delta > 0) {
+        const totalUzs = delta * costUzs;
+        const totalUsd = delta * costUsd;
+        let freshBalances = balances;
+        try {
+          const balancesRes = await api.get('/cash-balance/');
+          freshBalances = balancesRes.data.results || balancesRes.data;
+          setBalances(freshBalances);
+        } catch (balanceErr) {
+          console.error('Error refreshing balances:', balanceErr);
+        }
+        if (totalUzs > 0) {
+          const available = cashBalanceTotalByCurrency(freshBalances, 'UZS');
+          if (available < totalUzs) {
+            showNotification(formatInsufficientLedgerMessage('UZS', available, totalUzs, { topUpSuffix: true }), 'error');
+            return;
+          }
+        }
+        if (totalUsd > 0) {
+          const available = cashBalanceTotalByCurrency(freshBalances, 'USD');
+          if (available < totalUsd) {
+            showNotification(formatInsufficientLedgerMessage('USD', available, totalUsd, { topUpSuffix: true }), 'error');
+            return;
+          }
+        }
+      }
+
       if (editingPackage) {
         await api.put(`/packages/${editingPackage.id}/`, {
           package_type: formData.package_type,
@@ -216,7 +271,7 @@ const Packages = () => {
       console.error('Error saving package:', error);
       const d = error.response?.data;
       const msg = formatApiError(d) || error.message;
-      alert(msg || 'Error saving package');
+      showNotification(msg || 'Error saving package', 'error');
     } finally {
       fetchPackageHistory(); // Refresh history after adding stock
     }
@@ -268,8 +323,30 @@ const Packages = () => {
       const uzs = parseFloat(paymentFormData.payment_uzs) || 0;
       const usd = parseFloat(paymentFormData.payment_usd) || 0;
       if ((dueUzs > 0 || dueUsd > 0) && uzs + usd <= 0) {
-        alert('Enter at least one payment amount (UZS or USD).');
+        showNotification('Enter at least one payment amount (UZS or USD).', 'error');
         return;
+      }
+      let freshBalances = balances;
+      try {
+        const balancesRes = await api.get('/cash-balance/');
+        freshBalances = balancesRes.data.results || balancesRes.data;
+        setBalances(freshBalances);
+      } catch (balanceErr) {
+        console.error('Error refreshing balances:', balanceErr);
+      }
+      if (uzs > 0) {
+        const available = cashBalanceTotalByCurrency(freshBalances, 'UZS');
+        if (available < uzs) {
+          showNotification(formatInsufficientLedgerMessage('UZS', available, uzs, { topUpSuffix: true }), 'error');
+          return;
+        }
+      }
+      if (usd > 0) {
+        const available = cashBalanceTotalByCurrency(freshBalances, 'USD');
+        if (available < usd) {
+          showNotification(formatInsufficientLedgerMessage('USD', available, usd, { topUpSuffix: true }), 'error');
+          return;
+        }
       }
       await api.post(`/package-history/${paymentFormData.historyId}/mark_received_and_pay/`, {
         quantity_received: paymentFormData.quantity_received,
@@ -288,7 +365,7 @@ const Packages = () => {
       console.error('Error marking package as received and paid:', error);
       const d = error.response?.data;
       const msg = formatApiError(d) || error.message;
-      alert(msg || 'Error marking package as received and paid');
+      showNotification(msg || 'Error marking package as received and paid', 'error');
     }
   };
 
@@ -309,6 +386,50 @@ const Packages = () => {
 
   return (
     <div className="page-container">
+      {notification.show && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            zIndex: 10000,
+            padding: '16px 20px',
+            borderRadius: '8px',
+            backgroundColor: notification.type === 'success' ? '#4caf50' : notification.type === 'error' ? '#f44336' : '#2196f3',
+            color: 'white',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            maxWidth: '400px',
+            animation: 'slideIn 0.3s ease-out',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '14px',
+            fontWeight: '500',
+          }}
+        >
+          <span style={{ fontSize: '20px' }}>
+            {notification.type === 'success' ? '✓' : notification.type === 'error' ? '✕' : 'ℹ'}
+          </span>
+          <span>{notification.message}</span>
+          <button
+            type="button"
+            onClick={() => setNotification({ show: false, message: '', type: 'success' })}
+            style={{
+              marginLeft: 'auto',
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              fontSize: '18px',
+              cursor: 'pointer',
+              padding: '0',
+              lineHeight: '1',
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div className="page-header">
         <h1>Packages</h1>
         <button className="btn-primary" onClick={() => setShowForm(!showForm)}>

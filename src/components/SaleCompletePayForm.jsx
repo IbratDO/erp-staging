@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
+import { formatDisplayAmount } from '../utils/currencyFormat';
 import {
   emptyPaymentFormState,
   buildPaymentFormDataFromSale,
   computePaymentShortfallMeta,
   buildCompleteSaleRequest,
+  validateAdvanceCompletionPayment,
+  buildCrossCurrencyAdvanceConfirmMessage,
+  saleHasOrderAdvance,
 } from '../utils/saleCompletePayHelpers';
 
 /**
@@ -24,15 +28,47 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   if (!sale) return null;
 
   const shortfallMeta = computePaymentShortfallMeta(sale, paymentFormData);
+  const sc = paymentFormData.sale_currency || sale.sale_currency || 'USD';
+  const listUnit = paymentFormData.list_unit_price ?? (parseFloat(sale.selling_price) || 0);
+  const discountAmountPerUnit = paymentFormData.discount_amount_per_unit ?? (parseFloat(sale.discount_price) || 0);
+  const finalUnit = paymentFormData.final_unit_price ?? Math.max(0, listUnit - discountAmountPerUnit);
+  const qty = parseFloat(sale.quantity) || 1;
+  const listTotal = paymentFormData.list_total_amount ?? listUnit * qty;
+  const saleDiscountTotal = paymentFormData.sale_discount_total ?? discountAmountPerUnit * qty;
+  const finalDue =
+    shortfallMeta.due != null && !Number.isNaN(shortfallMeta.due)
+      ? shortfallMeta.due
+      : paymentFormData.final_amount_due ?? finalUnit * qty;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       const meta = computePaymentShortfallMeta(sale, paymentFormData);
-      if (meta.mixed && meta.short > 0.01) {
+      const advanceCheck = validateAdvanceCompletionPayment(
+        sale,
+        paymentFormData.uzs,
+        paymentFormData.usd,
+      );
+      if (!advanceCheck.ok) {
+        showNotification(advanceCheck.error, 'error');
+        return;
+      }
+      if (advanceCheck.needsCrossCurrencyConfirm) {
+        if (!window.confirm(buildCrossCurrencyAdvanceConfirmMessage(advanceCheck))) return;
+      }
+
+      if (meta.mixed && meta.short > 0.01 && !meta.hasAdvance) {
         showNotification(
           'Pay in one currency only (UZS or USD) when the amount is less than the total, matching the sale list price currency.',
           'error'
+        );
+        return;
+      }
+
+      if (meta.exceedsRemainingDue) {
+        showNotification(
+          `Payment cannot exceed the remaining amount due (${meta.due.toFixed(2)} ${meta.sc} after advance).`,
+          'error',
         );
         return;
       }
@@ -88,6 +124,34 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
       <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
         Enter the UZS and/or USD amount received.
       </p>
+      <div
+        style={{
+          marginBottom: 16,
+          padding: '12px 14px',
+          background: '#f8f9fa',
+          borderRadius: 6,
+          fontSize: '0.9em',
+          color: '#444',
+          lineHeight: 1.5,
+        }}
+      >
+        <div>
+          <strong>List price:</strong> {formatDisplayAmount(listUnit, sc)} per unit
+          {qty > 1 ? ` · ${formatDisplayAmount(listTotal, sc)} total` : ''}
+        </div>
+        <div>
+          <strong>Discount:</strong> {formatDisplayAmount(discountAmountPerUnit, sc)} per unit
+          {saleDiscountTotal > 0 && qty > 1
+            ? ` · ${formatDisplayAmount(saleDiscountTotal, sc)} total`
+            : ''}
+        </div>
+        <div>
+          <strong>Final price:</strong> {formatDisplayAmount(finalUnit, sc)} per unit
+        </div>
+        <div>
+          <strong>Amount due:</strong> {formatDisplayAmount(finalDue, sc)}
+        </div>
+      </div>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           {paymentFormData.prepayment_amount && parseFloat(paymentFormData.prepayment_amount) > 0 && (
@@ -131,7 +195,17 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           {shortfallMeta.due != null && !Number.isNaN(shortfallMeta.due) && (
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <p style={{ margin: 0, fontSize: '0.9em', color: '#444' }}>
-                <strong>Amount due (after prepayment):</strong> {shortfallMeta.due.toFixed(2)} {shortfallMeta.sc || 'USD'}
+                <strong>Amount due (after prepayment):</strong>{' '}
+                {shortfallMeta.sc === 'UZS'
+                  ? `${shortfallMeta.due.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
+                  : `${shortfallMeta.due.toFixed(2)} USD`}
+                {saleHasOrderAdvance(sale) && (
+                  <>
+                    {' '}
+                    · Max in {shortfallMeta.sc}: same amount · remainder may be collected in{' '}
+                    {shortfallMeta.sc === 'USD' ? 'UZS' : 'USD'} (confirmation required)
+                  </>
+                )}
                 {shortfallMeta.paid != null && (
                   <>
                     {' '}

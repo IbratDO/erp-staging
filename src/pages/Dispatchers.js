@@ -66,6 +66,7 @@ const DISPATCH_SHIPMENT_SORT_ACCESSORS = {
 };
 
 const ALL_DELIVERIES_SORT_ACCESSORS = {
+  id: (row) => Number(row.id) || 0,
   sale_id: (row) => Number(row.sale_detail?.id) || 0,
   product: (row) => productLineSortKey(row.sale_detail),
   customer: (row) => String(row.sale_detail?.customer_detail?.name ?? '').toLowerCase(),
@@ -287,10 +288,20 @@ const Dispatchers = () => {
 
   const handleDispatcherSubmit = async (e) => {
     e.preventDefault();
+    const name = String(formData.name || '').trim();
+    const telephone = String(formData.telephone || '').trim();
+    if (!name) {
+      showNotification('Please enter the dispatcher name.', 'error');
+      return;
+    }
+    if (!telephone || telephone === '+998') {
+      showNotification('Please enter the dispatcher telephone.', 'error');
+      return;
+    }
     try {
       const payload = {
-        name: formData.name,
-        telephone: formData.telephone || '',
+        name,
+        telephone,
         notes: String(formData.notes || '').trim(),
         is_active: formData.is_active,
       };
@@ -497,11 +508,12 @@ const Dispatchers = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Telephone</label>
+                <label>Telephone *</label>
                 <input
                   type="text"
                   value={formData.telephone}
                   onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
+                  required
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -946,6 +958,7 @@ const Dispatchers = () => {
           <table className="data-table">
             <thead>
               <tr>
+                <SortableTh columnId="id" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>ID</SortableTh>
                 <SortableTh columnId="sale_id" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Sale</SortableTh>
                 <SortableTh columnId="product" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Product</SortableTh>
                 <SortableTh columnId="customer" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Customer</SortableTh>
@@ -961,7 +974,7 @@ const Dispatchers = () => {
             <tbody>
               {dispatches.length === 0 ? (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: 'center' }}>
+                  <td colSpan={11} style={{ textAlign: 'center' }}>
                     No dispatches match filters.
                   </td>
                 </tr>
@@ -970,6 +983,7 @@ const Dispatchers = () => {
                   const sale = row.sale_detail;
                   return (
                     <tr key={row.id}>
+                      <td>#{row.id}</td>
                       <td>#{sale?.id}</td>
                       <td>{productLine(sale)}</td>
                       <td>{sale?.customer_detail?.name || '—'}</td>
@@ -1034,7 +1048,7 @@ const Dispatchers = () => {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan="4" style={{ textAlign: 'right' }}>
+                <td colSpan="5" style={{ textAlign: 'right' }}>
                   Total (filtered)
                 </td>
                 <td style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap' }}>

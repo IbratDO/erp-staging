@@ -1,12 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
-import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat';
+import {
+  formatDisplayAmount,
+  formatPlainAmount,
+  cashBalanceTotalByCurrency,
+  formatInsufficientLedgerMessage,
+} from '../utils/currencyFormat';
 import SaleCompletePayForm from '../components/SaleCompletePayForm';
 import SaleDeliverySettlementForm from '../components/SaleDeliverySettlementForm';
 import { shopDeliverySettlementRequired } from '../utils/saleCompletePayHelpers';
 import ShopDeliverySettlementButtons from '../components/ShopDeliverySettlementButtons';
 import ProductSearchableSelect from '../components/ProductSearchableSelect';
 import { plannedSellingUsdPerUnit, plannedSellingUzsPerUnit } from '../utils/orderPlannedPricing';
+import {
+  computeAdvanceRemainingDue,
+  validateAdvanceCompletionPayment,
+  buildCrossCurrencyAdvanceConfirmMessage,
+  saleHasOrderAdvance,
+} from '../utils/saleCompletePayHelpers';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
@@ -40,7 +51,7 @@ const SALE_SORT_ACCESSORS = {
   selling_price: (s) => parseFloat(s.selling_price) || 0,
   total_amount: (s) => parseFloat(s.total_amount) || 0,
   discount_credit: (s) =>
-    `${String(s.balance_shortfall_type ?? '')}:${parseFloat(s.balance_shortfall_amount) || 0}`,
+    `${parseFloat(s.total_discount_amount) || 0}:${String(s.balance_shortfall_type ?? '')}:${parseFloat(s.balance_shortfall_amount) || 0}`,
   uzs_pay: (s) =>
     (parseFloat(s.payment_uzs_cash) || 0) + (parseFloat(s.payment_uzs_card) || 0),
   usd_pay: (s) =>
@@ -67,6 +78,64 @@ function stockingOrderFromInventory(productId, inventoryList) {
   );
   for (const r of rows) {
     if (r.stocking_order) return r.stocking_order;
+  }
+  return null;
+}
+
+function formatSalePriceForCurrency(priceNum, saleCur) {
+  if (priceNum == null || !Number.isFinite(priceNum) || priceNum <= 0) return '';
+  return saleCur === 'UZS' ? String(Math.round(priceNum)) : String(Number(priceNum.toFixed(2)));
+}
+
+function parsePriceNum(str) {
+  if (str === '' || str == null) return null;
+  const n = parseFloat(String(str).replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatDiscountForCurrency(discNum, saleCur) {
+  if (discNum == null || !Number.isFinite(discNum) || discNum <= 0) return '';
+  return formatSalePriceForCurrency(discNum, saleCur);
+}
+
+/** list = full price; discount = amount off; selling = final price shown in the form. */
+function applyListDiscountFinal(listNum, discNum, finalNum, saleCur) {
+  const list = listNum != null && listNum >= 0 ? listNum : 0;
+  let final = finalNum != null ? finalNum : list - Math.max(0, discNum ?? 0);
+  final = Math.max(0, Math.min(final, list));
+  const discount = Math.max(0, list - final);
+  return {
+    list_price: formatSalePriceForCurrency(list, saleCur),
+    selling_price: formatSalePriceForCurrency(final, saleCur),
+    discount_price: formatDiscountForCurrency(discount, saleCur),
+  };
+}
+
+function resolveListPriceForProduct(productId, products, inventory, saleCur) {
+  const pid = parseInt(productId, 10);
+  if (Number.isNaN(pid)) return null;
+  const p = products.find((x) => Number(x.id) === pid);
+  const stocking = stockingOrderFromInventory(pid, inventory);
+  let priceNum = null;
+  if (stocking) {
+    if (saleCur === 'UZS') {
+      priceNum = plannedSellingUzsPerUnit(stocking);
+      if (priceNum == null || priceNum <= 0) {
+        priceNum = plannedSellingUsdPerUnit(stocking);
+      }
+    } else {
+      priceNum = plannedSellingUsdPerUnit(stocking);
+      if (priceNum == null || priceNum <= 0) {
+        priceNum = plannedSellingUzsPerUnit(stocking);
+      }
+    }
+  }
+  if (priceNum != null && priceNum > 0) return priceNum;
+  if (p) {
+    const sp = parseFloat(p.selling_price);
+    if (p.selling_price != null && p.selling_price !== '' && !Number.isNaN(sp) && sp > 0) {
+      return sp;
+    }
   }
   return null;
 }
@@ -198,7 +267,6 @@ const Sales = () => {
     telephone: '+998',
     instagram: '',
     region: 'tashkent_city',
-    notes: '',
   });
   
   const regionChoices = [
@@ -276,14 +344,13 @@ const Sales = () => {
         ...newCustomerData,
         name,
         telephone,
-        notes: String(newCustomerData.notes || '').trim(),
       });
       await fetchCustomers();
       if (showBatchForm) {
         setBatchCustomer(String(response.data.id));
       }
       setShowCustomerForm(false);
-      setNewCustomerData({ name: '', telephone: '+998', instagram: '', region: 'tashkent_city', notes: '' });
+      setNewCustomerData({ name: '', telephone: '+998', instagram: '', region: 'tashkent_city' });
       showNotification('Customer created successfully!', 'success');
     } catch (error) {
       console.error('Error creating customer:', error);
@@ -390,22 +457,25 @@ const Sales = () => {
   const salesColumnTotals = useMemo(() => {
     const list = filteredSales;
     if (!list.length) {
-      return { quantity: 0, totalAmount: 0, totalAmountCurrency: null, uzs: 0, usd: 0 };
+      return { quantity: 0, totalAmount: 0, totalAmountCurrency: null, totalDiscount: 0, totalDiscountCurrency: null, uzs: 0, usd: 0 };
     }
     let quantity = 0;
     let totalAmount = 0;
+    let totalDiscount = 0;
     let uzs = 0;
     let usd = 0;
     const saleCurrencies = new Set();
     for (const s of list) {
       quantity += parseInt(s.quantity, 10) || 0;
       totalAmount += parseFloat(s.total_amount) || 0;
+      totalDiscount += parseFloat(s.total_discount_amount) || 0;
       saleCurrencies.add(s.sale_currency || 'USD');
       uzs += (parseFloat(s.payment_uzs_cash) || 0) + (parseFloat(s.payment_uzs_card) || 0);
       usd += (parseFloat(s.payment_usd_cash) || 0) + (parseFloat(s.payment_usd_card) || 0);
     }
     const totalAmountCurrency = saleCurrencies.size === 1 ? [...saleCurrencies][0] : null;
-    return { quantity, totalAmount, totalAmountCurrency, uzs, usd };
+    const totalDiscountCurrency = saleCurrencies.size === 1 ? [...saleCurrencies][0] : null;
+    return { quantity, totalAmount, totalAmountCurrency, totalDiscount, totalDiscountCurrency, uzs, usd };
   }, [filteredSales]);
 
   const productIdsWithPositiveInventory = useMemo(() => {
@@ -442,7 +512,7 @@ const Sales = () => {
         const id = parseInt(line.product, 10);
         if (Number.isNaN(id) || !allowed.has(id)) {
           changed = true;
-          return { ...line, product: '', selling_price: '', packageLines: EMPTY_PKG_LINES() };
+          return { ...line, product: '', list_price: '', selling_price: '', discount_price: '', packageLines: EMPTY_PKG_LINES() };
         }
         return line;
       });
@@ -472,49 +542,38 @@ const Sales = () => {
     setBatchLines((lines) =>
       lines.map((l) => {
         if (l.key !== key) return l;
+        const saleCur = batchDefaults.sale_currency || 'USD';
         if (field === 'product') {
           const next = { ...l, product: value };
           if (!value) {
+            next.list_price = '';
             next.selling_price = '';
+            next.discount_price = '';
             next.packageLines = EMPTY_PKG_LINES();
             return next;
           }
-          const pid = parseInt(value, 10);
-          const p = products.find((x) => Number(x.id) === pid);
-          const saleCur = batchDefaults.sale_currency || 'USD';
-          const stocking = stockingOrderFromInventory(pid, inventory);
-
-          let priceNum = null;
-          if (stocking) {
-            if (saleCur === 'UZS') {
-              priceNum = plannedSellingUzsPerUnit(stocking);
-              if (priceNum == null || priceNum <= 0) {
-                priceNum = plannedSellingUsdPerUnit(stocking);
-              }
-            } else {
-              priceNum = plannedSellingUsdPerUnit(stocking);
-              if (priceNum == null || priceNum <= 0) {
-                priceNum = plannedSellingUzsPerUnit(stocking);
-              }
-            }
-          }
-          if (priceNum != null && priceNum > 0) {
-            next.selling_price =
-              saleCur === 'UZS'
-                ? String(Math.round(priceNum))
-                : String(Number(priceNum.toFixed(2)));
-          } else if (p) {
-            const sp = parseFloat(p.selling_price);
-            if (p.selling_price != null && p.selling_price !== '' && !Number.isNaN(sp) && sp > 0) {
-              next.selling_price =
-                saleCur === 'UZS' ? String(Math.round(sp)) : String(Number(sp.toFixed(2)));
-            } else {
-              next.selling_price = '';
-            }
-          } else {
-            next.selling_price = '';
-          }
+          const priceNum = resolveListPriceForProduct(value, products, inventory, saleCur);
+          const formatted = formatSalePriceForCurrency(priceNum, saleCur);
+          next.list_price = formatted;
+          next.selling_price = formatted;
+          next.discount_price = '';
           return next;
+        }
+        if (field === 'selling_price') {
+          const listNum = parsePriceNum(l.list_price);
+          const finalNum = parsePriceNum(value);
+          if (listNum == null || finalNum == null) {
+            return { ...l, selling_price: value };
+          }
+          return { ...l, ...applyListDiscountFinal(listNum, null, finalNum, saleCur) };
+        }
+        if (field === 'discount_price') {
+          const listNum = parsePriceNum(l.list_price);
+          if (listNum == null) {
+            return { ...l, discount_price: value };
+          }
+          const discNum = parsePriceNum(value) ?? 0;
+          return { ...l, ...applyListDiscountFinal(listNum, discNum, null, saleCur) };
         }
         return { ...l, [field]: value };
       })
@@ -528,7 +587,9 @@ const Sales = () => {
         key: `${Date.now()}-${Math.random()}`,
         product: '',
         quantity: '1',
+        list_price: '',
         selling_price: '',
+        discount_price: '',
         packageLines: EMPTY_PKG_LINES(),
       },
     ]);
@@ -563,10 +624,14 @@ const Sales = () => {
       const row = {
         product: parseInt(l.product, 10),
         quantity: itemQty,
-        selling_price: l.selling_price,
+        selling_price: l.list_price || l.selling_price,
         package_type: null,
         package_quantity: null,
       };
+      const disc = parsePriceNum(l.discount_price) || 0;
+      if (disc > 0) {
+        row.discount_price = l.discount_price;
+      }
       if (activeLines.length > 0) {
         row.package_lines = activeLines.map(({ package_type, quantity }) => ({ package_type, quantity }));
         for (const pl of activeLines) {
@@ -644,6 +709,7 @@ const Sales = () => {
     }
   };
 
+  const [balances, setBalances] = useState([]);
   const [dispatchFormData, setDispatchFormData] = useState({
     saleId: null,
     delivery_cost: '',
@@ -732,10 +798,14 @@ const Sales = () => {
     if (!showDispatchForm) return;
     (async () => {
       try {
-        const res = await api.get('/dispatchers/', { params: { is_active: true } });
-        setDispatchersList(res.data.results || res.data);
+        const [dispatchersRes, balancesRes] = await Promise.all([
+          api.get('/dispatchers/', { params: { is_active: true } }),
+          api.get('/cash-balance/'),
+        ]);
+        setDispatchersList(dispatchersRes.data.results || dispatchersRes.data);
+        setBalances(balancesRes.data.results || balancesRes.data);
       } catch (err) {
-        console.error('Error loading dispatchers:', err);
+        console.error('Error loading dispatch form data:', err);
         setDispatchersList([]);
       }
     })();
@@ -756,36 +826,52 @@ const Sales = () => {
         }
       }
 
-      // First update sale status to dispatched
-      await api.post(`/sales/${dispatchFormData.saleId}/update_status/`, { status: 'dispatched', notes: dn || '' });
-      
-      // Then create dispatch with delivery cost
-      const sale = sales.find(s => s.id === dispatchFormData.saleId);
-      if (sale) {
-        const dispatchData = {
-          sale: dispatchFormData.saleId,
-          dispatch_type: dispatchFormData.dispatch_type,
-          is_paid: dispatchFormData.is_paid,
-          delivery_cost: dispatchFormData.currency === 'USD' ? dispatchFormData.delivery_cost : 0,
-          delivery_cost_uzs: dispatchFormData.currency === 'UZS' ? dispatchFormData.delivery_cost : 0,
-          tracking_number: dispatchFormData.tracking_number || '',
-          status: 'dispatched',
-          logistics_notes: dn || '',
-        };
-        if (dispatchFormData.dispatch_type === 'dostavshik' && dispatchFormData.dispatcher) {
-          dispatchData.dispatcher = parseInt(dispatchFormData.dispatcher, 10);
+      const deliveryCost = parseFloat(dispatchFormData.delivery_cost) || 0;
+      if (dispatchFormData.is_paid && deliveryCost > 0) {
+        let freshBalances = balances;
+        try {
+          const balancesRes = await api.get('/cash-balance/');
+          freshBalances = balancesRes.data.results || balancesRes.data;
+          setBalances(freshBalances);
+        } catch (balanceErr) {
+          console.error('Error refreshing balances:', balanceErr);
         }
-        
-        if (dispatchFormData.currency === 'UZS') {
-          dispatchData.delivery_payment_cash = dispatchFormData.delivery_cost;
-          dispatchData.delivery_payment_card = 0;
-        } else {
-          dispatchData.delivery_payment_cash = 0;
-          dispatchData.delivery_payment_card = 0;
+        const currency = dispatchFormData.currency;
+        const available = cashBalanceTotalByCurrency(freshBalances, currency);
+        if (available < deliveryCost) {
+          showNotification(
+            formatInsufficientLedgerMessage(currency, available, deliveryCost, {
+              topUpSuffix: true,
+            }),
+            'error',
+          );
+          return;
         }
-        
-        await api.post('/dispatches/', dispatchData);
       }
+
+      const dispatchData = {
+        sale: dispatchFormData.saleId,
+        dispatch_type: dispatchFormData.dispatch_type,
+        is_paid: dispatchFormData.is_paid,
+        delivery_cost: dispatchFormData.currency === 'USD' ? dispatchFormData.delivery_cost : 0,
+        delivery_cost_uzs: dispatchFormData.currency === 'UZS' ? dispatchFormData.delivery_cost : 0,
+        tracking_number: dispatchFormData.tracking_number || '',
+        status: 'dispatched',
+        logistics_notes: dn || '',
+      };
+      if (dispatchFormData.dispatch_type === 'dostavshik' && dispatchFormData.dispatcher) {
+        dispatchData.dispatcher = parseInt(dispatchFormData.dispatcher, 10);
+      }
+
+      if (dispatchFormData.currency === 'UZS') {
+        dispatchData.delivery_payment_cash = dispatchFormData.delivery_cost;
+        dispatchData.delivery_payment_card = 0;
+      } else {
+        dispatchData.delivery_payment_cash = 0;
+        dispatchData.delivery_payment_card = 0;
+      }
+
+      await api.post('/dispatches/', dispatchData);
       
       setShowDispatchForm(false);
       setDispatchFormData({
@@ -802,7 +888,15 @@ const Sales = () => {
       showNotification('Dispatch created successfully!', 'success');
     } catch (error) {
       console.error('Error creating dispatch:', error);
-      showNotification('Error creating dispatch', 'error');
+      const data = error.response?.data;
+      const msg =
+        data?.error ||
+        data?.detail ||
+        (Array.isArray(data?.non_field_errors) ? data.non_field_errors[0] : null) ||
+        data?.is_paid ||
+        (typeof data === 'object' ? Object.values(data).flat().find(Boolean) : null) ||
+        'Error creating dispatch';
+      showNotification(typeof msg === 'string' ? msg : 'Error creating dispatch', 'error');
     }
   };
 
@@ -856,6 +950,21 @@ const Sales = () => {
           showNotification(`Insufficient stock for package "${line.package_type}": need ${totalNeeded}, have ${pkg.quantity}.`, 'error');
           return;
         }
+      }
+
+      const saleForComplete = sales.find((s) => s.id === completeFromOrderData.saleId);
+      const advanceCheck = validateAdvanceCompletionPayment(
+        saleForComplete,
+        completeFromOrderData.now_uzs,
+        completeFromOrderData.now_usd,
+        completeFromOrderData.selling_price,
+      );
+      if (!advanceCheck.ok) {
+        showNotification(advanceCheck.error, 'error');
+        return;
+      }
+      if (advanceCheck.needsCrossCurrencyConfirm) {
+        if (!window.confirm(buildCrossCurrencyAdvanceConfirmMessage(advanceCheck))) return;
       }
 
       const requestData = {
@@ -1077,7 +1186,9 @@ const Sales = () => {
                   key: `${Date.now()}-0`,
                   product: '',
                   quantity: '1',
+                  list_price: '',
                   selling_price: '',
+                  discount_price: '',
                   package_type: '',
                   package_quantity: '',
                 },
@@ -1366,6 +1477,24 @@ const Sales = () => {
                   value={completeFromOrderData.now_usd ?? ''}
                   onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, now_usd: e.target.value })} />
               </div>
+              {(() => {
+                const saleRow = sales.find((s) => s.id === completeFromOrderData.saleId);
+                if (!saleHasOrderAdvance(saleRow)) return null;
+                const remaining = computeAdvanceRemainingDue(saleRow, completeFromOrderData.selling_price);
+                const sc = (saleRow?.sale_currency || 'USD').toUpperCase();
+                return (
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <p style={{ margin: 0, fontSize: '0.9em', color: '#444' }}>
+                      <strong>Remaining due (after advance):</strong>{' '}
+                      {sc === 'UZS'
+                        ? `${remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
+                        : `$${remaining.toFixed(2)} USD`}
+                      {' '}· Do not exceed this in {sc}; you may collect the balance in{' '}
+                      {sc === 'USD' ? 'UZS' : 'USD'} (confirmation required).
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -1561,6 +1690,7 @@ const Sales = () => {
                     <col className="batch-col-stock" />
                     <col className="batch-col-qty" />
                     <col className="batch-col-price" />
+                    <col className="batch-col-price" />
                     <col className="batch-col-package" />
                     <col className="batch-col-row" />
                   </colgroup>
@@ -1572,6 +1702,7 @@ const Sales = () => {
                       </th>
                       <th className="batch-sale-lines__th--num">Qty</th>
                       <th className="batch-sale-lines__th--num">Selling price</th>
+                      <th className="batch-sale-lines__th--num">Discount price</th>
                       <th>Packages</th>
                       <th className="batch-sale-lines__th--action" aria-label="Remove line" />
                     </tr>
@@ -1623,6 +1754,19 @@ const Sales = () => {
                               title="Selling price"
                               placeholder="0.00"
                               aria-label="Selling price"
+                            />
+                          </td>
+                          <td className="batch-sale-lines__td--num">
+                            <input
+                              className="batch-sale-lines__control"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={line.discount_price ?? ''}
+                              onChange={(e) => updateBatchLine(line.key, 'discount_price', e.target.value)}
+                              title="Discount price"
+                              placeholder="0.00"
+                              aria-label="Discount price"
                             />
                           </td>
                           <td style={{ minWidth: '260px', verticalAlign: 'top', paddingTop: '6px' }}>
@@ -1708,14 +1852,6 @@ const Sales = () => {
                   ))}
                 </select>
               </div>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes</label>
-                <textarea
-                  value={newCustomerData.notes}
-                  onChange={(e) => setNewCustomerData({ ...newCustomerData, notes: e.target.value })}
-                  rows="3"
-                />
-              </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -1726,7 +1862,7 @@ const Sales = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowCustomerForm(false);
-                  setNewCustomerData({ name: '', telephone: '+998', instagram: '', region: 'tashkent_city', notes: '' });
+                  setNewCustomerData({ name: '', telephone: '+998', instagram: '', region: 'tashkent_city' });
                 }}
               >
                 Cancel
@@ -1906,10 +2042,10 @@ const Sales = () => {
           <thead>
             <tr>
               <SortableTh columnId="id" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>ID</SortableTh>
+              <SortableTh columnId="sale_date" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Date</SortableTh>
               <th>Actions</th>
               <SortableTh columnId="status" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Status</SortableTh>
               <SortableTh columnId="category" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Category</SortableTh>
-              <SortableTh columnId="product" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Product</SortableTh>
               <SortableTh columnId="brand" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Brand</SortableTh>
               <SortableTh columnId="model" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Model</SortableTh>
               <SortableTh columnId="size" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Size</SortableTh>
@@ -1926,13 +2062,12 @@ const Sales = () => {
               <SortableTh columnId="phone" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Phone</SortableTh>
               <SortableTh columnId="salesman" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Salesman</SortableTh>
               <SortableTh columnId="dispatcher" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Dispatcher</SortableTh>
-              <SortableTh columnId="sale_date" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Date</SortableTh>
             </tr>
           </thead>
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan="22" style={{ textAlign: 'center' }}>
+                <td colSpan="21" style={{ textAlign: 'center' }}>
                   No sales found
                 </td>
               </tr>
@@ -1950,6 +2085,7 @@ const Sales = () => {
                   }}
                 >
                   <td>#{sale.id}</td>
+                  <td>{new Date(sale.sale_date).toLocaleString()}</td>
                   <td>
                     {(sale.status === 'pending' || sale.status === 'confirmed') &&
                       sale.sale_type === 'delivery' &&
@@ -2029,11 +2165,6 @@ const Sales = () => {
                     </span>
                   </td>
                   <td>{sale.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>
-                    {sale.product_detail
-                      ? `${sale.product_detail.brand} ${sale.product_detail.model}`
-                      : `Product #${sale.product}`}
-                  </td>
                   <td>{sale.product_detail?.brand || '-'}</td>
                   <td>{sale.product_detail?.model || '-'}</td>
                   <td><strong>{sale.product_detail?.size || '-'}</strong></td>
@@ -2067,11 +2198,31 @@ const Sales = () => {
                   <td>{formatDisplayAmount(sale.selling_price, sale.sale_currency || 'USD')}</td>
                   <td>{formatDisplayAmount(sale.total_amount, sale.sale_currency || 'USD')}</td>
                   <td style={{ fontSize: '0.9em' }}>
-                    {sale.balance_shortfall_type === 'discount' && sale.balance_shortfall_amount
-                      ? `Discount: ${formatDisplayAmount(sale.balance_shortfall_amount, sale.balance_shortfall_currency || 'USD')}`
-                      : sale.balance_shortfall_type === 'on_credit' && sale.balance_shortfall_amount
-                        ? `On credit: ${formatDisplayAmount(sale.balance_shortfall_amount, sale.balance_shortfall_currency || 'USD')}`
-                        : '—'}
+                    {(() => {
+                      const saleDiscount = parseFloat(sale.total_discount_amount) || 0;
+                      const parts = [];
+                      if (saleDiscount > 0) {
+                        parts.push(
+                          `Discount: ${formatDisplayAmount(saleDiscount, sale.sale_currency || 'USD')}`
+                        );
+                      }
+                      if (sale.balance_shortfall_type === 'discount' && sale.balance_shortfall_amount) {
+                        parts.push(
+                          `At completion: ${formatDisplayAmount(
+                            sale.balance_shortfall_amount,
+                            sale.balance_shortfall_currency || sale.sale_currency || 'USD'
+                          )}`
+                        );
+                      } else if (sale.balance_shortfall_type === 'on_credit' && sale.balance_shortfall_amount) {
+                        parts.push(
+                          `On credit: ${formatDisplayAmount(
+                            sale.balance_shortfall_amount,
+                            sale.balance_shortfall_currency || sale.sale_currency || 'USD'
+                          )}`
+                        );
+                      }
+                      return parts.length ? parts.join(' · ') : '—';
+                    })()}
                   </td>
                   <td>
                     {(() => {
@@ -2102,7 +2253,6 @@ const Sales = () => {
                       );
                     })()}
                   </td>
-                  <td>{new Date(sale.sale_date).toLocaleString()}</td>
                 </tr>
               ))
             )}
@@ -2124,14 +2274,25 @@ const Sales = () => {
                       )
                     : formatPlainAmount(salesColumnTotals.totalAmount)}
               </td>
-              <td>—</td>
+              <td style={{ fontWeight: 600 }}>
+                {!filteredSales.length
+                  ? '—'
+                  : salesColumnTotals.totalDiscount > 0
+                    ? salesColumnTotals.totalDiscountCurrency
+                      ? formatDisplayAmount(
+                          salesColumnTotals.totalDiscount,
+                          salesColumnTotals.totalDiscountCurrency,
+                        )
+                      : formatPlainAmount(salesColumnTotals.totalDiscount)
+                    : '—'}
+              </td>
               <td style={{ fontWeight: 600 }}>
                 {salesColumnTotals.uzs > 0 ? `${salesColumnTotals.uzs.toLocaleString()} UZS` : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
                 {salesColumnTotals.usd > 0 ? `$${salesColumnTotals.usd.toFixed(2)}` : '—'}
               </td>
-              <td colSpan="5">—</td>
+              <td colSpan="4">—</td>
             </tr>
           </tfoot>
         </table>
