@@ -28,6 +28,25 @@ function formatAutoSoldPrice(unitPrice, quantity, currency) {
   return currency === 'UZS' ? String(Math.round(total)) : total.toFixed(2);
 }
 
+function formatSoldPriceForApi(amount, currency) {
+  const ccy = String(currency || 'USD').toUpperCase();
+  const n = parseFloat(amount);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return ccy === 'UZS' ? String(Math.round(n)) : n.toFixed(2);
+}
+
+function extractReturnApiError(data) {
+  if (!data || typeof data !== 'object') return null;
+  if (typeof data.detail === 'string' && data.detail.trim()) return data.detail;
+  if (typeof data.error === 'string' && data.error.trim()) return data.error;
+  for (const key of ['sold_price', 'sold_price_currency', 'sale', 'quantity', 'product', 'notes']) {
+    const val = data[key];
+    if (Array.isArray(val) && val[0]) return String(val[0]);
+    if (typeof val === 'string' && val.trim()) return val;
+  }
+  return null;
+}
+
 function computeReturnDue(returnItem) {
   const sale = returnItem?.sale_detail;
   const qty = parseInt(returnItem?.quantity, 10) || 0;
@@ -42,6 +61,24 @@ function computeReturnDue(returnItem) {
   const raw = unitPrice * qty;
   const amount = currency === 'UZS' ? Math.round(raw) : parseFloat(raw.toFixed(2));
   return { amount, currency, unitPrice };
+}
+
+/** Refund due at mark-refunded: stored sold price from return creation, else legacy sale unit price. */
+function computeReturnRefundDue(returnItem) {
+  const qty = parseInt(returnItem?.quantity, 10) || 0;
+  const storedTotal = parseFloat(returnItem?.sold_price);
+  const storedCurrency = String(returnItem?.sold_price_currency || '').toUpperCase();
+  if (
+    returnItem?.sold_price != null &&
+    returnItem.sold_price !== '' &&
+    Number.isFinite(storedTotal) &&
+    storedTotal >= 0 &&
+    (storedCurrency === 'USD' || storedCurrency === 'UZS')
+  ) {
+    const unitPrice = qty > 0 ? storedTotal / qty : NaN;
+    return { amount: storedTotal, currency: storedCurrency, unitPrice };
+  }
+  return computeReturnDue(returnItem);
 }
 
 function computeFormReturnDue(sale, quantity) {
@@ -71,7 +108,7 @@ function formatRefundAmounts(uzs, usd) {
 function confirmReturnRefund(returnItem, uzsEntered, usdEntered) {
   const uzs = Number(uzsEntered) || 0;
   const usd = Number(usdEntered) || 0;
-  const due = computeReturnDue(returnItem);
+  const due = computeReturnRefundDue(returnItem);
   const productLabel = returnItem?.product_detail
     ? `${returnItem.product_detail.brand} ${returnItem.product_detail.model}`
     : `Product #${returnItem?.product ?? '?'}`;
@@ -90,7 +127,7 @@ function confirmReturnRefund(returnItem, uzsEntered, usdEntered) {
     `Mark Return #${returnItem?.id ?? '?'} as refunded?\n\n` +
     `${productLabel}\n` +
     `Qty: ${returnItem?.quantity ?? '—'}${customerLine}\n\n` +
-    `Due amount: ${dueLine}${unitDetail}\n` +
+    `Sold price: ${dueLine}${unitDetail}\n` +
     `Refunding: ${formatRefundAmounts(uzs, usd)}\n\n` +
     'Proceed with this refund?';
 
@@ -333,10 +370,13 @@ const Returns = () => {
   }, [selectedSaleForReturn, formData.product, newReturnEligibleSales]);
 
   const applyAutoSoldPrice = useCallback((sale, quantity) => {
+    if (!sale) return {};
     const currency = getSaleCurrency(sale);
     const unitPrice = getSaleUnitPrice(sale);
+    const autoTotal = formatAutoSoldPrice(unitPrice, quantity, currency);
+    if (!autoTotal) return { sold_price_currency: currency };
     return {
-      sold_price: formatAutoSoldPrice(unitPrice, quantity, currency),
+      sold_price: autoTotal,
       sold_price_currency: currency,
     };
   }, []);
@@ -380,8 +420,28 @@ const Returns = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!e.target.reportValidity()) return;
+    if (!formData.sale) {
+      showNotification('Please select a sale.', 'error');
+      return;
+    }
     if (formData.reason === 'other' && !String(formData.notes || '').trim()) {
       showNotification('Please enter notes when reason is Other.', 'error');
+      return;
+    }
+    const qty = parseInt(formData.quantity, 10);
+    if (!Number.isFinite(qty) || qty < 1) {
+      showNotification('Please enter a valid quantity (at least 1).', 'error');
+      return;
+    }
+    const soldTotal = parseFloat(String(formData.sold_price ?? '').trim());
+    if (!Number.isFinite(soldTotal) || soldTotal < 0) {
+      showNotification('Please enter a valid sold price.', 'error');
+      return;
+    }
+    const soldPriceApi = formatSoldPriceForApi(soldTotal, formData.sold_price_currency);
+    if (!soldPriceApi) {
+      showNotification('Please enter a valid sold price.', 'error');
       return;
     }
     if (soldPriceOverDue) {
@@ -395,7 +455,7 @@ const Returns = () => {
       const selectedSale = sales.find((s) => s.id === parseInt(formData.sale, 10));
       if (selectedSale) {
         const rem = getRemainingReturnQtyForSale(selectedSale);
-        const q = parseInt(formData.quantity, 10) || 0;
+        const q = qty;
         const used = qtyReturnedBySaleId.get(selectedSale.id) || 0;
         if (q > rem) {
           showNotification(
@@ -409,14 +469,18 @@ const Returns = () => {
     try {
       const payload = {
         product: parseInt(formData.product, 10),
-        quantity: parseInt(formData.quantity, 10),
+        quantity: qty,
         reason: formData.reason,
         notes: String(formData.notes || '').trim(),
-        sale: formData.sale ? parseInt(formData.sale, 10) : null,
-        customer: formData.customer ? parseInt(formData.customer, 10) : null,
+        sale: parseInt(formData.sale, 10),
+        sold_price: soldPriceApi,
+        sold_price_currency: formData.sold_price_currency,
       };
-      if (Number.isNaN(payload.product) || Number.isNaN(payload.quantity)) {
-        showNotification('Please select a product and enter a valid quantity.', 'error');
+      if (formData.customer) {
+        payload.customer = parseInt(formData.customer, 10);
+      }
+      if (Number.isNaN(payload.product) || Number.isNaN(payload.sale)) {
+        showNotification('Please select a product and sale.', 'error');
         return;
       }
       await api.post('/returns/', payload);
@@ -438,11 +502,7 @@ const Returns = () => {
       console.error('Error creating return:', error);
       const d = error.response?.data;
       const msg =
-        (Array.isArray(d?.quantity) && d.quantity[0]) ||
-        (typeof d?.quantity === 'string' && d.quantity) ||
-        d?.detail ||
-        d?.error ||
-        (typeof d === 'string' ? d : null) ||
+        extractReturnApiError(d) ||
         error.message ||
         'Error creating return';
       showNotification(typeof msg === 'string' ? msg : 'Error creating return', 'error');
@@ -451,7 +511,7 @@ const Returns = () => {
 
   const handleMarkRefunded = (returnId) => {
     const returnItem = returns.find((r) => r.id === returnId);
-    const due = computeReturnDue(returnItem);
+    const due = computeReturnRefundDue(returnItem);
     setRefundFormData({
       returnId,
       uzs: due.currency === 'UZS' && due.amount != null ? String(due.amount) : '',
@@ -746,19 +806,21 @@ const Returns = () => {
                 );
               })()}
               <div className="form-group">
-                <label>Sale (Optional)</label>
+                <label>Sale <span style={{ color: '#e53e3e' }}>*</span></label>
                 <select
                   value={formData.sale}
+                  required
                   onChange={(e) => {
                     const saleId = e.target.value;
                     const sale = saleId
                       ? sales.find((s) => s.id === parseInt(saleId, 10))
                       : null;
-                    const pricing = applyAutoSoldPrice(sale, formData.quantity);
-                    setFormData({ ...formData, sale: saleId, ...pricing });
+                    const quantity = formData.quantity || '1';
+                    const pricing = applyAutoSoldPrice(sale, quantity);
+                    setFormData({ ...formData, sale: saleId, quantity, ...pricing });
                   }}
                 >
-                  <option value="">None</option>
+                  <option value="">Select sale</option>
                   {newReturnEligibleSales.map((sale) => (
                     <option key={sale.id} value={sale.id}>
                       Sale #{sale.id} - {sale.product_detail?.brand} {sale.product_detail?.model}
@@ -794,7 +856,7 @@ const Returns = () => {
                     const quantity = e.target.value;
                     const sale = resolveSaleForPricing();
                     const pricing = applyAutoSoldPrice(sale, quantity);
-                    setFormData({ ...formData, quantity, ...pricing });
+                    setFormData((prev) => ({ ...prev, quantity, ...pricing }));
                   }}
                   required
                 />
@@ -813,12 +875,13 @@ const Returns = () => {
                 })()}
               </div>
               <div className="form-group">
-                <label>Sold price</label>
+                <label>Sold price <span style={{ color: '#e53e3e' }}>*</span></label>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
                   <input
                     type="number"
                     step={formData.sold_price_currency === 'UZS' ? '1' : '0.01'}
                     min="0"
+                    required
                     value={formData.sold_price}
                     onChange={(e) => setFormData({ ...formData, sold_price: e.target.value })}
                     placeholder="Auto-calculated from quantity"

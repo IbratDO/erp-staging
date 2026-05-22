@@ -29,8 +29,18 @@ const LETTER_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const NUMERIC_SIZES = Array.from({ length: 11 }, (_, i) => (36 + i).toString());
 const ALL_EDITOR_SIZE_OPTIONS = [...LETTER_SIZES, ...NUMERIC_SIZES];
 
+/** Normalize size input: comma decimal separators become dot (e.g. 41,5 → 41.5). */
+function normalizeSizeValue(value) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return trimmed;
+  if (/^-?\d+,\d+$/.test(trimmed)) {
+    return trimmed.replace(',', '.');
+  }
+  return trimmed;
+}
+
 function isNumericSize(value) {
-  return /^-?\d+(\.\d+)?$/.test(String(value ?? '').trim());
+  return /^-?\d+(\.\d+)?$/.test(normalizeSizeValue(value));
 }
 
 function sortLetterSizes(values) {
@@ -40,7 +50,9 @@ function sortLetterSizes(values) {
 }
 
 function sortNumberSizes(values) {
-  return [...new Set(values)].filter(Boolean).sort((a, b) => Number(a) - Number(b));
+  return [...new Set(values)].filter(Boolean).sort(
+    (a, b) => Number(normalizeSizeValue(a)) - Number(normalizeSizeValue(b)),
+  );
 }
 
 /** Letters A–Z, then numbers ascending (summary label / filters). */
@@ -157,11 +169,12 @@ const Products = () => {
   const addPendingCustomSize = () => {
     const raw = pendingCustomSize.trim();
     if (!raw) return;
-    if (raw.length > 20) {
+    const normalized = normalizeSizeValue(raw);
+    if (normalized.length > 20) {
       showNotification('Size must be 20 characters or less.', 'error');
       return;
     }
-    setSelectedSizes((prev) => (prev.includes(raw) ? prev : [...prev, raw]));
+    setSelectedSizes((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
     setPendingCustomSize('');
   };
 
@@ -288,6 +301,7 @@ const Products = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const payload = { ...formData };
+    if (payload.size) payload.size = normalizeSizeValue(payload.size);
     try {
       if (editingProduct) {
         if (selectedColors.length === 0) {
@@ -340,7 +354,7 @@ const Products = () => {
         const combos = [];
         for (const size of selectedSizes) {
           for (const color of selectedColors) {
-            combos.push({ ...payload, size, color });
+            combos.push({ ...payload, size: normalizeSizeValue(size), color });
           }
         }
         const toCreate = [];

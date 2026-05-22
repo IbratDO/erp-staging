@@ -90,8 +90,8 @@ const Inventory = () => {
     quantity: '',
     status: 'in_inventory',
     location: '',
+    selling_usd_per_unit: '',
     unit_supplier_cost_usd: '',
-    unit_supplier_cost_uzs: '',
   });
 
   useEffect(() => {
@@ -205,27 +205,31 @@ const Inventory = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!e.target.reportValidity()) return;
     const qty = parseInt(formData.quantity, 10) || 0;
     const usd = parseFloat(formData.unit_supplier_cost_usd) || 0;
-    const uzs = parseFloat(formData.unit_supplier_cost_uzs) || 0;
-    if (qty > 0 && usd <= 0 && uzs <= 0) {
-      alert(
-        'Enter unit supplier cost (USD and/or UZS) for the units you are adding. ' +
-          'This creates a FIFO batch used for COGS when these items are sold.'
-      );
+    const sellingUsd = parseFloat(formData.selling_usd_per_unit) || 0;
+    if (qty < 1) {
+      alert('Please enter a valid quantity (at least 1).');
+      return;
+    }
+    if (!(sellingUsd > 0)) {
+      alert('Enter a selling price per unit in USD.');
+      return;
+    }
+    if (!(usd > 0)) {
+      alert('Enter a unit supplier cost in USD.');
       return;
     }
     try {
       const payload = {
         product: formData.product,
-        quantity: formData.quantity,
+        quantity: qty,
         status: formData.status,
         location: formData.location,
+        selling_usd_per_unit: sellingUsd,
+        unit_supplier_cost_usd: usd,
       };
-      if (qty > 0) {
-        if (usd > 0) payload.unit_supplier_cost_usd = usd;
-        if (uzs > 0) payload.unit_supplier_cost_uzs = uzs;
-      }
       await api.post('/inventory/', payload);
       setShowForm(false);
       setFormCategory('');
@@ -234,8 +238,8 @@ const Inventory = () => {
         quantity: '',
         status: 'in_inventory',
         location: '',
+        selling_usd_per_unit: '',
         unit_supplier_cost_usd: '',
-        unit_supplier_cost_uzs: '',
       });
       fetchInventory();
     } catch (error) {
@@ -289,7 +293,17 @@ const Inventory = () => {
                 <label>Product</label>
                 <select
                   value={formData.product}
-                  onChange={(e) => setFormData({ ...formData, product: e.target.value })}
+                  onChange={(e) => {
+                    const pid = e.target.value;
+                    const p = products.find((x) => String(x.id) === pid);
+                    const sp = p?.selling_price != null ? parseFloat(p.selling_price) : NaN;
+                    setFormData({
+                      ...formData,
+                      product: pid,
+                      selling_usd_per_unit:
+                        Number.isFinite(sp) && sp > 0 ? sp.toFixed(2) : formData.selling_usd_per_unit,
+                    });
+                  }}
                   required
                 >
                   <option value="">Select a product</option>
@@ -308,7 +322,7 @@ const Inventory = () => {
                 <label>Quantity</label>
                 <input
                   type="number"
-                  min="0"
+                  min="1"
                   value={formData.quantity}
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   required
@@ -316,39 +330,45 @@ const Inventory = () => {
               </div>
               <div className="form-group">
                 <label>
-                  Unit supplier cost (USD){' '}
-                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>
-                    required if adding stock
+                  Selling price per unit (USD){' '}
+                  <span style={{ color: '#e53e3e' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="USD / unit"
+                  value={formData.selling_usd_per_unit}
+                  onChange={(e) => setFormData({ ...formData, selling_usd_per_unit: e.target.value })}
+                  required
+                />
+                {parseFloat(formData.selling_usd_per_unit) > 0 && parseInt(formData.quantity, 10) > 0 && (
+                  <span className="orders-field-hint">
+                    = ${(parseFloat(formData.selling_usd_per_unit) * parseInt(formData.quantity, 10)).toFixed(2)} line total
                   </span>
+                )}
+              </div>
+              <div className="form-group">
+                <label>
+                  Cost per unit (USD){' '}
+                  <span style={{ color: '#e53e3e' }}>*</span>
                 </label>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
-                  placeholder="e.g. 55.00"
+                  placeholder="USD / unit"
                   value={formData.unit_supplier_cost_usd}
                   onChange={(e) =>
                     setFormData({ ...formData, unit_supplier_cost_usd: e.target.value })
                   }
+                  required
                 />
-              </div>
-              <div className="form-group">
-                <label>
-                  Unit supplier cost (UZS){' '}
-                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>
-                    and/or UZS
+                {parseFloat(formData.unit_supplier_cost_usd) > 0 && parseInt(formData.quantity, 10) > 0 && (
+                  <span className="orders-field-hint">
+                    = ${(parseFloat(formData.unit_supplier_cost_usd) * parseInt(formData.quantity, 10)).toFixed(2)} line total
                   </span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="e.g. 650000"
-                  value={formData.unit_supplier_cost_uzs}
-                  onChange={(e) =>
-                    setFormData({ ...formData, unit_supplier_cost_uzs: e.target.value })
-                  }
-                />
+                )}
               </div>
               <div className="form-group">
                 <label>Status</label>
@@ -529,9 +549,6 @@ const Inventory = () => {
               <SortableTh columnId="rec_no" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
                 Rec #
               </SortableTh>
-              <SortableTh columnId="product" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Product
-              </SortableTh>
               <SortableTh columnId="brand" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
                 Brand
               </SortableTh>
@@ -573,7 +590,7 @@ const Inventory = () => {
           <tbody>
             {filteredInventory.length === 0 ? (
               <tr>
-                <td colSpan="15" style={{ textAlign: 'center' }}>
+                <td colSpan="14" style={{ textAlign: 'center' }}>
                   No inventory in stock
                 </td>
               </tr>
@@ -586,11 +603,6 @@ const Inventory = () => {
                 <tr key={item.batch_id}>
                   <td>{item.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td><strong>#{item.product_detail?.id ?? item.product}</strong></td>
-                  <td>
-                    {item.product_detail
-                      ? `${item.product_detail.brand} ${item.product_detail.model}`
-                      : `Product #${item.product}`}
-                  </td>
                   <td>{item.product_detail?.brand || '-'}</td>
                   <td>{item.product_detail?.model || '-'}</td>
                   <td><strong>{item.product_detail?.size || '-'}</strong></td>
@@ -616,7 +628,7 @@ const Inventory = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="8" style={{ textAlign: 'right' }}>
+              <td colSpan="7" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td style={{ fontWeight: 600, fontSize: '0.9em' }}>

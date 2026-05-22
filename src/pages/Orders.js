@@ -633,10 +633,19 @@ const Orders = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!e.target.reportValidity()) return;
     try {
       const qty = parseInt(formData.ordered_quantity, 10) || 0;
       if (!formData.product || qty < 1) {
         showNotification('Please select a product and enter a valid quantity.', 'error');
+        return;
+      }
+      if (!String(formCategory || '').trim()) {
+        showNotification('Please select a category.', 'error');
+        return;
+      }
+      if (!String(formData.eshop || '').trim()) {
+        showNotification('Please select or enter an eShop.', 'error');
         return;
       }
       if (!formData.supplier_country.trim()) {
@@ -1431,12 +1440,13 @@ const Orders = () => {
                 </select>
               </div>
               <div className="form-group">
-                <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
+                <label>Category <span style={{ color: '#e53e3e' }}>*</span> <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
                 <select
                   value={formCategory}
                   onChange={(e) => { setFormCategory(e.target.value); setProductSearch(''); setProductDropdownOpen(false); setFormData({ ...formData, product: '', supplier_country: '', selling_usd_per_unit: '', selling_uzs_per_unit: '', cost_usd_per_unit: '', cost_uzs_per_unit: '' }); }}
+                  required
                 >
-                  <option value="">All Categories</option>
+                  <option value="">Select category</option>
                   {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
@@ -1607,10 +1617,11 @@ const Orders = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>eShop</label>
+                <label>eShop <span style={{ color: '#e53e3e' }}>*</span></label>
                 {!isNewEshop ? (
                   <select
                     value={formData.eshop}
+                    required
                     onChange={(e) => {
                       if (e.target.value === '__new__') {
                         setIsNewEshop(true);
@@ -1651,6 +1662,7 @@ const Orders = () => {
                       type="text"
                       placeholder="Enter new eShop name"
                       value={formData.eshop}
+                      required
                       onChange={(e) => {
                         const v = e.target.value;
                         setFormData({

@@ -1,3 +1,5 @@
+import { plannedSellingSummary, plannedSellingUsdPerUnit, plannedSellingUzsPerUnit } from './orderPlannedPricing';
+
 /** Per-unit USD cost buckets only (cash + card; no UZS conversion). Mirrors backend Product.cost_per_unit_usd_equivalent. */
 export function productCostUsdPortion(p) {
   if (!p) return 0;
@@ -38,15 +40,102 @@ export function productCostCells(p) {
   };
 }
 
-/**
- * New sale product dropdown: #id, brand/model/size/color, cost bits, then selling price (no "List" label — avoids looking like "Line").
+function formatProductSellingUsd(product) {
+  const sp = parseFloat(product?.selling_price);
+  if (product?.selling_price != null && product.selling_price !== '' && !Number.isNaN(sp) && sp > 0) {
+    return `$${sp.toFixed(2)}`;
+  }
+  return null;
+}
+
+/** Distinct selling price labels for one SKU (inventory layers + product record). */
+export function collectProductSellingPriceLabels(product, inventoryRows) {
+  if (!product) return [];
+  const pid = Number(product.id);
+  const labels = new Set();
+  const rows = (inventoryRows || []).filter(
+    (it) =>
+      Number(it.product) === pid &&
+      (it.status == null || it.status === 'in_inventory') &&
+      Number(it.quantity) > 0
+  );
+  for (const r of rows) {
+    const fromOrder = plannedSellingSummary(r.stocking_order);
+    if (fromOrder) {
+      labels.add(fromOrder.replace(/\/u$/, ''));
+      continue;
+    }
+    const fromDetail = formatProductSellingUsd(r.product_detail);
+    if (fromDetail) labels.add(fromDetail);
+  }
+  const fromProduct = formatProductSellingUsd(product);
+  if (fromProduct) labels.add(fromProduct);
+  return [...labels].sort((a, b) => {
+    const na = parseFloat(String(a).replace(/[^0-9.]/g, '')) || 0;
+    const nb = parseFloat(String(b).replace(/[^0-9.]/g, '')) || 0;
+    return na - nb;
+  });
+}
+
+/** Numeric USD selling price for one inventory layer. */
+export function layerSellingUsdNum(layer, product) {
+  const fromOrder = plannedSellingUsdPerUnit(layer?.stocking_order);
+  if (fromOrder != null && fromOrder > 0) return fromOrder;
+  const sp = parseFloat(product?.selling_price);
+  if (product?.selling_price != null && product.selling_price !== '' && !Number.isNaN(sp) && sp > 0) {
+    return sp;
+  }
+  return null;
+}
+
+/** One sale-picker row per FIFO layer: product info, this layer's price, and available qty. */
+export function layerSalePickerLabel(product, layer) {
+  if (!product || !layer) return '';
+  const core = productCostPickerLabel(product).replace(/\u2014/g, ' - ');
+  const summary = plannedSellingSummary(layer.stocking_order);
+  const usdNum = layerSellingUsdNum(layer, product);
+  const price =
+    (summary ? summary.replace(/\/u$/, '') : null) ||
+    (usdNum != null ? `$${usdNum.toFixed(2)}` : null) ||
+    '—';
+  const qty = Number(layer.quantity) || 0;
+  return `${core} · ${price} · ${qty} in stock`;
+}
+
+/** Resolve list/final price for a specific inventory layer and sale currency. */
+export function resolveLayerListPrice(layer, product, saleCur) {
+  if (!layer) return null;
+  const stocking = layer.stocking_order;
+  let priceNum = null;
+  if (stocking) {
+    if (saleCur === 'UZS') {
+      priceNum = plannedSellingUzsPerUnit(stocking);
+      if (priceNum == null || priceNum <= 0) priceNum = plannedSellingUsdPerUnit(stocking);
+    } else {
+      priceNum = plannedSellingUsdPerUnit(stocking);
+      if (priceNum == null || priceNum <= 0) priceNum = plannedSellingUzsPerUnit(stocking);
+    }
+  }
+  if (priceNum != null && priceNum > 0) return priceNum;
+  const sp = parseFloat(product?.selling_price);
+  if (product?.selling_price != null && product.selling_price !== '' && !Number.isNaN(sp) && sp > 0) {
+    return sp;
+  }
+  return null;
+}
+
+/**: #id, brand/model/size/color, cost bits, then selling price (no "List" label — avoids looking like "Line").
+ * When inventoryRows is provided, selling prices come from FIFO layers / stocking orders (same as Inventory tab), not only Product.selling_price.
  */
-export function productSalePickerLabel(p) {
+export function productSalePickerLabel(p, inventoryRows = null) {
   if (!p) return '';
-  const list =
-    p.selling_price != null && p.selling_price !== '' && !Number.isNaN(parseFloat(p.selling_price))
-      ? `$${parseFloat(p.selling_price).toFixed(2)}`
-      : '—';
+  let list;
+  if (inventoryRows) {
+    const bits = collectProductSellingPriceLabels(p, inventoryRows);
+    list = bits.length ? bits.join(' · ') : '—';
+  } else {
+    list = formatProductSellingUsd(p) || '—';
+  }
   const core = productCostPickerLabel(p).replace(/\u2014/g, ' - ');
   return `${core} · ${list}`;
 }

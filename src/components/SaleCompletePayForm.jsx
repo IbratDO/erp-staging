@@ -6,8 +6,10 @@ import {
   buildPaymentFormDataFromSale,
   computePaymentShortfallMeta,
   buildCompleteSaleRequest,
+  buildGroupCompleteRequests,
   validateAdvanceCompletionPayment,
   buildCrossCurrencyAdvanceConfirmMessage,
+  buildSplitCurrencyConfirmMessage,
   saleHasOrderAdvance,
 } from '../utils/saleCompletePayHelpers';
 
@@ -15,7 +17,10 @@ import {
  * Complete sale & pay (status → completed). Shared by Sales and Dispatchers tabs.
  */
 export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNotification }) {
+  const groupSales = sale?.groupSales?.length ? sale.groupSales : null;
   const [paymentFormData, setPaymentFormData] = useState(() => emptyPaymentFormState());
+  const [exchangeRate, setExchangeRate] = useState(null);
+  const [exchangeRateError, setExchangeRateError] = useState(null);
 
   useEffect(() => {
     if (sale) {
@@ -25,9 +30,36 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
     }
   }, [sale]);
 
+  useEffect(() => {
+    if (!sale) {
+      setExchangeRate(null);
+      setExchangeRateError(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get('/exchange-rate/')
+      .then((res) => {
+        if (!cancelled) {
+          setExchangeRate(res.data);
+          setExchangeRateError(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setExchangeRate(null);
+          setExchangeRateError('Could not load CBU exchange rate.');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sale]);
+
   if (!sale) return null;
 
-  const shortfallMeta = computePaymentShortfallMeta(sale, paymentFormData);
+  const cbuRate = exchangeRate?.rate ?? null;
+  const shortfallMeta = computePaymentShortfallMeta(sale, paymentFormData, cbuRate);
   const sc = paymentFormData.sale_currency || sale.sale_currency || 'USD';
   const listUnit = paymentFormData.list_unit_price ?? (parseFloat(sale.selling_price) || 0);
   const discountAmountPerUnit = paymentFormData.discount_amount_per_unit ?? (parseFloat(sale.discount_price) || 0);
@@ -43,26 +75,65 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const meta = computePaymentShortfallMeta(sale, paymentFormData);
+      const meta = computePaymentShortfallMeta(sale, paymentFormData, cbuRate);
+      const uzsT = parseFloat(paymentFormData.uzs) || 0;
+      const usdT = parseFloat(paymentFormData.usd) || 0;
       const advanceCheck = validateAdvanceCompletionPayment(
         sale,
         paymentFormData.uzs,
         paymentFormData.usd,
+        undefined,
+        cbuRate,
       );
       if (!advanceCheck.ok) {
         showNotification(advanceCheck.error, 'error');
         return;
       }
-      if (advanceCheck.needsCrossCurrencyConfirm) {
-        if (!window.confirm(buildCrossCurrencyAdvanceConfirmMessage(advanceCheck))) return;
-      }
 
-      if (meta.mixed && meta.short > 0.01 && !meta.hasAdvance) {
+      if (meta.mixed) {
         showNotification(
-          'Pay in one currency only (UZS or USD) when the amount is less than the total, matching the sale list price currency.',
-          'error'
+          exchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
+          'error',
         );
         return;
+      }
+
+      if (advanceCheck.needsSplitCurrencyConfirm) {
+        if (
+          !window.confirm(
+            buildSplitCurrencyConfirmMessage({
+              sale,
+              uzsAmount: advanceCheck.uzsAmount,
+              usdAmount: advanceCheck.usdAmount,
+              due: advanceCheck.due,
+              sc: advanceCheck.sc,
+              cbuRate: advanceCheck.cbuRate,
+              paidInSaleCurrency: advanceCheck.paidInSaleCurrency,
+              exchangeRate,
+            }),
+          )
+        ) {
+          return;
+        }
+      } else if (advanceCheck.needsCrossCurrencyConfirm) {
+        if (!window.confirm(buildCrossCurrencyAdvanceConfirmMessage(advanceCheck, exchangeRate))) return;
+      } else if (meta.splitCurrency && uzsT > 0 && usdT > 0) {
+        if (
+          !window.confirm(
+            buildSplitCurrencyConfirmMessage({
+              sale,
+              uzsAmount: uzsT,
+              usdAmount: usdT,
+              due: meta.due,
+              sc: meta.sc,
+              cbuRate,
+              paidInSaleCurrency: meta.paid,
+              exchangeRate,
+            }),
+          )
+        ) {
+          return;
+        }
       }
 
       if (meta.exceedsRemainingDue) {
@@ -93,18 +164,43 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
       }
 
       if (meta.hasOverpayment && meta.due != null && meta.overpaymentAmount != null) {
+        const dueLabel =
+          meta.sc === 'UZS'
+            ? `${meta.due.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
+            : `${meta.due.toFixed(2)} USD`;
+        const paidLabel =
+          meta.sc === 'UZS'
+            ? `${meta.paid.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
+            : `${meta.paid.toFixed(2)} USD`;
+        const excessLabel =
+          meta.sc === 'UZS'
+            ? `${meta.overpaymentAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
+            : `${meta.overpaymentAmount.toFixed(2)} USD`;
         const msg = [
           `Payment entered is higher than amount due.`,
-          `Due: ${meta.due.toFixed(2)} ${meta.sc} · Entered: ${meta.paid.toFixed(2)} ${meta.sc} · Excess: ${meta.overpaymentAmount.toFixed(2)} ${meta.sc}.`,
+          `Due: ${dueLabel} · Entered: ${paidLabel} · Excess: ${excessLabel}.`,
+          meta.splitCurrency && exchangeRate?.label
+            ? `(Total calculated at CBU rate: ${exchangeRate.label})`
+            : null,
           `The extra amount will still be booked as collected sale payment.`,
           `Continue?`,
-        ].join('\n\n');
+        ]
+          .filter(Boolean)
+          .join('\n\n');
         if (!window.confirm(msg)) return;
       }
 
-      const requestData = buildCompleteSaleRequest(paymentFormData, meta);
-      await api.post(`/sales/${sale.id}/update_status/`, requestData);
-      showNotification('Sale completed successfully!', 'success');
+      const requestData = buildCompleteSaleRequest(paymentFormData, meta, exchangeRate);
+      if (groupSales?.length) {
+        const requests = buildGroupCompleteRequests(groupSales, paymentFormData, meta, exchangeRate);
+        for (const req of requests) {
+          await api.post(`/sales/${req.id}/update_status/`, req.data);
+        }
+        showNotification(`Completed ${groupSales.length} sale line(s) successfully!`, 'success');
+      } else {
+        await api.post(`/sales/${sale.id}/update_status/`, requestData);
+        showNotification('Sale completed successfully!', 'success');
+      }
       onSuccess?.();
       onClose?.();
     } catch (error) {
@@ -122,8 +218,17 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
     <div className="form-card" style={{ marginBottom: '20px' }}>
       <h2>Complete Sale #{sale.id}</h2>
       <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-        Enter the UZS and/or USD amount received.
+        Enter the UZS and/or USD amount received. You may split payment across both currencies; mixed
+        payments use the CBU exchange rate.
       </p>
+      {exchangeRate?.label && (
+        <p style={{ color: '#4a5568', marginBottom: '12px', fontSize: '0.85em' }}>
+          {exchangeRate.label}
+        </p>
+      )}
+      {exchangeRateError && (
+        <p style={{ color: '#b45309', marginBottom: '12px', fontSize: '0.85em' }}>{exchangeRateError}</p>
+      )}
       <div
         style={{
           marginBottom: 16,
@@ -202,11 +307,20 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                 {saleHasOrderAdvance(sale) && (
                   <>
                     {' '}
-                    · Max in {shortfallMeta.sc}: same amount · remainder may be collected in{' '}
-                    {shortfallMeta.sc === 'USD' ? 'UZS' : 'USD'} (confirmation required)
+                    · Max total in {shortfallMeta.sc}: same amount · remainder may be collected in{' '}
+                    {shortfallMeta.sc === 'USD' ? 'UZS' : 'USD'} or split across both (CBU rate)
                   </>
                 )}
-                {shortfallMeta.paid != null && (
+                {shortfallMeta.splitCurrency && shortfallMeta.paid != null && (
+                  <>
+                    {' '}
+                    · <strong>Total at CBU rate (in {shortfallMeta.sc}):</strong>{' '}
+                    {shortfallMeta.sc === 'UZS'
+                      ? shortfallMeta.paid.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                      : shortfallMeta.paid.toFixed(2)}
+                  </>
+                )}
+                {!shortfallMeta.splitCurrency && shortfallMeta.paid != null && (
                   <>
                     {' '}
                     · <strong>Entered in {shortfallMeta.sc} fields:</strong> {shortfallMeta.paid.toFixed(2)}

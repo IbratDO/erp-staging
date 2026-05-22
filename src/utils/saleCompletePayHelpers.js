@@ -1,5 +1,8 @@
 /** Shared logic for "Complete & Pay" (sale status → completed) used from Sales and Dispatchers tabs. */
 
+/** Match backend _validate_and_set_sale_completion_shortfall tolerance (USD sale currency). */
+export const PAYMENT_SHORTFALL_TOLERANCE = 0.005;
+
 export function saleHasOrderAdvance(sale) {
   if (!sale) return false;
   const advance = parseFloat(sale.advance_payment_received) || 0;
@@ -20,19 +23,65 @@ export function saleDiscountAmountPerUnit(sale) {
   return Number.isFinite(discount) && discount > 0 ? discount : 0;
 }
 
-export function computeAdvanceRemainingDue(sale, sellingPriceOverride) {
-  if (!sale) return 0;
-  const price =
-    sellingPriceOverride != null && sellingPriceOverride !== ''
-      ? parseFloat(sellingPriceOverride)
-      : saleEffectiveUnitPrice(sale);
-  const qty = parseFloat(sale.quantity) || 0;
-  const total = (Number.isFinite(price) ? price : 0) * qty;
-  const advance = parseFloat(sale.advance_payment_received) || 0;
-  return Math.max(0, total - advance);
+export function uzsToUsd(uzsAmount, rate) {
+  const uzs = parseFloat(uzsAmount) || 0;
+  const r = parseFloat(rate);
+  if (!uzs || !r || r <= 0) return 0;
+  return Math.round((uzs / r) * 100) / 100;
 }
 
-export function validateAdvanceCompletionPayment(sale, uzsStr, usdStr, sellingPriceOverride) {
+export function usdToUzs(usdAmount, rate) {
+  const usd = parseFloat(usdAmount) || 0;
+  const r = parseFloat(rate);
+  if (!usd || !r || r <= 0) return 0;
+  return Math.round(usd * r);
+}
+
+/** Combined payment in the sale's list currency using CBU rate (UZS per 1 USD). */
+export function paymentTotalInSaleCurrency(uzsAmount, usdAmount, saleCurrency, rate) {
+  const sc = (saleCurrency || 'USD').toUpperCase();
+  const uzs = parseFloat(uzsAmount) || 0;
+  const usd = parseFloat(usdAmount) || 0;
+  if (sc === 'USD') {
+    return Math.round((usd + uzsToUsd(uzs, rate)) * 100) / 100;
+  }
+  return usdToUzs(usd, rate) + uzs;
+}
+
+function formatAmountForCurrency(amount, currency) {
+  const sc = (currency || 'USD').toUpperCase();
+  if (sc === 'UZS') {
+    return `${Math.round(amount).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`;
+  }
+  return `$${amount.toFixed(2)} USD`;
+}
+
+export function computeAdvanceRemainingDue(sale, sellingPriceOverride) {
+  if (!sale) return 0;
+  let total;
+  if (sellingPriceOverride != null && sellingPriceOverride !== '') {
+    const qty = parseFloat(sale.quantity) || 0;
+    total = parseFloat(sellingPriceOverride) * qty;
+  } else if (sale.total_amount != null && sale.total_amount !== '') {
+    total = parseFloat(sale.total_amount);
+  } else {
+    const qty = parseFloat(sale.quantity) || 0;
+    total = saleEffectiveUnitPrice(sale) * qty;
+  }
+  const advance = parseFloat(sale.advance_payment_received) || 0;
+  return Math.max(0, (Number.isFinite(total) ? total : 0) - advance);
+}
+
+function paymentHasShortfall(due, paid, saleCurrency) {
+  const d = parseFloat(due) || 0;
+  const p = parseFloat(paid) || 0;
+  if ((saleCurrency || 'USD').toUpperCase() === 'UZS') {
+    return p + 1 < d;
+  }
+  return p + PAYMENT_SHORTFALL_TOLERANCE < d;
+}
+
+export function validateAdvanceCompletionPayment(sale, uzsStr, usdStr, sellingPriceOverride, cbuRate) {
   if (!saleHasOrderAdvance(sale)) {
     return { ok: true };
   }
@@ -42,9 +91,25 @@ export function validateAdvanceCompletionPayment(sale, uzsStr, usdStr, sellingPr
   const usdT = parseFloat(usdStr) || 0;
 
   if (uzsT > 0 && usdT > 0) {
+    if (!cbuRate) {
+      return { ok: false, error: 'Exchange rate is still loading. Try again in a moment.' };
+    }
+    const paid = paymentTotalInSaleCurrency(uzsT, usdT, sc, cbuRate);
+    if (paid > due + 0.005) {
+      return {
+        ok: false,
+        error: `Payment cannot exceed the remaining amount due (${formatAmountForCurrency(due, sc)} after advance, at CBU rate).`,
+      };
+    }
     return {
-      ok: false,
-      error: 'Enter the remaining balance in one currency only (USD or UZS).',
+      ok: true,
+      needsSplitCurrencyConfirm: true,
+      due,
+      sc,
+      uzsAmount: uzsT,
+      usdAmount: usdT,
+      paidInSaleCurrency: paid,
+      cbuRate,
     };
   }
 
@@ -87,22 +152,75 @@ export function validateAdvanceCompletionPayment(sale, uzsStr, usdStr, sellingPr
   return { ok: true };
 }
 
-export function buildCrossCurrencyAdvanceConfirmMessage(validation) {
+export function buildCrossCurrencyAdvanceConfirmMessage(validation, exchangeRate) {
   const { due, sc, otherCurrency, otherAmount } = validation;
-  const dueLabel =
-    sc === 'UZS'
-      ? `${due.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
-      : `$${due.toFixed(2)} USD`;
-  const payLabel =
-    otherCurrency === 'UZS'
-      ? `${otherAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
-      : `$${otherAmount.toFixed(2)} USD`;
+  const dueLabel = formatAmountForCurrency(due, sc);
+  const payLabel = formatAmountForCurrency(otherAmount, otherCurrency);
+  const rateLine = exchangeRate?.label
+    ? `Based on CBU exchange rate: ${exchangeRate.label}`
+    : exchangeRate?.rate
+      ? `Based on CBU exchange rate: 1 USD = ${Number(exchangeRate.rate).toLocaleString(undefined, { maximumFractionDigits: 2 })} UZS`
+      : null;
+  const equiv =
+    exchangeRate?.rate && otherAmount > 0
+      ? sc === 'USD' && otherCurrency === 'UZS'
+        ? `(equivalent to ${formatAmountForCurrency(uzsToUsd(otherAmount, exchangeRate.rate), sc)} at CBU rate)`
+        : sc === 'UZS' && otherCurrency === 'USD'
+          ? `(equivalent to ${formatAmountForCurrency(usdToUzs(otherAmount, exchangeRate.rate), sc)} at CBU rate)`
+          : null
+      : null;
   return [
+    rateLine,
     `This sale is listed in ${sc}. Advance payment was already received.`,
     `Remaining due (in ${sc}): ${dueLabel}.`,
-    `You are recording ${payLabel} in ${otherCurrency} as the balance payment.`,
+    `You are recording ${payLabel} in ${otherCurrency}${equiv ? ` ${equiv}` : ''} as the balance payment.`,
     'Continue?',
-  ].join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+export function buildSplitCurrencyConfirmMessage({
+  sale,
+  uzsAmount,
+  usdAmount,
+  due,
+  sc,
+  cbuRate,
+  paidInSaleCurrency,
+  exchangeRate,
+}) {
+  const saleCurrency = sc || sale?.sale_currency || 'USD';
+  const rateLabel =
+    exchangeRate?.label ||
+    (cbuRate ? `1 USD = ${Number(cbuRate).toLocaleString(undefined, { maximumFractionDigits: 2 })} UZS (CBU rate)` : null);
+  const uzsLine =
+    uzsAmount > 0
+      ? sc === 'USD'
+        ? `- ${formatAmountForCurrency(uzsAmount, 'UZS')} (equivalent to ${formatAmountForCurrency(uzsToUsd(uzsAmount, cbuRate), sc)} at CBU rate)`
+        : `- ${formatAmountForCurrency(uzsAmount, 'UZS')}`
+      : null;
+  const usdLine =
+    usdAmount > 0
+      ? sc === 'UZS'
+        ? `- ${formatAmountForCurrency(usdAmount, 'USD')} (equivalent to ${formatAmountForCurrency(usdToUzs(usdAmount, cbuRate), sc)} at CBU rate)`
+        : `- ${formatAmountForCurrency(usdAmount, 'USD')}`
+      : null;
+  const totalPaid =
+    paidInSaleCurrency != null
+      ? formatAmountForCurrency(paidInSaleCurrency, saleCurrency)
+      : formatAmountForCurrency(paymentTotalInSaleCurrency(uzsAmount, usdAmount, saleCurrency, cbuRate), saleCurrency);
+  return [
+    rateLabel ? `Based on CBU exchange rate: ${rateLabel}` : null,
+    `Amount due: ${formatAmountForCurrency(due, saleCurrency)}`,
+    'You are paying:',
+    uzsLine,
+    usdLine,
+    `Total payment (in ${saleCurrency}): ${totalPaid}`,
+    'Continue?',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 export const emptyPaymentFormState = () => ({
@@ -183,11 +301,12 @@ export function buildPaymentFormDataFromSale(sale) {
 /**
  * Shortfall: underpayment may be completed as discount only after the user selects it (no on credit).
  */
-export function computePaymentShortfallMeta(sale, paymentFormData) {
+export function computePaymentShortfallMeta(sale, paymentFormData, cbuRate) {
   if (!sale) {
     return {
       needs: false,
       mixed: false,
+      splitCurrency: false,
       short: 0,
       due: null,
       paid: null,
@@ -201,23 +320,48 @@ export function computePaymentShortfallMeta(sale, paymentFormData) {
   const usdT = parseFloat(paymentFormData.usd) || 0;
   const sc = sale.sale_currency || 'USD';
   const hasAdvance = saleHasOrderAdvance(sale);
+  const splitCurrency = uzsT > 0 && usdT > 0;
   const sameSaleCurrencyBuckets =
     (sc === 'USD' && uzsT === 0) || (sc === 'UZS' && usdT === 0);
-  if (uzsT > 0 && usdT > 0) {
-    const paid = sc === 'USD' ? usdT : uzsT;
+
+  if (splitCurrency) {
+    if (!cbuRate) {
+      return {
+        needs: false,
+        mixed: true,
+        splitCurrency: true,
+        short: due,
+        sc,
+        due,
+        paid: null,
+        hasOverpayment: false,
+        overpaymentAmount: null,
+        hasAdvance,
+        exceedsRemainingDue: false,
+      };
+    }
+    const paid = paymentTotalInSaleCurrency(uzsT, usdT, sc, cbuRate);
+    const short = due - paid;
+    const exceedsRemainingDue = hasAdvance && paid > due + PAYMENT_SHORTFALL_TOLERANCE;
+    const overpaymentAmount =
+      !hasAdvance && paid > due + PAYMENT_SHORTFALL_TOLERANCE ? paid - due : null;
+    const hasOverpayment =
+      !hasAdvance && !!overpaymentAmount && overpaymentAmount > PAYMENT_SHORTFALL_TOLERANCE;
     return {
-      needs: false,
-      mixed: true,
-      short: due - paid,
+      needs: paymentHasShortfall(due, paid, sc),
+      mixed: false,
+      splitCurrency: true,
+      short,
       sc,
       due,
       paid,
-      hasOverpayment: false,
-      overpaymentAmount: null,
+      hasOverpayment,
+      overpaymentAmount,
       hasAdvance,
-      exceedsRemainingDue: false,
+      exceedsRemainingDue,
     };
   }
+
   const paid = sc === 'USD' ? usdT : uzsT;
   const short = due - paid;
   const payingOtherCurrency =
@@ -225,19 +369,22 @@ export function computePaymentShortfallMeta(sale, paymentFormData) {
     ((sc === 'USD' && uzsT > 0 && usdT === 0) || (sc === 'UZS' && usdT > 0 && uzsT === 0));
   const needs =
     !payingOtherCurrency &&
-    short > 0.01 &&
+    paymentHasShortfall(due, paid, sc) &&
     ((sc === 'USD' && uzsT === 0) || (sc === 'UZS' && usdT === 0));
   const exceedsRemainingDue =
     hasAdvance &&
     sameSaleCurrencyBuckets &&
-    paid > due + 0.005;
+    paid > due + PAYMENT_SHORTFALL_TOLERANCE;
   const overpaymentAmount =
-    !hasAdvance && sameSaleCurrencyBuckets && paid > due + 0.005 ? paid - due : null;
+    !hasAdvance && sameSaleCurrencyBuckets && paid > due + PAYMENT_SHORTFALL_TOLERANCE
+      ? paid - due
+      : null;
   const hasOverpayment =
-    !hasAdvance && !!overpaymentAmount && overpaymentAmount > 0.005;
+    !hasAdvance && !!overpaymentAmount && overpaymentAmount > PAYMENT_SHORTFALL_TOLERANCE;
   return {
     needs,
     mixed: false,
+    splitCurrency: false,
     short,
     sc,
     due,
@@ -249,15 +396,20 @@ export function computePaymentShortfallMeta(sale, paymentFormData) {
   };
 }
 
-export function buildCompleteSaleRequest(paymentFormData, meta) {
+export function buildCompleteSaleRequest(paymentFormData, meta, exchangeRate) {
   const requestData = {
     status: 'completed',
     notes: String(paymentFormData.completion_notes || '').trim(),
     uzs: parseFloat(paymentFormData.uzs) || 0,
     usd: parseFloat(paymentFormData.usd) || 0,
   };
-  if (meta.needs && paymentFormData.balance_shortfall_type === 'discount') {
+  if (paymentFormData.balance_shortfall_type === 'discount') {
     requestData.balance_shortfall_type = 'discount';
+  }
+  const uzsT = requestData.uzs;
+  const usdT = requestData.usd;
+  if (exchangeRate?.rate && uzsT > 0 && usdT > 0) {
+    requestData.exchange_rate = exchangeRate.rate;
   }
   if (paymentFormData.dispatch_payment_needed) {
     const dAmt = parseFloat(String(paymentFormData.dispatch_payment_amount).replace(',', '.')) || 0;
@@ -265,6 +417,40 @@ export function buildCompleteSaleRequest(paymentFormData, meta) {
     requestData.dispatch_payment_currency = paymentFormData.dispatch_payment_currency || 'UZS';
   }
   return requestData;
+}
+
+/** Split one group payment across line items (remainder on last sale to avoid rounding drift). */
+export function buildGroupCompleteRequests(groupSales, paymentFormData, meta, exchangeRate) {
+  if (!groupSales?.length) return [];
+  const dues = groupSales.map((sale) => computeAdvanceRemainingDue(sale));
+  const totalDue = dues.reduce((sum, d) => sum + d, 0);
+  const uzsIn = parseFloat(paymentFormData.uzs) || 0;
+  const usdIn = parseFloat(paymentFormData.usd) || 0;
+  let uzsLeft = uzsIn;
+  let usdLeft = usdIn;
+
+  const applyGroupDiscount = paymentFormData.balance_shortfall_type === 'discount';
+
+  return groupSales.map((sale, idx) => {
+    const isLast = idx === groupSales.length - 1;
+    const weight = totalDue > 0 ? dues[idx] / totalDue : 1 / groupSales.length;
+    const uzsShare = isLast ? uzsLeft : Math.round(uzsIn * weight);
+    const usdShare = isLast ? usdLeft : Math.round(usdIn * weight * 100) / 100;
+    uzsLeft -= uzsShare;
+    usdLeft -= usdShare;
+
+    const childForm = {
+      ...paymentFormData,
+      uzs: uzsShare > 0 ? String(uzsShare) : '',
+      usd: usdShare > 0 ? String(usdShare) : '',
+      balance_shortfall_type: applyGroupDiscount ? 'discount' : '',
+    };
+    const childMeta = isLast ? meta : { ...meta, needs: false, hasOverpayment: false, overpaymentAmount: null };
+    return {
+      id: sale.id,
+      data: buildCompleteSaleRequest(childForm, childMeta, exchangeRate),
+    };
+  });
 }
 
 /** Delivery after dispatch: 3-step settlement instead of single Complete & Pay (shop or from-order). */

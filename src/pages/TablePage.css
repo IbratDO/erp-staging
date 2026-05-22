@@ -498,6 +498,63 @@
   white-space: nowrap;
 }
 
+/* —— Multi-item sale: header fields on one row —— */
+.sales-batch-header-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.55fr) minmax(0, 1fr) minmax(0, 0.75fr);
+  gap: 15px;
+  margin-bottom: 20px;
+  align-items: flex-end;
+}
+
+.sales-batch-header-row__customer {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.sales-batch-header-row__customer select {
+  min-width: 0;
+}
+
+@media (max-width: 1099px) {
+  .sales-batch-header-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 599px) {
+  .sales-batch-header-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sale-group-row td {
+  vertical-align: top;
+  background: #eef4ff;
+  border-top: 1px solid #c7d9f5;
+}
+
+.sale-group-row:hover td {
+  background: #dfeaff;
+}
+
+.sale-group-row td:first-child {
+  border-left: 4px solid #4f7fd6;
+}
+
+.sale-group-detail-row td {
+  font-size: 12px;
+  color: #4a5568;
+  background: #fafbfc;
+  border-top: none;
+}
+
+.sale-group-detail-row__cell {
+  padding-left: 2rem;
+}
+
 /* —— Multi-item sale: line items table (matches .form-card / .form-group control sizing) —— */
 .batch-sale-lines-block {
   width: 100%;

@@ -5,9 +5,11 @@ import { productMatchesSearch } from '../utils/productSearch';
 
 /**
  * Dropdown product picker with a search field inside the open panel (not a native select).
+ * Pass pickerItems for one row per inventory layer ({ value, label, product }).
  */
 export default function ProductSearchableSelect({
-  products,
+  products = [],
+  pickerItems = null,
   value,
   onChange,
   placeholder = 'Select a product…',
@@ -16,6 +18,7 @@ export default function ProductSearchableSelect({
   triggerClassName = '',
   'aria-label': ariaLabel,
   emptyHint = null,
+  inventoryRows = null,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -25,16 +28,19 @@ export default function ProductSearchableSelect({
   const searchRef = useRef(null);
 
   const tableTrigger = typeof triggerClassName === 'string' && triggerClassName.includes('batch-sale-lines__control');
+  const useItems = Array.isArray(pickerItems);
 
-  const selected = useMemo(
-    () => products.find((p) => String(p.id) === String(value)),
-    [products, value]
-  );
+  const selected = useMemo(() => {
+    if (useItems) return pickerItems.find((item) => String(item.value) === String(value));
+    return products.find((p) => String(p.id) === String(value));
+  }, [useItems, pickerItems, products, value]);
 
-  const filtered = useMemo(
-    () => products.filter((p) => productMatchesSearch(p, query)),
-    [products, query]
-  );
+  const filtered = useMemo(() => {
+    if (useItems) {
+      return pickerItems.filter((item) => productMatchesSearch(item.product, query));
+    }
+    return products.filter((p) => productMatchesSearch(p, query));
+  }, [useItems, pickerItems, products, query]);
 
   const updatePanelPos = useCallback(() => {
     const el = triggerRef.current;
@@ -82,11 +88,16 @@ export default function ProductSearchableSelect({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  const display = selected ? productSalePickerLabel(selected) : '';
-  const noProducts = !products.length;
+  const display = useItems
+    ? selected?.label || ''
+    : selected
+      ? productSalePickerLabel(selected, inventoryRows)
+      : '';
+  const optionCount = useItems ? pickerItems.length : products.length;
+  const noOptions = optionCount === 0;
 
   const handleToggle = () => {
-    if (disabled || noProducts) return;
+    if (disabled || noOptions) return;
     setOpen((o) => {
       const next = !o;
       if (next) setQuery('');
@@ -101,7 +112,7 @@ export default function ProductSearchableSelect({
   };
 
   const panel =
-    open && panelPos && !noProducts
+    open && panelPos && !noOptions
       ? createPortal(
           <div
             ref={panelRef}
@@ -163,15 +174,17 @@ export default function ProductSearchableSelect({
               {filtered.length === 0 ? (
                 <li style={{ padding: '12px 10px', color: '#666', fontSize: 14 }}>No matches</li>
               ) : (
-                filtered.map((p) => {
-                  const isSel = String(p.id) === String(value);
+                filtered.map((entry) => {
+                  const entryValue = useItems ? entry.value : entry.id;
+                  const entryLabel = useItems ? entry.label : productSalePickerLabel(entry, inventoryRows);
+                  const isSel = String(entryValue) === String(value);
                   return (
-                    <li key={p.id}>
+                    <li key={entryValue}>
                       <button
                         type="button"
                         role="option"
                         aria-selected={isSel}
-                        onClick={() => handlePick(p.id)}
+                        onClick={() => handlePick(entryValue)}
                         style={{
                           width: '100%',
                           textAlign: 'left',
@@ -186,7 +199,7 @@ export default function ProductSearchableSelect({
                           lineHeight: 1.35,
                         }}
                       >
-                        {productSalePickerLabel(p)}
+                        {entryLabel}
                       </button>
                     </li>
                   );
@@ -202,7 +215,7 @@ export default function ProductSearchableSelect({
     ? {
         width: '100%',
         textAlign: 'left',
-        cursor: disabled || noProducts ? 'not-allowed' : 'pointer',
+        cursor: disabled || noOptions ? 'not-allowed' : 'pointer',
         color: display ? '#2c3e50' : '#999',
       }
     : {
@@ -213,8 +226,8 @@ export default function ProductSearchableSelect({
         borderRadius: 5,
         fontSize: 14,
         fontFamily: 'inherit',
-        background: noProducts ? '#f5f5f5' : '#fff',
-        cursor: disabled || noProducts ? 'not-allowed' : 'pointer',
+        background: noOptions ? '#f5f5f5' : '#fff',
+        cursor: disabled || noOptions ? 'not-allowed' : 'pointer',
         color: display ? '#2c3e50' : '#999',
       };
 
@@ -223,7 +236,7 @@ export default function ProductSearchableSelect({
       <button
         ref={triggerRef}
         type="button"
-        disabled={disabled || noProducts}
+        disabled={disabled || noOptions}
         onClick={handleToggle}
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -231,10 +244,10 @@ export default function ProductSearchableSelect({
         className={triggerClassName || undefined}
         style={triggerStyle}
       >
-        {noProducts ? 'No products in stock' : display || placeholder}
+        {noOptions ? 'No products in stock' : display || placeholder}
       </button>
       {panel}
-      {emptyHint && noProducts ? (
+      {emptyHint && noOptions ? (
         <div style={{ marginTop: 6, fontSize: 13 }}>{emptyHint}</div>
       ) : null}
     </div>

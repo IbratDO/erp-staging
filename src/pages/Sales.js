@@ -11,7 +11,7 @@ import SaleDeliverySettlementForm from '../components/SaleDeliverySettlementForm
 import { shopDeliverySettlementRequired } from '../utils/saleCompletePayHelpers';
 import ShopDeliverySettlementButtons from '../components/ShopDeliverySettlementButtons';
 import ProductSearchableSelect from '../components/ProductSearchableSelect';
-import { plannedSellingUsdPerUnit, plannedSellingUzsPerUnit } from '../utils/orderPlannedPricing';
+import { layerSalePickerLabel, resolveLayerListPrice } from '../utils/productCost';
 import {
   computeAdvanceRemainingDue,
   validateAdvanceCompletionPayment,
@@ -21,6 +21,14 @@ import {
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import {
+  buildSaleDisplayRows,
+  aggregateGroupSales,
+  buildCombinedSaleForGroup,
+  saleLikeForDisplayRow,
+  sumSalesDiscountTotals,
+  saleDiscountTotalAmount,
+} from '../utils/saleGroupDisplay';
 
 /** Column accessors — match main sales grid header `columnId`s. Actions column excluded. */
 const SALE_SORT_ACCESSORS = {
@@ -51,7 +59,7 @@ const SALE_SORT_ACCESSORS = {
   selling_price: (s) => parseFloat(s.selling_price) || 0,
   total_amount: (s) => parseFloat(s.total_amount) || 0,
   discount_credit: (s) =>
-    `${parseFloat(s.total_discount_amount) || 0}:${String(s.balance_shortfall_type ?? '')}:${parseFloat(s.balance_shortfall_amount) || 0}`,
+    `${saleDiscountTotalAmount(s)}:${String(s.balance_shortfall_type ?? '')}:${parseFloat(s.balance_shortfall_amount) || 0}`,
   uzs_pay: (s) =>
     (parseFloat(s.payment_uzs_cash) || 0) + (parseFloat(s.payment_uzs_card) || 0),
   usd_pay: (s) =>
@@ -68,18 +76,88 @@ const SALE_SORT_ACCESSORS = {
   sale_date: (s) => new Date(s.sale_date).getTime() || 0,
 };
 
-function stockingOrderFromInventory(productId, inventoryList) {
-  if (productId == null || Number.isNaN(Number(productId))) return null;
-  const rows = inventoryList.filter(
-    (it) =>
-      Number(it.product) === Number(productId) &&
-      it.status === 'in_inventory' &&
-      Number(it.quantity) > 0
-  );
-  for (const r of rows) {
-    if (r.stocking_order) return r.stocking_order;
+const SALE_DISPLAY_SORT_ACCESSORS = Object.fromEntries(
+  Object.entries(SALE_SORT_ACCESSORS).map(([key, fn]) => [
+    key,
+    (row) => fn(saleLikeForDisplayRow(row)),
+  ])
+);
+
+function saleRowBackground(sale) {
+  if (sale.balance_shortfall_type === 'on_credit') return '#ffebee';
+  if (sale.balance_shortfall_type === 'discount') return '#fff3e0';
+  return undefined;
+}
+
+function renderDiscountCreditCell(sale) {
+  const saleDiscount = parseFloat(sale.total_discount_amount) || 0;
+  const parts = [];
+  if (saleDiscount > 0) {
+    parts.push(`Discount: ${formatDisplayAmount(saleDiscount, sale.sale_currency || 'USD')}`);
   }
-  return null;
+  if (sale.balance_shortfall_type === 'discount' && sale.balance_shortfall_amount) {
+    parts.push(
+      `At completion: ${formatDisplayAmount(
+        sale.balance_shortfall_amount,
+        sale.balance_shortfall_currency || sale.sale_currency || 'USD'
+      )}`
+    );
+  } else if (sale.balance_shortfall_type === 'on_credit' && sale.balance_shortfall_amount) {
+    parts.push(
+      `On credit: ${formatDisplayAmount(
+        sale.balance_shortfall_amount,
+        sale.balance_shortfall_currency || sale.sale_currency || 'USD'
+      )}`
+    );
+  }
+  return parts.length ? parts.join(' · ') : '—';
+}
+
+function renderPackageCell(sale, packages) {
+  if (sale.package_lines && sale.package_lines.length > 0) {
+    return (
+      <span style={{ fontSize: '0.85em' }}>
+        {sale.package_lines.map((pl, i) => {
+          const pkg = packages.find((p) => p.package_type === pl.package_type);
+          const costUsd = pkg ? Number(pkg.cost_per_unit_usd) * pl.quantity : 0;
+          const costUzs = pkg ? Number(pkg.cost_per_unit_uzs) * pl.quantity : 0;
+          return (
+            <span key={pl.id ?? i} style={{ display: 'block', whiteSpace: 'nowrap' }}>
+              {pl.package_type} ×{pl.quantity}
+              {costUsd > 0 ? ` $${costUsd.toFixed(2)}` : ''}
+              {costUzs > 0 ? ` ${costUzs.toLocaleString()} UZS` : ''}
+            </span>
+          );
+        })}
+      </span>
+    );
+  }
+  if (sale.package_type) {
+    return (
+      <span>
+        {sale.package_type} ×{sale.package_quantity != null ? sale.package_quantity : sale.quantity}
+        {sale.package_cost_per_unit_usd > 0 ? ` $${Number(sale.package_cost_per_unit_usd).toFixed(2)}` : ''}
+        {sale.package_cost_per_unit_uzs > 0 ? ` ${Number(sale.package_cost_per_unit_uzs).toLocaleString()} UZS` : ''}
+      </span>
+    );
+  }
+  return <span style={{ color: '#bbb' }}>—</span>;
+}
+
+function renderDispatcherCell(sale) {
+  const d = sale.dispatch_info;
+  if (!d) return <span style={{ color: '#bbb' }}>—</span>;
+  if (d.dispatch_type === 'bts') return d.dispatcher_name || 'BTS';
+  return d.dispatcher_name ? d.dispatcher_name : <span style={{ color: '#bbb' }}>—</span>;
+}
+
+function findInventoryLayer(inventoryList, batchId) {
+  return inventoryList.find((x) => Number(x.batch_id) === Number(batchId));
+}
+
+function productForLayer(layer, products) {
+  if (!layer) return null;
+  return layer.product_detail || products.find((x) => Number(x.id) === Number(layer.product));
 }
 
 function formatSalePriceForCurrency(priceNum, saleCur) {
@@ -109,35 +187,6 @@ function applyListDiscountFinal(listNum, discNum, finalNum, saleCur) {
     selling_price: formatSalePriceForCurrency(final, saleCur),
     discount_price: formatDiscountForCurrency(discount, saleCur),
   };
-}
-
-function resolveListPriceForProduct(productId, products, inventory, saleCur) {
-  const pid = parseInt(productId, 10);
-  if (Number.isNaN(pid)) return null;
-  const p = products.find((x) => Number(x.id) === pid);
-  const stocking = stockingOrderFromInventory(pid, inventory);
-  let priceNum = null;
-  if (stocking) {
-    if (saleCur === 'UZS') {
-      priceNum = plannedSellingUzsPerUnit(stocking);
-      if (priceNum == null || priceNum <= 0) {
-        priceNum = plannedSellingUsdPerUnit(stocking);
-      }
-    } else {
-      priceNum = plannedSellingUsdPerUnit(stocking);
-      if (priceNum == null || priceNum <= 0) {
-        priceNum = plannedSellingUzsPerUnit(stocking);
-      }
-    }
-  }
-  if (priceNum != null && priceNum > 0) return priceNum;
-  if (p) {
-    const sp = parseFloat(p.selling_price);
-    if (p.selling_price != null && p.selling_price !== '' && !Number.isNaN(sp) && sp > 0) {
-      return sp;
-    }
-  }
-  return null;
 }
 
 /** Same shortfall rules as Complete & Pay — reserved balance uses total_amount − deposit. */
@@ -436,23 +485,40 @@ const Sales = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
-  const saleSort = useClientTableSort(SALE_SORT_ACCESSORS);
+  const saleSort = useClientTableSort(SALE_DISPLAY_SORT_ACCESSORS);
+  const [expandedSaleGroups, setExpandedSaleGroups] = useState(() => new Set());
 
-  const sortedFilteredSales = useMemo(() => {
-    const rows = filteredSales;
+  const toggleSaleGroup = (groupId) => {
+    setExpandedSaleGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+
+  const salesDisplayRows = useMemo(
+    () => buildSaleDisplayRows(filteredSales, sales),
+    [filteredSales, sales]
+  );
+
+  const sortedDisplayRows = useMemo(() => {
+    const rows = salesDisplayRows;
     if (!rows?.length) return rows;
-    if (saleSort.sortCol && SALE_SORT_ACCESSORS[saleSort.sortCol]) {
+    if (saleSort.sortCol && SALE_DISPLAY_SORT_ACCESSORS[saleSort.sortCol]) {
       return saleSort.sortRows(rows);
     }
     return [...rows].sort((a, b) => {
-      const aDone = a.status === 'completed' ? 1 : 0;
-      const bDone = b.status === 'completed' ? 1 : 0;
+      const aSale = saleLikeForDisplayRow(a);
+      const bSale = saleLikeForDisplayRow(b);
+      const aDone = aSale.status === 'completed' ? 1 : 0;
+      const bDone = bSale.status === 'completed' ? 1 : 0;
       if (aDone !== bDone) return aDone - bDone;
-      const ta = new Date(a.sale_date).getTime() || 0;
-      const tb = new Date(b.sale_date).getTime() || 0;
+      const ta = new Date(aSale.sale_date).getTime() || 0;
+      const tb = new Date(bSale.sale_date).getTime() || 0;
       return tb - ta;
     });
-  }, [filteredSales, saleSort]);
+  }, [salesDisplayRows, saleSort]);
 
   const salesColumnTotals = useMemo(() => {
     const list = filteredSales;
@@ -461,20 +527,18 @@ const Sales = () => {
     }
     let quantity = 0;
     let totalAmount = 0;
-    let totalDiscount = 0;
     let uzs = 0;
     let usd = 0;
     const saleCurrencies = new Set();
     for (const s of list) {
       quantity += parseInt(s.quantity, 10) || 0;
       totalAmount += parseFloat(s.total_amount) || 0;
-      totalDiscount += parseFloat(s.total_discount_amount) || 0;
       saleCurrencies.add(s.sale_currency || 'USD');
       uzs += (parseFloat(s.payment_uzs_cash) || 0) + (parseFloat(s.payment_uzs_card) || 0);
       usd += (parseFloat(s.payment_usd_cash) || 0) + (parseFloat(s.payment_usd_card) || 0);
     }
+    const { total: totalDiscount, currency: totalDiscountCurrency } = sumSalesDiscountTotals(list);
     const totalAmountCurrency = saleCurrencies.size === 1 ? [...saleCurrencies][0] : null;
-    const totalDiscountCurrency = saleCurrencies.size === 1 ? [...saleCurrencies][0] : null;
     return { quantity, totalAmount, totalAmountCurrency, totalDiscount, totalDiscountCurrency, uzs, usd };
   }, [filteredSales]);
 
@@ -493,32 +557,54 @@ const Sales = () => {
     [products, productIdsWithPositiveInventory]
   );
 
-  const batchProductsForPicker = useMemo(
+  const batchLayerPickerItems = useMemo(
     () =>
-      productsAvailableForSale
-        .filter((p) => !batchFormCategory || p.category === batchFormCategory)
-        .slice()
-        .sort((a, b) => Number(b.id) - Number(a.id)),
-    [productsAvailableForSale, batchFormCategory]
+      inventory
+        .filter((layer) => Number(layer.quantity) > 0)
+        .map((layer) => {
+          const p = productForLayer(layer, products);
+          if (!p) return null;
+          if (batchFormCategory && p.category !== batchFormCategory) return null;
+          return {
+            value: String(layer.batch_id),
+            label: layerSalePickerLabel(p, layer),
+            product: p,
+            layer,
+          };
+        })
+        .filter(Boolean)
+        .sort(
+          (a, b) =>
+            Number(b.product.id) - Number(a.product.id) || a.label.localeCompare(b.label)
+        ),
+    [inventory, products, batchFormCategory]
   );
 
   useEffect(() => {
     if (!showBatchForm) return;
     setBatchLines((lines) => {
-      const allowed = new Set(batchProductsForPicker.map((p) => Number(p.id)));
+      const allowed = new Set(batchLayerPickerItems.map((item) => item.value));
       let changed = false;
       const next = lines.map((line) => {
-        if (!line.product) return line;
-        const id = parseInt(line.product, 10);
-        if (Number.isNaN(id) || !allowed.has(id)) {
+        if (!line.layer) return line;
+        if (!allowed.has(String(line.layer))) {
           changed = true;
-          return { ...line, product: '', list_price: '', selling_price: '', discount_price: '', packageLines: EMPTY_PKG_LINES() };
+          return {
+            ...line,
+            layer: '',
+            product: '',
+            inventory_batch_id: '',
+            list_price: '',
+            selling_price: '',
+            discount_price: '',
+            packageLines: EMPTY_PKG_LINES(),
+          };
         }
         return line;
       });
       return changed ? next : lines;
     });
-  }, [showBatchForm, batchProductsForPicker]);
+  }, [showBatchForm, batchLayerPickerItems]);
 
   const fetchProducts = async () => {
     try {
@@ -531,7 +617,7 @@ const Sales = () => {
 
   const fetchInventory = async () => {
     try {
-      const response = await api.get('/inventory/');
+      const response = await api.get('/inventory/layers/');
       setInventory(response.data.results || response.data);
     } catch (error) {
       console.error('Error fetching inventory:', error);
@@ -543,17 +629,23 @@ const Sales = () => {
       lines.map((l) => {
         if (l.key !== key) return l;
         const saleCur = batchDefaults.sale_currency || 'USD';
-        if (field === 'product') {
-          const next = { ...l, product: value };
+        if (field === 'layer') {
+          const next = { ...l, layer: value };
           if (!value) {
+            next.product = '';
+            next.inventory_batch_id = '';
             next.list_price = '';
             next.selling_price = '';
             next.discount_price = '';
             next.packageLines = EMPTY_PKG_LINES();
             return next;
           }
-          const priceNum = resolveListPriceForProduct(value, products, inventory, saleCur);
+          const layer = findInventoryLayer(inventory, value);
+          const p = productForLayer(layer, products);
+          const priceNum = resolveLayerListPrice(layer, p, saleCur);
           const formatted = formatSalePriceForCurrency(priceNum, saleCur);
+          next.product = layer ? String(layer.product) : '';
+          next.inventory_batch_id = layer ? String(layer.batch_id) : '';
           next.list_price = formatted;
           next.selling_price = formatted;
           next.discount_price = '';
@@ -585,7 +677,9 @@ const Sales = () => {
       ...lines,
       {
         key: `${Date.now()}-${Math.random()}`,
+        layer: '',
         product: '',
+        inventory_batch_id: '',
         quantity: '1',
         list_price: '',
         selling_price: '',
@@ -605,7 +699,7 @@ const Sales = () => {
       showNotification('Please select a customer before creating sales.', 'error');
       return;
     }
-    const withProduct = batchLines.filter((l) => l.product);
+    const withProduct = batchLines.filter((l) => l.layer && l.product);
     if (withProduct.length === 0) {
       showNotification('Add at least one line with a product selected.', 'error');
       return;
@@ -628,6 +722,9 @@ const Sales = () => {
         package_type: null,
         package_quantity: null,
       };
+      if (l.inventory_batch_id) {
+        row.inventory_batch_id = parseInt(l.inventory_batch_id, 10);
+      }
       const disc = parsePriceNum(l.discount_price) || 0;
       if (disc > 0) {
         row.discount_price = l.discount_price;
@@ -640,6 +737,20 @@ const Sales = () => {
       }
       return row;
     });
+    for (const l of withProduct) {
+      const batchId = parseInt(l.inventory_batch_id, 10);
+      const need = parseInt(l.quantity, 10) || 0;
+      const layer = findInventoryLayer(inventory, batchId);
+      const available = layer ? Number(layer.quantity) || 0 : 0;
+      if (!layer || available < need) {
+        const pid = parseInt(l.product, 10);
+        showNotification(
+          `Insufficient stock in the selected layer for product #${pid}: need ${need}, have ${available}.`,
+          'error'
+        );
+        return;
+      }
+    }
     const needByProduct = new Map();
     for (const l of withProduct) {
       const pid = parseInt(l.product, 10);
@@ -647,10 +758,9 @@ const Sales = () => {
       needByProduct.set(pid, (needByProduct.get(pid) || 0) + q);
     }
     for (const [pid, need] of needByProduct) {
-      const invItems = inventory.filter(
-        (x) => x.product === pid && x.status === 'in_inventory'
-      );
-      const available = invItems.reduce((s, it) => s + (it.quantity || 0), 0);
+      const available = inventory
+        .filter((x) => Number(x.product) === pid)
+        .reduce((s, it) => s + (Number(it.quantity) || 0), 0);
       if (available < need) {
         showNotification(
           `Insufficient inventory for product #${pid}: need ${need}, have ${available}.`,
@@ -712,6 +822,7 @@ const Sales = () => {
   const [balances, setBalances] = useState([]);
   const [dispatchFormData, setDispatchFormData] = useState({
     saleId: null,
+    saleIds: [],
     delivery_cost: '',
     tracking_number: '',
     dispatch_type: 'dostavshik',
@@ -758,12 +869,13 @@ const Sales = () => {
     }
   };
 
-  const handleStatusUpdate = async (saleId, newStatus) => {
+  const handleStatusUpdate = async (saleId, newStatus, groupSales = null) => {
     try {
+      const targetSales = groupSales?.length ? groupSales : null;
       if (newStatus === 'dispatched') {
-        // Show dispatch form to enter delivery cost
         setDispatchFormData({
-          saleId: saleId,
+          saleId: targetSales ? null : saleId,
+          saleIds: targetSales ? targetSales.map((s) => s.id) : [saleId],
           delivery_cost: '',
           tracking_number: '',
           dispatch_type: 'dostavshik',
@@ -774,12 +886,20 @@ const Sales = () => {
         });
         setShowDispatchForm(true);
       } else if (newStatus === 'completed') {
-        const sale = sales.find(s => s.id === saleId);
+        const sale = targetSales
+          ? buildCombinedSaleForGroup(targetSales)
+          : sales.find((s) => s.id === saleId);
         if (!sale) {
           console.warn('Sale not found when trying to complete:', saleId);
           return;
         }
         setCompletePaySale(sale);
+      } else if (targetSales) {
+        for (const s of targetSales) {
+          await api.post(`/sales/${s.id}/update_status/`, { status: newStatus, notes: '' });
+        }
+        fetchSales();
+        showNotification(`Sale status updated to ${newStatus}`, 'success');
       } else {
         await api.post(`/sales/${saleId}/update_status/`, { status: newStatus, notes: '' });
         fetchSales();
@@ -787,7 +907,6 @@ const Sales = () => {
       }
     } catch (error) {
       console.error('Error updating status:', error);
-      // Only show an error notification when we actually called the backend
       if (newStatus !== 'completed') {
         showNotification('Error updating status', 'error');
       }
@@ -850,7 +969,6 @@ const Sales = () => {
       }
 
       const dispatchData = {
-        sale: dispatchFormData.saleId,
         dispatch_type: dispatchFormData.dispatch_type,
         is_paid: dispatchFormData.is_paid,
         delivery_cost: dispatchFormData.currency === 'USD' ? dispatchFormData.delivery_cost : 0,
@@ -871,11 +989,20 @@ const Sales = () => {
         dispatchData.delivery_payment_card = 0;
       }
 
-      await api.post('/dispatches/', dispatchData);
+      const saleIds =
+        dispatchFormData.saleIds?.length > 0
+          ? dispatchFormData.saleIds
+          : dispatchFormData.saleId != null
+            ? [dispatchFormData.saleId]
+            : [];
+      for (const sid of saleIds) {
+        await api.post('/dispatches/', { ...dispatchData, sale: sid });
+      }
       
       setShowDispatchForm(false);
       setDispatchFormData({
         saleId: null,
+        saleIds: [],
         delivery_cost: '',
         tracking_number: '',
         dispatch_type: 'dostavshik',
@@ -1114,6 +1241,134 @@ const Sales = () => {
     sellReservedData.usd
   );
 
+  const renderSaleActionsCell = (sale, groupSales = null) => {
+    const actionFor = (status) => handleStatusUpdate(sale.id, status, groupSales || undefined);
+    return (
+      <>
+        {(sale.status === 'pending' || sale.status === 'confirmed') &&
+          sale.sale_type === 'delivery' &&
+          !sale.dispatch_info && (
+            <button type="button" className="btn-status" onClick={() => actionFor('dispatched')}>
+              Dispatch
+            </button>
+          )}
+        {(sale.status === 'pending' || sale.status === 'confirmed') && sale.sale_type === 'bought_from_shop' && (
+          <button type="button" className="btn-status" onClick={() => actionFor('completed')}>
+            Complete & Pay
+          </button>
+        )}
+        {sale.status === 'dispatched' && shopDeliverySettlementRequired(sale) && (
+          <ShopDeliverySettlementButtons
+            sale={sale}
+            classNameButton="btn-status"
+            onOpenSettlement={openDeliverySettlementModal}
+          />
+        )}
+        {sale.status === 'dispatched' && !shopDeliverySettlementRequired(sale) && (
+          <button type="button" className="btn-status" onClick={() => actionFor('completed')}>
+            Complete & Pay
+          </button>
+        )}
+        {sale.status === 'pending' && sale.sale_type === 'from_order' && (
+          <button
+            type="button"
+            className="btn-status"
+            onClick={() => handleCompleteFromOrder(sale.id)}
+            style={{ backgroundColor: '#4caf50', color: 'white' }}
+          >
+            Complete Sale
+          </button>
+        )}
+        {sale.status === 'reserved' && sale.sale_type === 'reserved' && (
+          <>
+            <button
+              type="button"
+              className="btn-status"
+              onClick={() => handleSellReserved(sale.id)}
+              style={{ backgroundColor: '#4caf50', color: 'white', marginBottom: '5px' }}
+            >
+              Sell
+            </button>
+            <button
+              type="button"
+              className="btn-edit"
+              onClick={() => handleCancelReserved(sale.id)}
+              style={{ backgroundColor: '#f44336', color: 'white' }}
+            >
+              Cancel
+            </button>
+            {sale.deposit_received && (
+              <span style={{ fontSize: '0.85em', color: '#666', display: 'block', marginTop: '5px' }}>
+                Deposit: {formatDisplayAmount(sale.deposit_amount, sale.deposit_currency || 'USD')}
+              </span>
+            )}
+          </>
+        )}
+        {sale.status === 'completed' && sale.payment_currency && (
+          <span style={{ fontSize: '0.9em', color: '#666', display: 'block', marginTop: '5px' }}>
+            Paid: {sale.payment_currency}
+          </span>
+        )}
+      </>
+    );
+  };
+
+  const renderSaleProductCells = (sale, { detail = false } = {}) => {
+    const detailClass = detail ? 'sale-group-detail-row__cell' : '';
+    const saleTypeLabel =
+      sale.sale_type === 'bought_from_shop'
+        ? 'Shop'
+        : sale.sale_type === 'from_order'
+          ? 'From Order'
+          : sale.sale_type === 'reserved'
+            ? 'Reserved'
+            : 'Delivery';
+    const uzsPay =
+      (parseFloat(sale.payment_uzs_cash) || 0) + (parseFloat(sale.payment_uzs_card) || 0);
+    const usdPay =
+      (parseFloat(sale.payment_usd_cash) || 0) + (parseFloat(sale.payment_usd_card) || 0);
+    return (
+      <>
+        <td className={detailClass}>
+          <span className={`status-badge ${sale.status}`}>{sale.status}</span>
+        </td>
+        <td className={detailClass}>{sale.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
+        <td className={detailClass}>{sale.product_detail?.brand || '-'}</td>
+        <td className={detailClass}>{sale.product_detail?.model || '-'}</td>
+        <td className={detailClass}><strong>{sale.product_detail?.size || '-'}</strong></td>
+        <td className={detailClass}><strong>{sale.product_detail?.color || '-'}</strong></td>
+        <td className={detailClass}>{saleTypeLabel}</td>
+        <td className={detailClass}>{renderPackageCell(sale, packages)}</td>
+        <td className={detailClass}>{sale.quantity}</td>
+        <td className={detailClass}>{formatDisplayAmount(sale.selling_price, sale.sale_currency || 'USD')}</td>
+        <td className={detailClass}>{formatDisplayAmount(sale.total_amount, sale.sale_currency || 'USD')}</td>
+        <td className={detailClass} style={{ fontSize: detail ? undefined : '0.9em' }}>
+          {renderDiscountCreditCell(sale)}
+        </td>
+        <td className={detailClass}>
+          {uzsPay > 0 ? (
+            <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>
+              {uzsPay.toLocaleString()} UZS
+            </span>
+          ) : (
+            <span style={{ color: '#bbb' }}>—</span>
+          )}
+        </td>
+        <td className={detailClass}>
+          {usdPay > 0 ? (
+            <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>${usdPay.toFixed(2)}</span>
+          ) : (
+            <span style={{ color: '#bbb' }}>—</span>
+          )}
+        </td>
+        <td className={detailClass}>{sale.customer_detail?.name || '-'}</td>
+        <td className={detailClass}>{sale.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
+        <td className={detailClass}>{sale.salesman_detail?.username || '-'}</td>
+        <td className={detailClass}>{renderDispatcherCell(sale)}</td>
+      </>
+    );
+  };
+
   if (loading) {
     return <div className="page-container">Loading...</div>;
   }
@@ -1184,13 +1439,14 @@ const Sales = () => {
               setBatchLines([
                 {
                   key: `${Date.now()}-0`,
+                  layer: '',
                   product: '',
+                  inventory_batch_id: '',
                   quantity: '1',
                   list_price: '',
                   selling_price: '',
                   discount_price: '',
-                  package_type: '',
-                  package_quantity: '',
+                  packageLines: EMPTY_PKG_LINES(),
                 },
               ]);
             }
@@ -1613,7 +1869,7 @@ const Sales = () => {
             Add one line per product. The customer and the sale type and currency below apply to every line. Each line becomes a separate sale (status: pending — update in the list as usual).
           </p>
           <form onSubmit={handleBatchSubmit}>
-            <div className="form-grid">
+            <div className="sales-batch-header-row">
               <div className="form-group">
                 <label>Filter by category (product list)</label>
                 <select
@@ -1628,9 +1884,9 @@ const Sales = () => {
                   ))}
                 </select>
               </div>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <div className="form-group">
                 <label>Customer *</label>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                <div className="sales-batch-header-row__customer">
                   <select
                     value={batchCustomer}
                     onChange={(e) => setBatchCustomer(e.target.value)}
@@ -1709,28 +1965,22 @@ const Sales = () => {
                   </thead>
                   <tbody>
                     {batchLines.map((line) => {
-                      const pid = line.product ? parseInt(line.product, 10) : null;
-                      const stock = pid
-                        ? inventory
-                            .filter(
-                              (x) => Number(x.product) === pid && x.status === 'in_inventory'
-                            )
-                            .reduce((s, it) => s + (it.quantity || 0), 0)
-                        : null;
+                      const layer = line.layer ? findInventoryLayer(inventory, line.layer) : null;
+                      const stock = layer ? Number(layer.quantity) || 0 : null;
                       return (
                         <tr key={line.key}>
                           <td>
                             <ProductSearchableSelect
-                              products={batchProductsForPicker}
-                              value={line.product ?? ''}
-                              onChange={(id) => updateBatchLine(line.key, 'product', id)}
+                              pickerItems={batchLayerPickerItems}
+                              value={line.layer ?? ''}
+                              onChange={(id) => updateBatchLine(line.key, 'layer', id)}
                               triggerClassName="batch-sale-lines__control"
                               placeholder="— Product —"
                               aria-label="Product"
                             />
                           </td>
                           <td className="batch-sale-lines__td--num">
-                            {pid ? stock : <span className="batch-sale-lines__empty" aria-hidden>—</span>}
+                            {line.layer ? stock : <span className="batch-sale-lines__empty" aria-hidden>—</span>}
                           </td>
                           <td className="batch-sale-lines__td--num">
                             <input
@@ -1801,7 +2051,7 @@ const Sales = () => {
                 + Add line
               </button>
               <button type="submit" className="btn-primary">
-                Create {batchLines.filter((l) => l.product).length} sale(s)
+                Create {batchLines.filter((l) => l.layer).length} sale(s)
               </button>
             </div>
           </form>
@@ -2072,189 +2322,111 @@ const Sales = () => {
                 </td>
               </tr>
             ) : (
-              sortedFilteredSales.map((sale) => (
-                <tr
-                  key={sale.id}
-                  style={{
-                    backgroundColor:
-                      sale.balance_shortfall_type === 'on_credit'
-                        ? '#ffebee'
-                        : sale.balance_shortfall_type === 'discount'
-                          ? '#fff3e0'
-                          : undefined,
-                  }}
-                >
-                  <td>#{sale.id}</td>
-                  <td>{new Date(sale.sale_date).toLocaleString()}</td>
-                  <td>
-                    {(sale.status === 'pending' || sale.status === 'confirmed') &&
-                      sale.sale_type === 'delivery' &&
-                      !sale.dispatch_info && (
-                      <button
-                        className="btn-status"
-                        onClick={() => handleStatusUpdate(sale.id, 'dispatched')}
-                      >
-                        Dispatch
-                      </button>
-                    )}
-                    {(sale.status === 'pending' || sale.status === 'confirmed') && sale.sale_type === 'bought_from_shop' && (
-                      <button
-                        className="btn-status"
-                        onClick={() => handleStatusUpdate(sale.id, 'completed')}
-                      >
-                        Complete & Pay
-                      </button>
-                    )}
-                    {sale.status === 'dispatched' && shopDeliverySettlementRequired(sale) && (
-                      <ShopDeliverySettlementButtons
-                        sale={sale}
-                        classNameButton="btn-status"
-                        onOpenSettlement={openDeliverySettlementModal}
-                      />
-                    )}
-                    {sale.status === 'dispatched' && !shopDeliverySettlementRequired(sale) && (
-                      <button
-                        className="btn-status"
-                        onClick={() => handleStatusUpdate(sale.id, 'completed')}
-                      >
-                        Complete & Pay
-                      </button>
-                    )}
-                    {sale.status === 'pending' && sale.sale_type === 'from_order' && (
-                      <button
-                        className="btn-status"
-                        onClick={() => handleCompleteFromOrder(sale.id)}
-                        style={{ backgroundColor: '#4caf50', color: 'white' }}
-                      >
-                        Complete Sale
-                      </button>
-                    )}
-                    {sale.status === 'reserved' && sale.sale_type === 'reserved' && (
-                      <>
-                        <button
-                          className="btn-status"
-                          onClick={() => handleSellReserved(sale.id)}
-                          style={{ backgroundColor: '#4caf50', color: 'white', marginBottom: '5px' }}
-                        >
-                          Sell
-                        </button>
-                        <button
-                          className="btn-edit"
-                          onClick={() => handleCancelReserved(sale.id)}
-                          style={{ backgroundColor: '#f44336', color: 'white' }}
-                        >
-                          Cancel
-                        </button>
-                        {sale.deposit_received && (
-                          <span style={{ fontSize: '0.85em', color: '#666', display: 'block', marginTop: '5px' }}>
-                            Deposit:{' '}
-                            {formatDisplayAmount(sale.deposit_amount, sale.deposit_currency || 'USD')}
-                          </span>
-                        )}
-                      </>
-                    )}
-                    {sale.status === 'completed' && sale.payment_currency && (
-                      <span style={{ fontSize: '0.9em', color: '#666', display: 'block', marginTop: '5px' }}>
-                        Paid: {sale.payment_currency}
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <span className={`status-badge ${sale.status}`}>
-                      {sale.status}
-                    </span>
-                  </td>
-                  <td>{sale.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
-                  <td>{sale.product_detail?.brand || '-'}</td>
-                  <td>{sale.product_detail?.model || '-'}</td>
-                  <td><strong>{sale.product_detail?.size || '-'}</strong></td>
-                  <td><strong>{sale.product_detail?.color || '-'}</strong></td>
-                  <td>{sale.sale_type === 'bought_from_shop' ? 'Shop' : sale.sale_type === 'from_order' ? 'From Order' : sale.sale_type === 'reserved' ? 'Reserved' : 'Delivery'}</td>
-                  <td>
-                    {sale.package_lines && sale.package_lines.length > 0 ? (
-                      <span style={{ fontSize: '0.85em' }}>
-                        {sale.package_lines.map((pl, i) => {
-                          const pkg = packages.find(p => p.package_type === pl.package_type);
-                          const costUsd = pkg ? Number(pkg.cost_per_unit_usd) * pl.quantity : 0;
-                          const costUzs = pkg ? Number(pkg.cost_per_unit_uzs) * pl.quantity : 0;
-                          return (
-                            <span key={pl.id ?? i} style={{ display: 'block', whiteSpace: 'nowrap' }}>
-                              {pl.package_type} ×{pl.quantity}
-                              {costUsd > 0 ? ` $${costUsd.toFixed(2)}` : ''}
-                              {costUzs > 0 ? ` ${costUzs.toLocaleString()} UZS` : ''}
-                            </span>
-                          );
+              sortedDisplayRows.map((row) => {
+                if (row.type === 'single') {
+                  const sale = row.sale;
+                  return (
+                    <tr key={row.key} style={{ backgroundColor: saleRowBackground(sale) }}>
+                      <td>#{sale.id}</td>
+                      <td>{new Date(sale.sale_date).toLocaleString()}</td>
+                      <td>{renderSaleActionsCell(sale)}</td>
+                      {renderSaleProductCells(sale)}
+                    </tr>
+                  );
+                }
+
+                const agg = aggregateGroupSales(row.sales);
+                const sale = agg.first;
+                const expanded = expandedSaleGroups.has(row.groupId);
+                const saleTypeLabel =
+                  sale.sale_type === 'bought_from_shop'
+                    ? 'Shop'
+                    : sale.sale_type === 'from_order'
+                      ? 'From Order'
+                      : sale.sale_type === 'reserved'
+                        ? 'Reserved'
+                        : 'Delivery';
+                const flagged = row.sales.find((s) => saleRowBackground(s));
+                const groupBg = flagged ? saleRowBackground(flagged) : undefined;
+
+                return (
+                  <React.Fragment key={row.key}>
+                    <tr
+                      className="sale-group-row"
+                      style={{ backgroundColor: groupBg, cursor: 'pointer' }}
+                      onClick={(e) => {
+                        if (e.target.closest('button')) return;
+                        toggleSaleGroup(row.groupId);
+                      }}
+                    >
+                      <td>{agg.idsLabel}</td>
+                      <td>{sale ? new Date(sale.sale_date).toLocaleString() : '—'}</td>
+                      <td onClick={(e) => e.stopPropagation()}>{renderSaleActionsCell(sale, row.sales)}</td>
+                      <td>
+                        <span className={`status-badge ${agg.hasMixedStatus ? 'pending' : agg.statuses[0]}`}>
+                          {agg.hasMixedStatus ? 'mixed' : agg.statuses[0]}
+                        </span>
+                      </td>
+                      <td><span style={{ color: '#999' }}>—</span></td>
+                      <td>
+                        <strong>Multiple items</strong>
+                        <span style={{ color: '#666', fontSize: '0.85em' }}> ({row.sales.length})</span>
+                      </td>
+                      <td>—</td>
+                      <td>—</td>
+                      <td>—</td>
+                      <td>{saleTypeLabel}</td>
+                      <td><span style={{ color: '#bbb' }}>—</span></td>
+                      <td>{agg.quantity}</td>
+                      <td>—</td>
+                      <td>
+                        {agg.saleCurrency
+                          ? formatDisplayAmount(agg.totalAmount, agg.saleCurrency)
+                          : formatPlainAmount(agg.totalAmount)}
+                      </td>
+                      <td style={{ fontSize: '0.9em' }}>
+                        {renderDiscountCreditCell({
+                          total_discount_amount: agg.totalDiscount,
+                          balance_shortfall_type:
+                            agg.completionDiscount > 0 ? 'discount' : sale?.balance_shortfall_type,
+                          balance_shortfall_amount: agg.completionDiscount || null,
+                          balance_shortfall_currency: agg.saleCurrency || sale?.sale_currency,
+                          sale_currency: agg.saleCurrency || sale?.sale_currency || 'USD',
                         })}
-                      </span>
-                    ) : sale.package_type ? (
-                      <span>
-                        {sale.package_type} ×{sale.package_quantity != null ? sale.package_quantity : sale.quantity}
-                        {sale.package_cost_per_unit_usd > 0 ? ` $${Number(sale.package_cost_per_unit_usd).toFixed(2)}` : ''}
-                        {sale.package_cost_per_unit_uzs > 0 ? ` ${Number(sale.package_cost_per_unit_uzs).toLocaleString()} UZS` : ''}
-                      </span>
-                    ) : <span style={{ color: '#bbb' }}>—</span>}
-                  </td>
-                  <td>{sale.quantity}</td>
-                  <td>{formatDisplayAmount(sale.selling_price, sale.sale_currency || 'USD')}</td>
-                  <td>{formatDisplayAmount(sale.total_amount, sale.sale_currency || 'USD')}</td>
-                  <td style={{ fontSize: '0.9em' }}>
-                    {(() => {
-                      const saleDiscount = parseFloat(sale.total_discount_amount) || 0;
-                      const parts = [];
-                      if (saleDiscount > 0) {
-                        parts.push(
-                          `Discount: ${formatDisplayAmount(saleDiscount, sale.sale_currency || 'USD')}`
-                        );
-                      }
-                      if (sale.balance_shortfall_type === 'discount' && sale.balance_shortfall_amount) {
-                        parts.push(
-                          `At completion: ${formatDisplayAmount(
-                            sale.balance_shortfall_amount,
-                            sale.balance_shortfall_currency || sale.sale_currency || 'USD'
-                          )}`
-                        );
-                      } else if (sale.balance_shortfall_type === 'on_credit' && sale.balance_shortfall_amount) {
-                        parts.push(
-                          `On credit: ${formatDisplayAmount(
-                            sale.balance_shortfall_amount,
-                            sale.balance_shortfall_currency || sale.sale_currency || 'USD'
-                          )}`
-                        );
-                      }
-                      return parts.length ? parts.join(' · ') : '—';
-                    })()}
-                  </td>
-                  <td>
-                    {(() => {
-                      const v = (parseFloat(sale.payment_uzs_cash) || 0) + (parseFloat(sale.payment_uzs_card) || 0);
-                      return v > 0 ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>{v.toLocaleString()} UZS</span> : <span style={{ color: '#bbb' }}>—</span>;
-                    })()}
-                  </td>
-                  <td>
-                    {(() => {
-                      const v = (parseFloat(sale.payment_usd_cash) || 0) + (parseFloat(sale.payment_usd_card) || 0);
-                      return v > 0 ? <span style={{ color: sale.status === 'completed' ? '#4caf50' : 'inherit' }}>${v.toFixed(2)}</span> : <span style={{ color: '#bbb' }}>—</span>;
-                    })()}
-                  </td>
-                  <td>{sale.customer_detail?.name || '-'}</td>
-                  <td>{sale.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
-                  <td>{sale.salesman_detail?.username || '-'}</td>
-                  <td>
-                    {(() => {
-                      const d = sale.dispatch_info;
-                      if (!d) return <span style={{ color: '#bbb' }}>—</span>;
-                      if (d.dispatch_type === 'bts') {
-                        return d.dispatcher_name || 'BTS';
-                      }
-                      return d.dispatcher_name ? (
-                        d.dispatcher_name
-                      ) : (
-                        <span style={{ color: '#bbb' }}>—</span>
-                      );
-                    })()}
-                  </td>
-                </tr>
-              ))
+                      </td>
+                      <td>
+                        {agg.uzsPay > 0 ? (
+                          <span style={{ color: agg.statuses.every((s) => s === 'completed') ? '#4caf50' : 'inherit' }}>
+                            {agg.uzsPay.toLocaleString()} UZS
+                          </span>
+                        ) : (
+                          <span style={{ color: '#bbb' }}>—</span>
+                        )}
+                      </td>
+                      <td>
+                        {agg.usdPay > 0 ? (
+                          <span style={{ color: agg.statuses.every((s) => s === 'completed') ? '#4caf50' : 'inherit' }}>
+                            ${agg.usdPay.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#bbb' }}>—</span>
+                        )}
+                      </td>
+                      <td>{sale?.customer_detail?.name || '-'}</td>
+                      <td>{sale?.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
+                      <td>{sale?.salesman_detail?.username || '-'}</td>
+                      <td>{renderDispatcherCell(sale)}</td>
+                    </tr>
+                    {expanded &&
+                      row.sales.map((item) => (
+                        <tr key={`${row.key}-item-${item.id}`} className="sale-group-detail-row">
+                          <td colSpan="3" aria-hidden />
+                          {renderSaleProductCells(item, { detail: true })}
+                        </tr>
+                      ))}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
           <tfoot>
