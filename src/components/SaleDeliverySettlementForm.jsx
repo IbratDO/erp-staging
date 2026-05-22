@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import {
   buildPaymentFormDataFromSale,
+  computeAdvanceRemainingDue,
   computePaymentShortfallMeta,
   emptyPaymentFormState,
+  saleDiscountAmountPerUnit,
 } from '../utils/saleCompletePayHelpers';
 
 /**
@@ -65,24 +67,11 @@ export default function SaleDeliverySettlementForm({
   useEffect(() => {
     if (!sale?.id) return;
     if (!sale.delivery_customer_paid_at) {
-      const qty = parseFloat(sale.quantity) || 1;
-      const unit = parseFloat(sale.selling_price) || 0;
-      const lineTotal = unit * qty;
-      const advance = parseFloat(sale.advance_payment_received) || 0;
-      const expectedTotal = lineTotal > 0 ? lineTotal - advance : 0;
-      setStep1TotalCollected(
-        expectedTotal > 0 ? expectedTotal.toFixed(2) : lineTotal > 0 ? lineTotal.toFixed(2) : ''
-      );
+      const expectedTotal = computeAdvanceRemainingDue(sale);
+      setStep1TotalCollected(expectedTotal > 0 ? expectedTotal.toFixed(2) : '');
       setStep1SaleCurrency(sale.sale_currency || 'USD');
     }
-  }, [
-    sale?.id,
-    sale?.delivery_customer_paid_at,
-    sale?.selling_price,
-    sale?.sale_currency,
-    sale?.quantity,
-    sale?.advance_payment_received,
-  ]);
+  }, [sale]);
 
   useEffect(() => {
     if (!sale?.id) return;
@@ -147,17 +136,16 @@ export default function SaleDeliverySettlementForm({
       return;
     }
     const qty = sale.quantity ?? 1;
-    const actualSp = parseFloat(sale.selling_price != null && sale.selling_price !== '' ? String(sale.selling_price).replace(',', '.') : '');
     const actualCurrency = sale.sale_currency || 'USD';
-    const actualLineTotal = Number.isFinite(actualSp) ? actualSp * qty : null;
-    const advance = parseFloat(sale.advance_payment_received) || 0;
-    const actualDueAtDoor =
-      actualLineTotal != null && !Number.isNaN(actualLineTotal)
-        ? Math.max(0, actualLineTotal - advance)
-        : null;
+    const actualDueAtDoor = computeAdvanceRemainingDue(sale);
+    const discPerUnit = saleDiscountAmountPerUnit(sale);
+    const discNote =
+      discPerUnit > 0
+        ? ` (includes $${discPerUnit.toFixed(2)}/unit discount off list)`
+        : '';
     const actualFmt =
       actualDueAtDoor != null && !Number.isNaN(actualDueAtDoor)
-        ? `${actualDueAtDoor.toFixed(2)} ${actualCurrency}`
+        ? `${actualDueAtDoor.toFixed(2)} ${actualCurrency}${discNote}`
         : '—';
     const enteredFmt = `${totalCollected.toFixed(2)} ${step1SaleCurrency}`;
     const amountChanged =

@@ -30,6 +30,18 @@ const OPERATING_EXPENSE_SORT_ACCESSORS = {
   },
 };
 
+const OTHER_INCOME_SORT_ACCESSORS = {
+  income_type_label: (item) => String(item.type ?? '').toLowerCase(),
+  description: (item) => String(item.description ?? '').toLowerCase(),
+  amount_usd: (item) => Number(item.amount_usd) || 0,
+  date: (item) => {
+    const s = item.date;
+    if (s == null || s === '') return 0;
+    const t = new Date(`${s}T12:00:00`).getTime();
+    return Number.isFinite(t) ? t : String(s).toLowerCase();
+  },
+};
+
 const ProfitLoss = () => {
   const [profitLoss, setProfitLoss] = useState(null);
   const [expandedPlSaleId, setExpandedPlSaleId] = useState(null);
@@ -85,6 +97,12 @@ const ProfitLoss = () => {
   const sortedOperatingExpenses = useMemo(
     () => operatingExpenseSort.sortRows(profitLoss?.operating_expenses || []),
     [profitLoss?.operating_expenses, operatingExpenseSort],
+  );
+
+  const otherIncomeSort = useClientTableSort(OTHER_INCOME_SORT_ACCESSORS);
+  const sortedOtherIncome = useMemo(
+    () => otherIncomeSort.sortRows(profitLoss?.other_income || []),
+    [profitLoss?.other_income, otherIncomeSort],
   );
 
   return (
@@ -172,6 +190,15 @@ const ProfitLoss = () => {
               <div className="metric-label">Operating expenses</div>
               <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
                 ${(profitLoss.totals.total_operating_expenses_usd || 0).toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </div>
+            </div>
+            <div className="metric-card" style={{ border: '2px solid #28a745' }}>
+              <div className="metric-label">Other income</div>
+              <div className="metric-value" style={{ color: '#28a745', fontSize: '1.6em' }}>
+                ${(profitLoss.totals.total_other_income_usd || 0).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}
@@ -521,6 +548,91 @@ const ProfitLoss = () => {
                     <td>
                       $
                       {(profitLoss.totals.total_operating_expenses_usd || 0).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td>—</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div className="table-card" style={{ marginTop: '20px' }}>
+            <h3>Other income</h3>
+            <p style={{ color: '#666', fontSize: '0.85em', marginTop: 0 }}>
+              Non-sale income (e.g. gain on fixed-asset sale). Cash proceeds are in Money Balance;
+              only the profit portion is shown here.
+            </p>
+            <div className="data-table-scroll">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <SortableTh
+                      columnId="income_type_label"
+                      sortCol={otherIncomeSort.sortCol}
+                      sortDir={otherIncomeSort.sortDir}
+                      onSort={otherIncomeSort.onHeaderClick}
+                    >
+                      Type
+                    </SortableTh>
+                    <SortableTh
+                      columnId="description"
+                      sortCol={otherIncomeSort.sortCol}
+                      sortDir={otherIncomeSort.sortDir}
+                      onSort={otherIncomeSort.onHeaderClick}
+                    >
+                      Description
+                    </SortableTh>
+                    <SortableTh
+                      columnId="amount_usd"
+                      sortCol={otherIncomeSort.sortCol}
+                      sortDir={otherIncomeSort.sortDir}
+                      onSort={otherIncomeSort.onHeaderClick}
+                    >
+                      Amount (USD)
+                    </SortableTh>
+                    <SortableTh
+                      columnId="date"
+                      sortCol={otherIncomeSort.sortCol}
+                      sortDir={otherIncomeSort.sortDir}
+                      onSort={otherIncomeSort.onHeaderClick}
+                    >
+                      Date
+                    </SortableTh>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedOtherIncome.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" style={{ textAlign: 'center' }}>
+                        No other income in this period
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedOtherIncome.map((item, idx) => (
+                      <tr key={item.id ?? idx}>
+                        <td>{item.type}</td>
+                        <td>{item.description}</td>
+                        <td>
+                          $
+                          {(item.amount_usd || 0).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td>{item.date}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
+                    <td colSpan="2">Total other income</td>
+                    <td>
+                      $
+                      {(profitLoss.totals.total_other_income_usd || 0).toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}

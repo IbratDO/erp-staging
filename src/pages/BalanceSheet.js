@@ -185,72 +185,103 @@ const BalanceSheet = () => {
             </div>
           </div>
 
-          <div className="table-card" style={{ marginBottom: 20 }}>
-            <h3>Assets</h3>
-            <table className="data-table">
-              <tbody>
-                <LineRow label="Cash (USD + UZS converted)" value={fmtUsd(assets?.current?.cash?.total_usd)} bold />
-                <LineRow label="Bank / card buckets" value={fmtUsd(assets?.current?.cash?.bank_usd)} indent={1} />
-                <LineRow
-                  label="Accounts receivable"
-                  value={fmtUsd(assets?.current?.accounts_receivable?.total_usd)}
-                  indent={1}
-                />
-                <LineRow
-                  label="Inventory (FIFO landed cost)"
-                  value={fmtUsd(assets?.current?.inventory?.total_usd)}
-                  indent={1}
-                />
-                <LineRow label="Prepaid expenses" value={fmtUsd(assets?.current?.prepaid_expenses_usd)} indent={1} />
-                <LineRow label="Total current assets" value={fmtUsd(assets?.current?.total_usd)} bold />
-                <LineRow label="Non-current assets" value={fmtUsd(assets?.non_current?.total_usd)} />
-                <LineRow label="TOTAL ASSETS" value={fmtUsd(assets?.total_usd)} bold />
-              </tbody>
-            </table>
-          </div>
+          <div
+            className="balance-sheet-columns"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: 20,
+              alignItems: 'start',
+              marginBottom: 20,
+            }}
+          >
+            <div className="table-card" style={{ marginBottom: 0 }}>
+              <h3 style={{ borderBottom: '3px solid #007bff', paddingBottom: 8 }}>Assets</h3>
+              <table className="data-table">
+                <tbody>
+                  <LineRow label="Cash (USD + UZS converted)" value={fmtUsd(assets?.current?.cash?.total_usd)} bold />
+                  <LineRow label="Bank / card buckets" value={fmtUsd(assets?.current?.cash?.bank_usd)} indent={1} />
+                  <LineRow
+                    label="Accounts receivable"
+                    value={fmtUsd(assets?.current?.accounts_receivable?.total_usd)}
+                    indent={1}
+                  />
+                  <LineRow
+                    label="Inventory (products + packages, FIFO)"
+                    value={fmtUsd(assets?.current?.inventory?.total_usd)}
+                    indent={1}
+                  />
+                  {(assets?.current?.inventory?.package_units || 0) > 0 && (
+                    <LineRow
+                      label={`Packages on hand (${assets.current.inventory.package_units} units)`}
+                      value={fmtUsd(assets.current.inventory.package_value_usd)}
+                      indent={2}
+                    />
+                  )}
+                  <LineRow label="Prepaid expenses" value={fmtUsd(assets?.current?.prepaid_expenses_usd)} indent={1} />
+                  <LineRow label="Total current assets" value={fmtUsd(assets?.current?.total_usd)} bold />
+                  <LineRow
+                    label="Fixed assets (non-current)"
+                    value={fmtUsd(assets?.non_current?.fixed_assets_usd)}
+                    indent={1}
+                  />
+                  <LineRow label="Total non-current assets" value={fmtUsd(assets?.non_current?.total_usd)} bold />
+                  <LineRow label="TOTAL ASSETS" value={fmtUsd(assets?.total_usd)} bold />
+                </tbody>
+              </table>
+            </div>
 
-          <div className="table-card" style={{ marginBottom: 20 }}>
-            <h3>Liabilities</h3>
-            <table className="data-table">
-              <tbody>
-                <LineRow
-                  label="Accounts payable"
-                  value={fmtUsd(liabilities?.current?.accounts_payable?.total_usd)}
-                />
-                <LineRow
-                  label="Customer advances (deposits)"
-                  value={fmtUsd(liabilities?.current?.customer_advances?.total_usd)}
-                  indent={1}
-                />
-                <LineRow label="Total current liabilities" value={fmtUsd(liabilities?.current?.total_usd)} bold />
-                <LineRow label="Long-term liabilities" value={fmtUsd(liabilities?.long_term?.total_usd)} />
-                <LineRow label="TOTAL LIABILITIES" value={fmtUsd(liabilities?.total_usd)} bold />
-              </tbody>
-            </table>
-          </div>
+            <div>
+              <div className="table-card" style={{ marginBottom: 16 }}>
+                <h3 style={{ borderBottom: '3px solid #dc3545', paddingBottom: 8 }}>Liabilities</h3>
+                <table className="data-table">
+                  <tbody>
+                    <LineRow
+                      label="Accounts payable"
+                      value={fmtUsd(liabilities?.current?.accounts_payable?.total_usd)}
+                    />
+                    <LineRow
+                      label="Customer advances (deposits)"
+                      value={fmtUsd(liabilities?.current?.customer_advances?.total_usd)}
+                      indent={1}
+                    />
+                    <LineRow label="Total current liabilities" value={fmtUsd(liabilities?.current?.total_usd)} bold />
+                    <LineRow label="Long-term liabilities" value={fmtUsd(liabilities?.long_term?.total_usd)} />
+                    <LineRow label="TOTAL LIABILITIES" value={fmtUsd(liabilities?.total_usd)} bold />
+                  </tbody>
+                </table>
+              </div>
 
-          <div className="table-card" style={{ marginBottom: 20 }}>
-            <h3>Equity / Capital</h3>
-            <table className="data-table">
-              <tbody>
-                <LineRow label="Owner capital (net contributions)" value={fmtUsd(equity?.owner_capital_net_usd)} />
-                <LineRow
-                  label="Retained earnings (prior periods)"
-                  value={fmtUsd(equity?.retained_earnings_usd)}
-                  indent={1}
-                />
-                <LineRow
-                  label="Current period profit / loss (P&L)"
-                  value={fmtUsd(equity?.current_period_profit_usd)}
-                  indent={1}
-                />
-                <LineRow label="TOTAL EQUITY" value={fmtUsd(equity?.total_equity_usd)} bold />
-              </tbody>
-            </table>
-            <p style={{ fontSize: '0.85em', color: '#666', marginTop: 10 }}>
-              Current period profit matches{' '}
-              <a href="/profit-loss">Profit / Loss</a> for {equity?.period_start} – {equity?.period_end}.
-            </p>
+              <div className="table-card" style={{ marginBottom: 0 }}>
+                <h3 style={{ borderBottom: '3px solid #6f42c1', paddingBottom: 8 }}>Equity</h3>
+                <table className="data-table">
+                  <tbody>
+                    <LineRow label="Owner capital (net contributions)" value={fmtUsd(equity?.owner_capital_net_usd)} />
+                    <LineRow
+                      label="Retained earnings (prior periods)"
+                      value={fmtUsd(equity?.retained_earnings_usd)}
+                      indent={1}
+                    />
+                    <LineRow
+                      label="Current period profit / loss (P&L)"
+                      value={fmtUsd(equity?.current_period_profit_usd)}
+                      indent={1}
+                    />
+                    <LineRow label="TOTAL EQUITY" value={fmtUsd(equity?.total_equity_usd)} bold />
+                  </tbody>
+                </table>
+                <p style={{ fontSize: '0.85em', color: '#666', marginTop: 10 }}>
+                  Liabilities + equity:{' '}
+                  <strong>
+                    {fmtUsd(
+                      (parseFloat(liabilities?.total_usd) || 0) + (parseFloat(equity?.total_equity_usd) || 0),
+                    )}
+                  </strong>
+                  {' · '}
+                  <a href="/profit-loss">Profit / Loss</a> {equity?.period_start} – {equity?.period_end}
+                </p>
+              </div>
+            </div>
           </div>
 
           {data.notes?.length > 0 && (

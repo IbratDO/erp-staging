@@ -5,14 +5,15 @@ import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
 
-const PKG_STOCK_SORT = {
+const PKG_INV_SORT = {
   package_type: (r) => String(r.package_type ?? '').toLowerCase(),
   quantity: (r) => Number(r.quantity) || 0,
   cost_uzs_unit: (r) => parseFloat(r.cost_per_unit_uzs) || 0,
   cost_usd_unit: (r) => parseFloat(r.cost_per_unit_usd) || 0,
   total_uzs: (r) => (parseFloat(r.quantity) || 0) * (parseFloat(r.cost_per_unit_uzs) || 0),
   total_usd: (r) => (parseFloat(r.quantity) || 0) * (parseFloat(r.cost_per_unit_usd) || 0),
-  updated_at: (r) => new Date(r.updated_at).getTime() || 0,
+  batch_ref: (r) => Number(r.historyId) || Number(r.batchId) || 0,
+  received_at: (r) => new Date(r.received_at).getTime() || 0,
 };
 
 const PKG_HIST_SORT = {
@@ -67,6 +68,7 @@ function formatApiError(data) {
 
 const Packages = () => {
   const [packages, setPackages] = useState([]);
+  const [packageBatches, setPackageBatches] = useState([]);
   const [packageHistory, setPackageHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -76,9 +78,11 @@ const Packages = () => {
     quantity: '',
     cost_per_unit_uzs: '',
     cost_per_unit_usd: '',
+    pay_immediately: false,
   });
   const [paymentFormData, setPaymentFormData] = useState({
     historyId: null,
+    action: 'pay_receive',
     quantity_received: '',
     ...defaultPaymentState,
   });
@@ -99,9 +103,16 @@ const Packages = () => {
 
   useEffect(() => {
     fetchPackages();
+    fetchPackageBatches();
     fetchPackageHistory();
     fetchBalances();
   }, []);
+
+  const refreshInventory = () => {
+    fetchPackages();
+    fetchPackageBatches();
+    fetchPackageHistory();
+  };
 
   const fetchBalances = async () => {
     try {
@@ -112,20 +123,42 @@ const Packages = () => {
     }
   };
 
-  const packageStockTotals = useMemo(() => {
+  const fetchPackageBatches = async () => {
+    try {
+      const response = await api.get('/package-batches/');
+      setPackageBatches(response.data.results || response.data);
+    } catch (error) {
+      console.error('Error fetching package batches:', error);
+    }
+  };
+
+  const inventoryRows = useMemo(() => {
+    return packageBatches
+      .filter((b) => (parseInt(b.quantity_remaining, 10) || 0) > 0)
+      .map((b) => ({
+        rowKey: `batch-${b.id}`,
+        batchId: b.id,
+        historyId: b.purchase_id || b.source_history,
+        package_type: b.package_type,
+        quantity: parseInt(b.quantity_remaining, 10) || 0,
+        cost_per_unit_uzs: parseFloat(b.unit_cost_uzs) || 0,
+        cost_per_unit_usd: parseFloat(b.unit_cost_usd) || 0,
+        received_at: b.received_at,
+      }));
+  }, [packageBatches]);
+
+  const inventoryTotals = useMemo(() => {
     let quantity = 0;
     let totalUzs = 0;
     let totalUsd = 0;
-    for (const p of packages) {
-      const q = parseFloat(p.quantity) || 0;
-      const cpuUzs = parseFloat(p.cost_per_unit_uzs) || 0;
-      const cpuUsd = parseFloat(p.cost_per_unit_usd) || 0;
+    for (const r of inventoryRows) {
+      const q = r.quantity || 0;
       quantity += q;
-      totalUzs += q * cpuUzs;
-      totalUsd += q * cpuUsd;
+      totalUzs += q * (r.cost_per_unit_uzs || 0);
+      totalUsd += q * (r.cost_per_unit_usd || 0);
     }
     return { quantity, totalUzs, totalUsd };
-  }, [packages]);
+  }, [inventoryRows]);
 
   const packageHistoryTotals = useMemo(() => {
     let quantityAdded = 0;
@@ -204,11 +237,12 @@ const Packages = () => {
           ? parseFloat(formData.cost_per_unit_usd) || 0
           : defUsd;
 
-      let delta = quantity;
-      if (editingPackage) {
-        delta = quantity - (parseInt(editingPackage.quantity, 10) || 0);
-      }
-      if (delta > 0) {
+      const toAdd = editingPackage
+        ? parseInt(formData.quantity, 10) || 0
+        : quantity;
+      const delta = toAdd;
+      const payImmediately = Boolean(formData.pay_immediately);
+      if (delta > 0 && payImmediately) {
         const totalUzs = delta * costUzs;
         const totalUsd = delta * costUsd;
         let freshBalances = balances;
@@ -234,26 +268,30 @@ const Packages = () => {
           }
         }
       }
-
       if (editingPackage) {
+        const currentQty = parseInt(editingPackage.quantity, 10) || 0;
         await api.put(`/packages/${editingPackage.id}/`, {
           package_type: formData.package_type,
-          quantity: parseInt(formData.quantity) || 0,
+          quantity: currentQty + toAdd,
           cost_per_unit_uzs: costUzs,
           cost_per_unit_usd: costUsd,
+          pay_immediately: payImmediately,
         });
       } else {
-        const existingPackage = packages.find(p => p.package_type === formData.package_type);
+        const existingPackage = packages.find((p) => p.package_type === formData.package_type);
         const packageData = {
           package_type: formData.package_type,
-          quantity: existingPackage
-            ? (parseInt(existingPackage.quantity) || 0) + quantity
-            : quantity,
+          quantity: toAdd,
           cost_per_unit_uzs: costUzs,
           cost_per_unit_usd: costUsd,
+          pay_immediately: payImmediately,
         };
         if (existingPackage) {
-          await api.put(`/packages/${existingPackage.id}/`, packageData);
+          const currentQty = parseInt(existingPackage.quantity, 10) || 0;
+          await api.put(`/packages/${existingPackage.id}/`, {
+            ...packageData,
+            quantity: currentQty + toAdd,
+          });
         } else {
           await api.post('/packages/', packageData);
         }
@@ -265,15 +303,16 @@ const Packages = () => {
         quantity: '',
         cost_per_unit_uzs: '',
         cost_per_unit_usd: '',
+        pay_immediately: false,
       });
-      fetchPackages();
+      refreshInventory();
     } catch (error) {
       console.error('Error saving package:', error);
       const d = error.response?.data;
       const msg = formatApiError(d) || error.message;
       showNotification(msg || 'Error saving package', 'error');
     } finally {
-      fetchPackageHistory(); // Refresh history after adding stock
+      fetchPackageHistory();
     }
   };
 
@@ -286,29 +325,33 @@ const Packages = () => {
     }
   };
 
-  const handleEdit = (packageItem) => {
-    setEditingPackage(packageItem);
-    setFormData({
-      package_type: packageItem.package_type,
-      quantity: packageItem.quantity,
-      cost_per_unit_uzs: String(packageItem.cost_per_unit_uzs ?? ''),
-      cost_per_unit_usd: String(packageItem.cost_per_unit_usd ?? ''),
-    });
-    setShowForm(true);
-  };
-
-  const handleMarkReceivedAndPay = (historyId) => {
-    const historyItem = packageHistory.find(h => h.id === historyId);
+  const openPaymentForm = (historyId, action) => {
+    const historyItem = packageHistory.find((h) => h.id === historyId);
     const quantityOrdered = historyItem?.quantity_added || 0;
     const dueUzs = (parseFloat(historyItem?.cost_per_unit_uzs) || 0) * quantityOrdered;
     const dueUsd = (parseFloat(historyItem?.cost_per_unit_usd) || 0) * quantityOrdered;
     setPaymentFormData({
-      historyId: historyId,
+      historyId,
+      action,
       quantity_received: quantityOrdered,
-      payment_uzs: dueUzs > 0 ? String(dueUzs) : '',
-      payment_usd: dueUsd > 0 ? String(dueUsd) : '',
+      payment_uzs: action === 'receive' ? '' : dueUzs > 0 ? String(dueUzs) : '',
+      payment_usd: action === 'receive' ? '' : dueUsd > 0 ? String(dueUsd) : '',
     });
     setShowPaymentForm(true);
+  };
+
+  const statusLabel = (status) => {
+    if (status === 'paid' || status === 'in_stock') return 'IN STOCK';
+    if (status === 'order_paid') return 'PAID · AWAITING RECEIPT';
+    if (status === 'ordered') return 'ORDERED';
+    if (status === 'received') return 'IN STOCK';
+    return String(status || '').toUpperCase();
+  };
+
+  const statusClass = (status) => {
+    if (status === 'paid' || status === 'in_stock' || status === 'received') return 'completed';
+    if (status === 'order_paid') return 'confirmed';
+    return 'pending';
   };
 
   const handlePaymentSubmit = async (e) => {
@@ -322,7 +365,11 @@ const Packages = () => {
       const dueUsd = qty * cpuUsd;
       const uzs = parseFloat(paymentFormData.payment_uzs) || 0;
       const usd = parseFloat(paymentFormData.payment_usd) || 0;
-      if ((dueUzs > 0 || dueUsd > 0) && uzs + usd <= 0) {
+      if (
+        paymentFormData.action !== 'receive' &&
+        (dueUzs > 0 || dueUsd > 0) &&
+        uzs + usd <= 0
+      ) {
         showNotification('Enter at least one payment amount (UZS or USD).', 'error');
         return;
       }
@@ -334,46 +381,55 @@ const Packages = () => {
       } catch (balanceErr) {
         console.error('Error refreshing balances:', balanceErr);
       }
-      if (uzs > 0) {
-        const available = cashBalanceTotalByCurrency(freshBalances, 'UZS');
-        if (available < uzs) {
-          showNotification(formatInsufficientLedgerMessage('UZS', available, uzs, { topUpSuffix: true }), 'error');
-          return;
+      if (paymentFormData.action !== 'receive') {
+        if (uzs > 0) {
+          const available = cashBalanceTotalByCurrency(freshBalances, 'UZS');
+          if (available < uzs) {
+            showNotification(formatInsufficientLedgerMessage('UZS', available, uzs, { topUpSuffix: true }), 'error');
+            return;
+          }
+        }
+        if (usd > 0) {
+          const available = cashBalanceTotalByCurrency(freshBalances, 'USD');
+          if (available < usd) {
+            showNotification(formatInsufficientLedgerMessage('USD', available, usd, { topUpSuffix: true }), 'error');
+            return;
+          }
         }
       }
-      if (usd > 0) {
-        const available = cashBalanceTotalByCurrency(freshBalances, 'USD');
-        if (available < usd) {
-          showNotification(formatInsufficientLedgerMessage('USD', available, usd, { topUpSuffix: true }), 'error');
-          return;
-        }
-      }
-      await api.post(`/package-history/${paymentFormData.historyId}/mark_received_and_pay/`, {
+      const payload = {
         quantity_received: paymentFormData.quantity_received,
         payment_uzs: uzs,
         payment_usd: usd,
-      });
+      };
+      const hid = paymentFormData.historyId;
+      if (paymentFormData.action === 'pay') {
+        await api.post(`/package-history/${hid}/mark_paid/`, payload);
+      } else if (paymentFormData.action === 'receive') {
+        await api.post(`/package-history/${hid}/mark_received/`, payload);
+      } else {
+        await api.post(`/package-history/${hid}/mark_received_and_pay/`, payload);
+      }
       setShowPaymentForm(false);
       setPaymentFormData({
         historyId: null,
         quantity_received: '',
         ...defaultPaymentState,
       });
-      fetchPackages();
-      fetchPackageHistory();
+      refreshInventory();
     } catch (error) {
-      console.error('Error marking package as received and paid:', error);
+      console.error('Error completing package purchase step:', error);
       const d = error.response?.data;
       const msg = formatApiError(d) || error.message;
       showNotification(msg || 'Error marking package as received and paid', 'error');
     }
   };
 
-  const pkgStockSort = useClientTableSort(PKG_STOCK_SORT);
+  const pkgInvSort = useClientTableSort(PKG_INV_SORT);
   const pkgHistSort = useClientTableSort(PKG_HIST_SORT);
-  const displayPackages = useMemo(
-    () => pkgStockSort.sortRows(packages),
-    [packages, pkgStockSort]
+  const displayInventory = useMemo(
+    () => pkgInvSort.sortRows(inventoryRows),
+    [inventoryRows, pkgInvSort]
   );
   const displayPackageHistory = useMemo(
     () => pkgHistSort.sortRows(packageHistory),
@@ -432,14 +488,31 @@ const Packages = () => {
 
       <div className="page-header">
         <h1>Packages</h1>
-        <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : '+ Add Package Stock'}
+        <button
+          className="btn-primary"
+          onClick={() => {
+            if (showForm) {
+              setShowForm(false);
+              setEditingPackage(null);
+            } else {
+              setEditingPackage(null);
+              setShowForm(true);
+            }
+          }}
+        >
+          {showForm ? 'Cancel' : '+ Order Package Stock'}
         </button>
       </div>
 
+      <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em', maxWidth: 820 }}>
+        Each purchase at a different unit price is a separate FIFO layer. Default flow: order → pay (payable) →
+        receive into inventory. Payables appear under Receivables / Payables. Package stock is included on the
+        balance sheet; COGS on sales uses oldest layers first.
+      </p>
+
       {showForm && (
         <div className="form-card">
-          <h2>{editingPackage ? 'Update Package Stock' : 'Add Package Stock'}</h2>
+          <h2>{editingPackage ? `Add Stock — Package ${editingPackage.package_type}` : 'Order Package Stock'}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
@@ -496,15 +569,27 @@ const Packages = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Quantity to Add</label>
+                <label>Quantity to order</label>
                 <input
                   type="number"
-                  min="0"
+                  min="1"
                   value={formData.quantity}
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   required
-                  placeholder={editingPackage ? 'New total quantity' : 'Quantity to add'}
+                  placeholder="Units in this purchase"
                 />
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(formData.pay_immediately)}
+                    onChange={(e) =>
+                      setFormData({ ...formData, pay_immediately: e.target.checked })
+                    }
+                  />
+                  Pay and receive immediately (skip payable; deduct cash now)
+                </label>
               </div>
               <div className="form-group">
                 <label>Cost per unit (UZS)</label>
@@ -531,7 +616,7 @@ const Packages = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                {editingPackage ? 'Update' : 'Add Stock'}
+                {formData.pay_immediately ? 'Pay, receive & add stock' : 'Create purchase order'}
               </button>
             </div>
           </form>
@@ -540,7 +625,13 @@ const Packages = () => {
 
       {showPaymentForm && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>Mark Package Purchase #{paymentFormData.historyId} as Received and Pay</h2>
+          <h2>
+            {paymentFormData.action === 'pay'
+              ? `Pay package purchase #${paymentFormData.historyId}`
+              : paymentFormData.action === 'receive'
+                ? `Receive stock — purchase #${paymentFormData.historyId}`
+                : `Pay & receive — purchase #${paymentFormData.historyId}`}
+          </h2>
           <form onSubmit={handlePaymentSubmit}>
             <div className="form-grid">
               <div className="form-group">
@@ -569,38 +660,46 @@ const Packages = () => {
                   Ordered: {packageHistory.find(h => h.id === paymentFormData.historyId)?.quantity_added || 0}
                 </small>
               </div>
-              <div className="form-group">
-                <label>UZS</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={paymentFormData.payment_uzs}
-                  onChange={(e) =>
-                    setPaymentFormData({
-                      ...paymentFormData,
-                      payment_uzs: sanitizePaymentAmountInput(e.target.value),
-                    })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label>USD</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={paymentFormData.payment_usd}
-                  onChange={(e) =>
-                    setPaymentFormData({
-                      ...paymentFormData,
-                      payment_usd: sanitizePaymentAmountInput(e.target.value),
-                    })
-                  }
-                />
-              </div>
+              {paymentFormData.action !== 'receive' && (
+                <>
+                  <div className="form-group">
+                    <label>UZS payment</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={paymentFormData.payment_uzs}
+                      onChange={(e) =>
+                        setPaymentFormData({
+                          ...paymentFormData,
+                          payment_uzs: sanitizePaymentAmountInput(e.target.value),
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>USD payment</label>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={paymentFormData.payment_usd}
+                      onChange={(e) =>
+                        setPaymentFormData({
+                          ...paymentFormData,
+                          payment_usd: sanitizePaymentAmountInput(e.target.value),
+                        })
+                      }
+                    />
+                  </div>
+                </>
+              )}
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Mark as Received and Pay
+                {paymentFormData.action === 'pay'
+                  ? 'Record payment'
+                  : paymentFormData.action === 'receive'
+                    ? 'Receive into inventory'
+                    : 'Pay & receive'}
               </button>
               <button
                 type="button"
@@ -622,85 +721,78 @@ const Packages = () => {
       )}
 
       <div className="table-card">
+        <h2 style={{ marginTop: 0 }}>Package inventory (on hand by batch)</h2>
+        <p style={{ color: '#666', fontSize: '0.85em', marginTop: 0 }}>
+          Current stock only — one row per purchase price layer. Purchases and payments are in the history table below.
+        </p>
         <table className="data-table">
           <thead>
             <tr>
-              <SortableTh columnId="package_type" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
-                Package Type
+              <SortableTh columnId="package_type" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
+                Package type
               </SortableTh>
-              <SortableTh columnId="quantity" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
-                Quantity
+              <SortableTh columnId="batch_ref" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
+                Batch / purchase #
               </SortableTh>
-              <SortableTh columnId="cost_uzs_unit" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+              <SortableTh columnId="quantity" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
+                Qty on hand
+              </SortableTh>
+              <SortableTh columnId="cost_uzs_unit" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
                 Cost / unit (UZS)
               </SortableTh>
-              <SortableTh columnId="cost_usd_unit" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+              <SortableTh columnId="cost_usd_unit" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
                 Cost / unit (USD)
               </SortableTh>
-              <SortableTh columnId="total_uzs" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+              <SortableTh columnId="total_uzs" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
                 Total (UZS)
               </SortableTh>
-              <SortableTh columnId="total_usd" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
+              <SortableTh columnId="total_usd" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
                 Total (USD)
               </SortableTh>
-              <SortableTh columnId="updated_at" sortCol={pkgStockSort.sortCol} sortDir={pkgStockSort.sortDir} onSort={pkgStockSort.onHeaderClick}>
-                Updated
+              <SortableTh columnId="received_at" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
+                Received
               </SortableTh>
-              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {packages.length === 0 ? (
+            {displayInventory.length === 0 ? (
               <tr>
                 <td colSpan="8" style={{ textAlign: 'center' }}>
-                  No packages found
+                  No package stock on hand
                 </td>
               </tr>
             ) : (
-              displayPackages.map((packageItem) => (
-                <tr key={packageItem.id}>
-                  <td><strong>Package {packageItem.package_type}</strong></td>
-                  <td>{packageItem.quantity}</td>
-                  <td>{parseFloat(packageItem.cost_per_unit_uzs || 0).toLocaleString()}</td>
-                  <td>${parseFloat(packageItem.cost_per_unit_usd || 0).toFixed(2)}</td>
-                  <td>
-                    {(
-                      parseFloat(packageItem.quantity) * parseFloat(packageItem.cost_per_unit_uzs || 0)
-                    ).toLocaleString()}{' '}
-                    UZS
-                  </td>
-                  <td>
-                    $
-                    {(
-                      parseFloat(packageItem.quantity) * parseFloat(packageItem.cost_per_unit_usd || 0)
-                    ).toFixed(2)}
-                  </td>
-                  <td>{new Date(packageItem.updated_at).toLocaleString()}</td>
-                  <td>
-                    <button
-                      className="btn-edit"
-                      onClick={() => handleEdit(packageItem)}
-                    >
-                      Edit
-                    </button>
-                  </td>
-                </tr>
-              ))
+              displayInventory.map((row) => {
+                const totUzs = row.quantity * (row.cost_per_unit_uzs || 0);
+                const totUsd = row.quantity * (row.cost_per_unit_usd || 0);
+                return (
+                  <tr key={row.rowKey}>
+                    <td><strong>Package {row.package_type}</strong></td>
+                    <td>{row.historyId ? `#${row.historyId}` : `Layer ${row.batchId}`}</td>
+                    <td>{row.quantity}</td>
+                    <td>{row.cost_per_unit_uzs > 0 ? row.cost_per_unit_uzs.toLocaleString() : '—'}</td>
+                    <td>${row.cost_per_unit_usd.toFixed(2)}</td>
+                    <td>{totUzs > 0 ? `${totUzs.toLocaleString()} UZS` : '—'}</td>
+                    <td>{totUsd > 0 ? `$${totUsd.toFixed(2)}` : '—'}</td>
+                    <td>{row.received_at ? new Date(row.received_at).toLocaleString() : '—'}</td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
-            <tfoot>
+          <tfoot>
             <tr>
-              <td style={{ textAlign: 'right' }}>Total</td>
-              <td style={{ fontWeight: 600 }}>{packageStockTotals.quantity.toLocaleString()}</td>
+              <td colSpan="2" style={{ textAlign: 'right' }}>On hand total</td>
+              <td style={{ fontWeight: 600 }}>{inventoryTotals.quantity.toLocaleString()}</td>
               <td>—</td>
               <td>—</td>
               <td style={{ fontWeight: 600 }}>
-                {packageStockTotals.totalUzs.toLocaleString()} UZS
+                {inventoryTotals.totalUzs.toLocaleString()} UZS
               </td>
               <td style={{ fontWeight: 600 }}>
-                ${packageStockTotals.totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ${inventoryTotals.totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </td>
-              <td colSpan="2">—</td>
+              <td>—</td>
             </tr>
           </tfoot>
         </table>
@@ -783,26 +875,18 @@ const Packages = () => {
                   </td>
                   <td>
                     <span
-                      className={`status-badge ${
-                        historyItem.status === 'paid'
-                          ? 'completed'
-                          : historyItem.status === 'received'
-                            ? 'confirmed'
-                            : 'pending'
-                      }`}
+                      className={`status-badge ${statusClass(historyItem.status)}`}
                       title={
                         historyItem.status === 'ordered'
-                          ? 'Awaiting receipt and payment (use action when stock arrives)'
-                          : historyItem.status === 'paid'
-                            ? 'Recorded with payment'
-                            : 'Added to stock; no payment line (cost only)'
+                          ? 'Awaiting payment and receipt'
+                          : historyItem.status === 'order_paid'
+                            ? 'Paid; receive when stock arrives'
+                            : historyItem.status === 'paid'
+                              ? 'Paid and in inventory'
+                              : 'In stock'
                       }
                     >
-                      {historyItem.status === 'paid'
-                        ? 'PAID'
-                        : historyItem.status === 'received'
-                          ? 'IN STOCK'
-                          : 'ORDERED'}
+                      {statusLabel(historyItem.status)}
                     </span>
                   </td>
                   <td style={{ fontSize: '0.9em' }}>
@@ -814,15 +898,35 @@ const Packages = () => {
                   <td>{historyItem.created_by_detail?.username || '-'}</td>
                   <td>{new Date(historyItem.created_at).toLocaleString()}</td>
                   <td>
-                    {historyItem.status === 'ordered' ? (
+                    {historyItem.status === 'ordered' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <button
+                          type="button"
+                          className="btn-status"
+                          onClick={() => openPaymentForm(historyItem.id, 'pay')}
+                        >
+                          Pay
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          style={{ fontSize: '0.85em', padding: '4px 8px' }}
+                          onClick={() => openPaymentForm(historyItem.id, 'pay_receive')}
+                        >
+                          Pay & receive
+                        </button>
+                      </div>
+                    )}
+                    {historyItem.status === 'order_paid' && (
                       <button
                         type="button"
                         className="btn-status"
-                        onClick={() => handleMarkReceivedAndPay(historyItem.id)}
+                        onClick={() => openPaymentForm(historyItem.id, 'receive')}
                       >
-                        Mark as Received and Pay
+                        Receive stock
                       </button>
-                    ) : (
+                    )}
+                    {(historyItem.status === 'paid' || historyItem.status === 'received') && (
                       <span style={{ color: '#adb5bd' }}>—</span>
                     )}
                   </td>

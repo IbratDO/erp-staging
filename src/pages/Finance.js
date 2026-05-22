@@ -2,106 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  sumAmountsByCurrency,
-  formatMultiCurrencyAmounts,
   signedFinanceAmountsByLeg,
   BALANCE_TABLE_LEGS,
   financeRecordLegKey,
 } from '../utils/tableTotals';
-import { formatDisplayAmount } from '../utils/currencyFormat';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
-
-const SALE_TYPE_LABELS = {
-  bought_from_shop: 'Shop',
-  delivery: 'Delivery',
-  from_order: 'From order',
-  reserved: 'Reserved',
-};
-
-/** Pending receivable on a completed sale (e.g. on-credit remainder) — can record follow-up payment. */
-function canCollectReceivable(receivable) {
-  if (!receivable || receivable.status !== 'pending') return false;
-  const sd = receivable.sale_detail;
-  return !!(sd && sd.status === 'completed');
-}
-
-function receivableDispatchLabel(saleDetail) {
-  const d = saleDetail?.dispatch_info;
-  if (!d) return '—';
-  if (d.dispatch_type === 'bts') {
-    return d.dispatcher_name ? `BTS · ${d.dispatcher_name}` : 'BTS';
-  }
-  if (d.dispatch_type === 'dostavshik') {
-    return d.dispatcher_name ? `Dostavshik · ${d.dispatcher_name}` : 'Dostavshik';
-  }
-  return d.dispatcher_name || d.dispatch_type || '—';
-}
-
-function payableCustomerName(p) {
-  if (p.order_detail?.customer_detail?.name) return p.order_detail.customer_detail.name;
-  if (p.dispatch_detail?.sale_detail?.customer_detail?.name) {
-    return p.dispatch_detail.sale_detail.customer_detail.name;
-  }
-  return '—';
-}
-
-function isCustomerDepositPayable(p) {
-  return p?.record_kind === 'customer_deposit';
-}
-
-function payableKind(p) {
-  if (isCustomerDepositPayable(p)) {
-    return { kind: 'Customer deposit', ref: `Order #${p.order_detail?.id || p.order || '—'}` };
-  }
-  if (p.order) return { kind: 'Supplier', ref: `Order #${p.order}` };
-  if (p.dispatch) return { kind: 'Dispatch', ref: `#${p.dispatch} (Sale #${p.dispatch_detail?.sale || '—'})` };
-  if (p.package_history) return { kind: 'Package', ref: `History #${p.package_history}` };
-  return { kind: '—', ref: '—' };
-}
-
-function formatMoneyAmount(amount, currency) {
-  const n = parseFloat(amount) || 0;
-  const ccy = String(currency || 'USD').toUpperCase();
-  if (ccy === 'UZS') return `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`;
-  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function receivableCustomerName(rcv) {
-  return rcv.sale_detail?.customer_detail?.name || '—';
-}
-
-function payableContext(p) {
-  if (isCustomerDepositPayable(p)) {
-    return 'On-demand prepayment — cleared when you sell from this order';
-  }
-  if (p.dispatch) {
-    const d = p.dispatch_detail;
-    if (!d) return '—';
-    if (d.dispatch_type === 'bts') {
-      return d.dispatcher_detail?.name ? `BTS · ${d.dispatcher_detail.name}` : 'BTS';
-    }
-    if (d.dispatch_type === 'dostavshik') {
-      return d.dispatcher_detail?.name ? `Dostavshik · ${d.dispatcher_detail.name}` : 'Dostavshik';
-    }
-    return d.dispatcher_detail?.name || d.dispatch_type || '—';
-  }
-  if (p.order) {
-    const parts = [];
-    if (p.order_detail?.order_type === 'on_demand') {
-      parts.push('On-demand supplier cost');
-    } else if (p.order_detail?.order_type === 'stock') {
-      parts.push('Stock order (inventory)');
-    }
-    return parts.join(' · ');
-  }
-  if (p.package_history_detail?.package_detail) {
-    const t = p.package_history_detail.package_detail.package_type;
-    return t ? `Package type ${t}` : 'Package purchase';
-  }
-  return '—';
-}
 
 function financeLegHeader(leg) {
   if (leg === 'uzs_cash') return 'UZS';
@@ -142,60 +49,6 @@ for (const leg of BALANCE_TABLE_LEGS) {
     return v === null ? 0 : v;
   };
 }
-
-function receivableSaleProductKey(sd) {
-  if (!sd?.product_detail) return '';
-  const p = sd.product_detail;
-  return `${p.brand || ''} ${p.model || ''}`.trim().toLowerCase();
-}
-
-const RECEIVABLE_TABLE_SORT_ACCESSORS = {
-  id: (rcv) => Number(rcv.id) || 0,
-  customer: (rcv) => receivableCustomerName(rcv).toLowerCase(),
-  sale: (rcv) => Number(rcv.sale) || 0,
-  product: (rcv) => receivableSaleProductKey(rcv.sale_detail),
-  sale_type: (rcv) => String(rcv.sale_detail?.sale_type ?? '').toLowerCase(),
-  from_order: (rcv) => Number(rcv.sale_detail?.order) || 0,
-  dispatch: (rcv) => receivableDispatchLabel(rcv.sale_detail).toLowerCase(),
-  amount: (rcv) => parseFloat(rcv.amount) || 0,
-  currency: (rcv) => String(rcv.currency ?? rcv.sale_detail?.sale_currency ?? '').toLowerCase(),
-  status: (rcv) => String(rcv.status ?? '').toLowerCase(),
-  created_at: (rcv) => new Date(rcv.created_at).getTime() || 0,
-  paid_date: (rcv) => {
-    const d = rcv.paid_date;
-    return d ? new Date(d).getTime() : Number.POSITIVE_INFINITY;
-  },
-};
-
-function payableProductSortKey(p) {
-  const od = p.order_detail?.product_detail;
-  if (od) return `${od.brand || ''} ${od.model || ''}`.trim().toLowerCase();
-  const sd = p.dispatch_detail?.sale_detail?.product_detail;
-  if (sd) return `${sd.brand || ''} ${sd.model || ''}`.trim().toLowerCase();
-  const pkg = p.package_history_detail?.package_detail?.package_type;
-  if (pkg) return String(pkg).toLowerCase();
-  return '';
-}
-
-const PAYABLE_TABLE_SORT_ACCESSORS = {
-  id: (p) =>
-    isCustomerDepositPayable(p)
-      ? -(Number(p.order_detail?.id) || 0)
-      : Number(p.id) || 0,
-  payable_kind: (p) => payableKind(p).kind.toLowerCase(),
-  ref: (p) => payableKind(p).ref.toLowerCase(),
-  customer: (p) => payableCustomerName(p).toLowerCase(),
-  product: (p) => payableProductSortKey(p),
-  context: (p) => payableContext(p).toLowerCase(),
-  amount: (p) => parseFloat(p.amount) || 0,
-  currency: (p) => String(p.currency ?? '').toLowerCase(),
-  status: (p) => String(p.status ?? '').toLowerCase(),
-  created_at: (p) => new Date(p.created_at).getTime() || 0,
-  paid_date: (p) => {
-    const d = p.paid_date;
-    return d ? new Date(d).getTime() : Number.POSITIVE_INFINITY;
-  },
-};
 
 function FinanceLegCell({ record, leg }) {
   const v = signedForFinanceRecordLeg(record, leg);
@@ -247,23 +100,23 @@ function FinanceLegTotal({ value, leg }) {
 
 const Finance = () => {
   const { isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState('records'); // 'records', 'receivables', 'payables'
   const [records, setRecords] = useState([]);
-  const [receivables, setReceivables] = useState([]);
-  const [payables, setPayables] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [collectTarget, setCollectTarget] = useState(null);
-  const [collectForm, setCollectForm] = useState({
-    amount: '',
-    notes: '',
-  });
   const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [showIncomeForm, setShowIncomeForm] = useState(false);
   const [expenseFormData, setExpenseFormData] = useState({
     expense_type: 'lunch',
     currency: 'USD',
     amount: '',
     recipient: '',
     notes: '',
+    pay_immediately: true,
+  });
+  const [incomeFormData, setIncomeFormData] = useState({
+    currency: 'USD',
+    amount: '',
+    notes: '',
+    pay_immediately: true,
   });
   const [workers, setWorkers] = useState([]);
   const [filter, setFilter] = useState({
@@ -276,16 +129,10 @@ const Finance = () => {
   });
 
   useEffect(() => {
-    fetchWorkers(); // Always fetch workers when component mounts or updates
-    if (activeTab === 'records') {
-      fetchRecords();
-    } else if (activeTab === 'receivables') {
-      fetchReceivables();
-    } else if (activeTab === 'payables') {
-      fetchPayables();
-    }
+    fetchWorkers();
+    fetchRecords();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, activeTab]);
+  }, [filter]);
 
   const fetchWorkers = async () => {
     try {
@@ -300,6 +147,7 @@ const Finance = () => {
     try {
       let url = '/finance/';
       const params = new URLSearchParams();
+      params.append('scope', 'other');
       if (filter.type) params.append('type', filter.type);
       if (filter.status) params.append('status', filter.status);
       if (filter.expense_type) params.append('expense_type', filter.expense_type);
@@ -337,146 +185,14 @@ const Finance = () => {
     }
   };
 
-  const fetchReceivables = async () => {
+  const handleSettleRecord = async (record) => {
+    if (!window.confirm('Mark this record as paid/received and update Money Balance?')) return;
     try {
-      let url = '/receivables/';
-      const params = new URLSearchParams();
-      // By default, backend only returns pending, but allow override
-      if (filter.status) params.append('status', filter.status);
-      
-      // Convert year/month to date range
-      if (filter.year || filter.month) {
-        let dateFrom, dateTo;
-        if (filter.year && filter.month) {
-          dateFrom = `${filter.year}-${filter.month.padStart(2, '0')}-01`;
-          const lastDay = new Date(parseInt(filter.year), parseInt(filter.month), 0).getDate();
-          dateTo = `${filter.year}-${filter.month.padStart(2, '0')}-${lastDay}`;
-        } else if (filter.year) {
-          dateFrom = `${filter.year}-01-01`;
-          dateTo = `${filter.year}-12-31`;
-        } else if (filter.month) {
-          const currentYear = new Date().getFullYear();
-          dateFrom = `${currentYear}-${filter.month.padStart(2, '0')}-01`;
-          const lastDay = new Date(currentYear, parseInt(filter.month), 0).getDate();
-          dateTo = `${currentYear}-${filter.month.padStart(2, '0')}-${lastDay}`;
-        }
-        if (dateFrom) params.append('date_from', dateFrom);
-        if (dateTo) params.append('date_to', dateTo);
-      }
-      
-      if (params.toString()) url += `?${params.toString()}`;
-
-      const response = await api.get(url);
-      setReceivables(response.data.results || response.data);
+      const res = await api.post(`/finance/${record.id}/settle/`);
+      alert(res.data?.message || 'Settled.');
+      fetchRecords();
     } catch (error) {
-      console.error('Error fetching receivables:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPayables = async () => {
-    try {
-      let url = '/payables/';
-      const params = new URLSearchParams();
-      if (filter.status) params.append('status', filter.status);
-      
-      // Convert year/month to date range
-      if (filter.year || filter.month) {
-        let dateFrom, dateTo;
-        if (filter.year && filter.month) {
-          dateFrom = `${filter.year}-${filter.month.padStart(2, '0')}-01`;
-          const lastDay = new Date(parseInt(filter.year), parseInt(filter.month), 0).getDate();
-          dateTo = `${filter.year}-${filter.month.padStart(2, '0')}-${lastDay}`;
-        } else if (filter.year) {
-          dateFrom = `${filter.year}-01-01`;
-          dateTo = `${filter.year}-12-31`;
-        } else if (filter.month) {
-          const currentYear = new Date().getFullYear();
-          dateFrom = `${currentYear}-${filter.month.padStart(2, '0')}-01`;
-          const lastDay = new Date(currentYear, parseInt(filter.month), 0).getDate();
-          dateTo = `${currentYear}-${filter.month.padStart(2, '0')}-${lastDay}`;
-        }
-        if (dateFrom) params.append('date_from', dateFrom);
-        if (dateTo) params.append('date_to', dateTo);
-      }
-      
-      if (params.toString()) url += `?${params.toString()}`;
-
-      const response = await api.get(url);
-      setPayables(response.data.results || response.data);
-    } catch (error) {
-      console.error('Error fetching payables:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const beginCollectReceivable = (receivable) => {
-    setCollectTarget(receivable);
-    const ccy = String(receivable.currency || receivable.sale_detail?.sale_currency || 'USD').toUpperCase();
-    const rem = parseFloat(receivable.amount) || 0;
-    const defAmount =
-      rem > 0 ? (ccy === 'UZS' ? String(Math.round(rem)) : rem.toFixed(2)) : '';
-    setCollectForm({
-      amount: defAmount,
-      notes: '',
-    });
-  };
-
-  const handleCollectReceivableSubmit = async (e) => {
-    e.preventDefault();
-    if (!collectTarget) return;
-    const ccy = String(collectTarget.currency || collectTarget.sale_detail?.sale_currency || 'USD').toUpperCase();
-    const pay = parseFloat(collectForm.amount) || 0;
-    const rem = parseFloat(collectTarget.amount) || 0;
-    const tol = 0.02;
-
-    if (pay <= 0) {
-      alert('Enter the amount collected (greater than zero).');
-      return;
-    }
-    if (pay > rem + tol) {
-      alert(
-        `Collected amount cannot exceed remaining balance (${formatDisplayAmount(rem, ccy)}).`,
-      );
-      return;
-    }
-
-    const uzs_cash = ccy === 'UZS' ? pay : 0;
-    const usd_cash = ccy === 'USD' ? pay : 0;
-
-    try {
-      const res = await api.post(`/receivables/${collectTarget.id}/collect_payment/`, {
-        uzs_cash,
-        uzs_card: 0,
-        usd_cash,
-        usd_card: 0,
-        notes: String(collectForm.notes || '').trim(),
-      });
-      alert(res.data?.message || 'Payment recorded.');
-      setCollectTarget(null);
-      setCollectForm({
-        amount: '',
-        notes: '',
-      });
-      await fetchReceivables();
-      await fetchRecords();
-    } catch (error) {
-      console.error('Error collecting receivable:', error);
-      const d = error.response?.data;
-      const msg =
-        d?.detail ||
-        d?.error ||
-        (typeof d?.detail === 'string' ? d.detail : null) ||
-        (Array.isArray(d) ? d[0] : null) ||
-        (typeof d === 'object' && d !== null
-          ? Object.entries(d)
-              .map(([k, v]) => `${k}: ${Array.isArray(v) ? v[0] : String(v)}`)
-              .join(' ')
-          : null) ||
-        'Error recording payment';
-      alert(Array.isArray(msg) ? msg[0] : msg);
+      alert(error.response?.data?.error || 'Could not settle record.');
     }
   };
 
@@ -498,7 +214,7 @@ const Finance = () => {
         payment_type: 'cash',
         recipient: expenseFormData.recipient || null,
         notes: String(expenseFormData.notes || '').trim(),
-        status: 'completed',
+        pay_immediately: expenseFormData.pay_immediately,
       };
 
       await api.post('/finance/', payload);
@@ -509,9 +225,10 @@ const Finance = () => {
         amount: '',
         recipient: '',
         notes: '',
+        pay_immediately: true,
       });
       fetchRecords();
-      fetchWorkers(); // Refresh workers list after creating expense
+      fetchWorkers();
     } catch (error) {
       console.error('Error creating expense:', error);
       // Handle validation errors from DRF
@@ -523,52 +240,43 @@ const Finance = () => {
     }
   };
 
-  /* Footer totals: completed only; two currency columns (legacy cash/card merged by currency). */
+  const handleIncomeSubmit = async (e) => {
+    e.preventDefault();
+    if (!String(incomeFormData.notes || '').trim()) {
+      alert('Please enter notes describing this income.');
+      return;
+    }
+    try {
+      await api.post('/finance/', {
+        record_type: 'income',
+        amount: incomeFormData.amount || 0,
+        currency: incomeFormData.currency,
+        payment_type: 'cash',
+        notes: String(incomeFormData.notes || '').trim(),
+        pay_immediately: incomeFormData.pay_immediately,
+      });
+      setShowIncomeForm(false);
+      setIncomeFormData({ currency: 'USD', amount: '', notes: '', pay_immediately: true });
+      fetchRecords();
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.detail ||
+        error.response?.data?.non_field_errors?.[0] ||
+        error.response?.data?.error ||
+        'Error creating income';
+      alert(errorMessage);
+    }
+  };
+
   const recordSignedLegTotals = useMemo(
     () => signedFinanceAmountsByLeg(records, { status: 'completed' }),
-    [records]
-  );
-  const receivableAmountTotals = useMemo(
-    () => sumAmountsByCurrency(receivables.filter((r) => r.status === 'pending')),
-    [receivables]
-  );
-  const payableAmountTotals = useMemo(
-    () => sumAmountsByCurrency(payables),
-    [payables]
-  );
-  const customerDepositPayableTotals = useMemo(
-    () => sumAmountsByCurrency(payables.filter((p) => isCustomerDepositPayable(p))),
-    [payables]
-  );
-  const supplierPayableTotals = useMemo(
-    () => sumAmountsByCurrency(payables.filter((p) => !isCustomerDepositPayable(p) && p.status === 'pending')),
-    [payables]
-  );
-  const receivablePendingByCurrency = useMemo(
-    () => sumAmountsByCurrency(receivables.filter((r) => r.status === 'pending')),
-    [receivables]
-  );
-  const payablePendingByCurrency = useMemo(
-    () => sumAmountsByCurrency(payables.filter((p) => p.status === 'pending')),
-    [payables]
+    [records],
   );
 
   const financeRecordsSort = useClientTableSort(FINANCE_RECORD_SORT_ACCESSORS);
   const sortedRecords = useMemo(
     () => financeRecordsSort.sortRows(records || []),
     [records, financeRecordsSort],
-  );
-
-  const receivablesSort = useClientTableSort(RECEIVABLE_TABLE_SORT_ACCESSORS);
-  const sortedReceivableRows = useMemo(
-    () => receivablesSort.sortRows(receivables || []),
-    [receivables, receivablesSort],
-  );
-
-  const payablesTableSort = useClientTableSort(PAYABLE_TABLE_SORT_ACCESSORS);
-  const sortedPayableRows = useMemo(
-    () => payablesTableSort.sortRows(payables || []),
-    [payables, payablesTableSort],
   );
 
   if (loading) {
@@ -592,67 +300,31 @@ const Finance = () => {
     .filter((r) => r.record_type === 'expense' && r.status === 'completed' && r.currency === 'UZS')
     .reduce((sum, r) => sum + parseFloat(r.amount), 0);
 
-  const netProfitUSD = totalIncomeUSD - totalExpenseUSD;
-  const netProfitUZS = totalIncomeUZS - totalExpenseUZS;
+  const netOtherUSD = totalIncomeUSD - totalExpenseUSD;
+  const netOtherUZS = totalIncomeUZS - totalExpenseUZS;
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Finance</h1>
-        {isAdmin && activeTab === 'records' && (
-          <button className="btn-primary" onClick={() => setShowExpenseForm(!showExpenseForm)}>
-            {showExpenseForm ? 'Cancel' : '+ Add Expense'}
-          </button>
+        <h1>Other Financial Records</h1>
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-primary" onClick={() => { setShowIncomeForm(!showIncomeForm); setShowExpenseForm(false); }}>
+              {showIncomeForm ? 'Cancel' : '+ Add Income'}
+            </button>
+            <button className="btn-edit" onClick={() => { setShowExpenseForm(!showExpenseForm); setShowIncomeForm(false); }}>
+              {showExpenseForm ? 'Cancel' : '+ Add Expense'}
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', borderBottom: '2px solid #e0e0e0' }}>
-        <button
-          onClick={() => setActiveTab('records')}
-          style={{
-            padding: '10px 20px',
-            border: 'none',
-            background: activeTab === 'records' ? '#007bff' : 'transparent',
-            color: activeTab === 'records' ? 'white' : '#666',
-            cursor: 'pointer',
-            borderBottom: activeTab === 'records' ? '3px solid #007bff' : '3px solid transparent',
-            fontWeight: activeTab === 'records' ? '600' : '400',
-          }}
-        >
-          Financial Records
-        </button>
-        <button
-          onClick={() => setActiveTab('receivables')}
-          style={{
-            padding: '10px 20px',
-            border: 'none',
-            background: activeTab === 'receivables' ? '#28a745' : 'transparent',
-            color: activeTab === 'receivables' ? 'white' : '#666',
-            cursor: 'pointer',
-            borderBottom: activeTab === 'receivables' ? '3px solid #28a745' : '3px solid transparent',
-            fontWeight: activeTab === 'receivables' ? '600' : '400',
-          }}
-        >
-          Receivables
-        </button>
-        <button
-          onClick={() => setActiveTab('payables')}
-          style={{
-            padding: '10px 20px',
-            border: 'none',
-            background: activeTab === 'payables' ? '#dc3545' : 'transparent',
-            color: activeTab === 'payables' ? 'white' : '#666',
-            cursor: 'pointer',
-            borderBottom: activeTab === 'payables' ? '3px solid #dc3545' : '3px solid transparent',
-            fontWeight: activeTab === 'payables' ? '600' : '400',
-          }}
-        >
-          Payables
-        </button>
-      </div>
+      <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em', maxWidth: 720 }}>
+        Manual other income and expenses only. Sales, inventory, receivables/payables, and Money Balance are tracked on their own tabs.
+        Use <strong>Pay later</strong> to create a payable/receivable first; then settle here or from Receivables / Payables.
+      </p>
 
-      {showExpenseForm && isAdmin && activeTab === 'records' && (
+      {showExpenseForm && isAdmin && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>Add New Expense</h2>
           <form onSubmit={handleExpenseSubmit}>
@@ -730,6 +402,18 @@ const Finance = () => {
                   }
                 />
               </div>
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={expenseFormData.pay_immediately}
+                    onChange={(e) =>
+                      setExpenseFormData({ ...expenseFormData, pay_immediately: e.target.checked })
+                    }
+                  />{' '}
+                  Pay immediately (uncheck to create a payable first)
+                </label>
+              </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -740,9 +424,64 @@ const Finance = () => {
         </div>
       )}
 
-      {/* Summary Cards - Only for Records tab */}
-      {activeTab === 'records' && (
-        <div className="metrics-grid" style={{ marginBottom: '20px' }}>
+      {showIncomeForm && isAdmin && (
+        <div className="form-card" style={{ marginBottom: '20px' }}>
+          <h2>Add Other Income</h2>
+          <form onSubmit={handleIncomeSubmit}>
+            <div className="form-grid">
+              <div className="form-group">
+                <label>Currency</label>
+                <select
+                  value={incomeFormData.currency}
+                  onChange={(e) => setIncomeFormData({ ...incomeFormData, currency: e.target.value })}
+                  required
+                >
+                  <option value="USD">USD</option>
+                  <option value="UZS">UZS</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={incomeFormData.amount}
+                  onChange={(e) => setIncomeFormData({ ...incomeFormData, amount: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>Notes *</label>
+                <textarea
+                  value={incomeFormData.notes}
+                  onChange={(e) => setIncomeFormData({ ...incomeFormData, notes: e.target.value })}
+                  rows="2"
+                  required
+                  placeholder="e.g. Service income, bonus, refund from supplier"
+                />
+              </div>
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={incomeFormData.pay_immediately}
+                    onChange={(e) =>
+                      setIncomeFormData({ ...incomeFormData, pay_immediately: e.target.checked })
+                    }
+                  />{' '}
+                  Received immediately (uncheck to create a receivable first)
+                </label>
+              </div>
+            </div>
+            <div className="form-actions">
+              <button type="submit" className="btn-primary">Add Income</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="metrics-grid" style={{ marginBottom: '20px' }}>
           <div className="metric-card">
             <div className="metric-label">Total Income (USD)</div>
             <div className="metric-value" style={{ color: '#27ae60' }}>
@@ -768,129 +507,35 @@ const Finance = () => {
             </div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Net Profit (USD)</div>
-            <div className="metric-value" style={{ color: netProfitUSD >= 0 ? '#27ae60' : '#e74c3c' }}>
-              {netProfitUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+            <div className="metric-label">Net other (USD)</div>
+            <div className="metric-value" style={{ color: netOtherUSD >= 0 ? '#27ae60' : '#e74c3c' }}>
+              {netOtherUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
             </div>
+            <div style={{ fontSize: '0.75em', color: '#888' }}>Completed rows only — see Profit / Loss for sales</div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Net Profit (UZS)</div>
-            <div className="metric-value" style={{ color: netProfitUZS >= 0 ? '#27ae60' : '#e74c3c' }}>
-              {netProfitUZS.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UZS
+            <div className="metric-label">Net other (UZS)</div>
+            <div className="metric-value" style={{ color: netOtherUZS >= 0 ? '#27ae60' : '#e74c3c' }}>
+              {netOtherUZS.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UZS
             </div>
           </div>
         </div>
-      )}
-
-      {/* Receivables Summary (by currency; do not mix UZS and USD in one number) */}
-      {activeTab === 'receivables' && (
-        <div className="metrics-grid" style={{ marginBottom: '20px' }}>
-          <div className="metric-card" style={{ border: '2px solid #28a745' }}>
-            <div className="metric-label">Receivables — Pending (USD)</div>
-            <div className="metric-value" style={{ color: '#28a745', fontSize: '1.75em' }}>
-              {(receivablePendingByCurrency.USD || 0).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              USD
-            </div>
-          </div>
-          <div className="metric-card" style={{ border: '2px solid #28a745' }}>
-            <div className="metric-label">Receivables — Pending (UZS)</div>
-            <div className="metric-value" style={{ color: '#28a745', fontSize: '1.75em' }}>
-              {(receivablePendingByCurrency.UZS || 0).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              UZS
-            </div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Receivables — All (USD)</div>
-            <div className="metric-value">
-              {(receivableAmountTotals.USD || 0).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              USD
-            </div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Receivables — All (UZS)</div>
-            <div className="metric-value">
-              {(receivableAmountTotals.UZS || 0).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              UZS
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Payables Summary (by currency) */}
-      {activeTab === 'payables' && (
-        <div className="metrics-grid" style={{ marginBottom: '20px' }}>
-          <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-            <div className="metric-label">Payables — Pending (USD)</div>
-            <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.75em' }}>
-              {(payablePendingByCurrency.USD || 0).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              USD
-            </div>
-          </div>
-          <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-            <div className="metric-label">Payables — Pending (UZS)</div>
-            <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.75em' }}>
-              {(payablePendingByCurrency.UZS || 0).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              UZS
-            </div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Payables — All (USD)</div>
-            <div className="metric-value">
-              {(payableAmountTotals.USD || 0).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              USD
-            </div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Payables — All (UZS)</div>
-            <div className="metric-value">
-              {(payableAmountTotals.UZS || 0).toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              UZS
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Filters */}
-      {!showExpenseForm && (
+      {!showExpenseForm && !showIncomeForm && (
         <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
           <h3 className="filter-card__title" style={{ marginBottom: '8px' }}>Filters</h3>
           <div className="filter-toolbar">
-          {activeTab === 'records' && (
-            <>
               <div className="filter-field">
                 <label>Type</label>
                 <select
                   value={filter.type}
                   onChange={(e) => {
                     const newType = e.target.value;
-                    setFilter({ 
-                      ...filter, 
+                    setFilter({
+                      ...filter,
                       type: newType,
-                      expense_type: newType === 'expense' ? filter.expense_type : ''
+                      expense_type: newType === 'expense' ? filter.expense_type : '',
                     });
                   }}
                 >
@@ -910,8 +555,6 @@ const Finance = () => {
                     <option value="salary">Salary</option>
                     <option value="lunch">Lunch</option>
                     <option value="taxi">Taxi</option>
-                    <option value="delivery">Delivery</option>
-                    <option value="cargo">Cargo</option>
                     <option value="office_supplies">Office Supplies</option>
                     <option value="utilities">Utilities</option>
                     <option value="rent">Rent</option>
@@ -919,24 +562,6 @@ const Finance = () => {
                   </select>
                 </div>
               )}
-            </>
-          )}
-          {(activeTab === 'receivables' || activeTab === 'payables') && (
-            <div className="filter-field">
-              <label>Status</label>
-              <select
-                value={filter.status}
-                onChange={(e) => setFilter({ ...filter, status: e.target.value })}
-              >
-                <option value="">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="paid">Paid</option>
-                <option value="overdue">Overdue</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-          )}
-          {activeTab === 'records' && (
             <div className="filter-field">
               <label>Status</label>
               <select
@@ -949,7 +574,6 @@ const Finance = () => {
                 <option value="cancelled">Cancelled</option>
               </select>
             </div>
-          )}
           <div className="filter-field">
             <label>Year</label>
             <select
@@ -1001,9 +625,7 @@ const Finance = () => {
       </div>
       )}
 
-      {/* Financial Records Table */}
-      {activeTab === 'records' && (
-        <div className="table-card">
+      <div className="table-card">
           <div className="data-table-scroll">
           <table className="data-table">
             <thead>
@@ -1021,6 +643,7 @@ const Finance = () => {
                 <SortableTh columnId="recipient_key" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Recipient</SortableTh>
                 <SortableTh columnId="notes" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Notes</SortableTh>
                 <SortableTh columnId="transaction_date" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Date</SortableTh>
+                {isAdmin && <th>Action</th>}
               </tr>
             </thead>
             <tbody>
@@ -1083,6 +706,17 @@ const Finance = () => {
                       })()}
                     </td>
                     <td>{new Date(record.transaction_date).toLocaleString()}</td>
+                    {isAdmin && (
+                      <td>
+                        {record.status === 'pending' ? (
+                          <button type="button" className="btn-edit" onClick={() => handleSettleRecord(record)}>
+                            Settle
+                          </button>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -1114,290 +748,6 @@ const Finance = () => {
           </table>
           </div>
         </div>
-      )}
-
-      {/* Receivables Table */}
-      {activeTab === 'receivables' && (
-        <>
-          {collectTarget && (
-            <div className="form-card" style={{ marginBottom: '20px' }}>
-              <h2>
-                Collect payment — receivable #{collectTarget.id}{' '}
-                <small style={{ color: '#555', fontWeight: 400 }}>(Sale #{collectTarget.sale})</small>
-              </h2>
-              <p style={{ color: '#666', marginBottom: '12px', fontSize: '0.92rem' }}>
-                Enter what the customer paid now toward this open balance. Remaining{' '}
-                <strong>{parseFloat(collectTarget.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{' '}
-                {(collectTarget.currency || collectTarget.sale_detail?.sale_currency || 'USD').toUpperCase()}</strong>
-                {' — '}you can collect in partial payments until the balance is cleared.
-              </p>
-              <form onSubmit={handleCollectReceivableSubmit}>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label>
-                      Amount (
-                      {(collectTarget.currency || collectTarget.sale_detail?.sale_currency || 'USD').toUpperCase()}
-                      )
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0"
-                      value={collectForm.amount}
-                      onChange={(e) => setCollectForm({ ...collectForm, amount: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label>Notes (optional)</label>
-                    <textarea rows={2} value={collectForm.notes} onChange={(e) => setCollectForm({ ...collectForm, notes: e.target.value })} />
-                  </div>
-                </div>
-                <div className="form-actions">
-                  <button type="submit" className="btn-primary">Record collection</button>
-                  <button
-                    type="button"
-                    className="btn-edit"
-                    onClick={() => {
-                      setCollectTarget(null);
-                      setCollectForm({
-                        amount: '',
-                        notes: '',
-                      });
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-        <div className="table-card">
-          <h2>Accounts Receivable</h2>
-          <p style={{ color: '#666', fontSize: '0.9em', margin: '0 0 10px' }}>
-            Outstanding balances on completed sales (after any order advance). Customer prepayments before a sale
-            are listed under Payables.
-          </p>
-          <div className="data-table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <SortableTh columnId="id" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>ID</SortableTh>
-                <SortableTh columnId="customer" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Customer</SortableTh>
-                <SortableTh columnId="sale" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Sale</SortableTh>
-                <SortableTh columnId="product" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Product</SortableTh>
-                <SortableTh columnId="sale_type" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Sale type</SortableTh>
-                <SortableTh columnId="from_order" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>From order</SortableTh>
-                <SortableTh columnId="dispatch" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Delivery (BTS / Dostavshik)</SortableTh>
-                <SortableTh columnId="amount" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Amount</SortableTh>
-                <SortableTh columnId="currency" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Currency</SortableTh>
-                <SortableTh columnId="status" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Status</SortableTh>
-                <SortableTh columnId="created_at" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Created</SortableTh>
-                <SortableTh columnId="paid_date" sortCol={receivablesSort.sortCol} sortDir={receivablesSort.sortDir} onSort={receivablesSort.onHeaderClick}>Paid date</SortableTh>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {receivables.length === 0 ? (
-                <tr>
-                  <td colSpan="13" style={{ textAlign: 'center' }}>
-                    No receivables found
-                  </td>
-                </tr>
-              ) : (
-                sortedReceivableRows.map((receivable) => {
-                  const sd = receivable.sale_detail;
-                  return (
-                  <tr key={receivable.id}>
-                    <td>#{receivable.id}</td>
-                      <td>{receivableCustomerName(receivable)}</td>
-                      <td>#{receivable.sale}</td>
-                      <td>
-                        {sd?.product_detail
-                          ? `${sd.product_detail.brand} ${sd.product_detail.model}`
-                          : '—'}
-                      </td>
-                      <td>
-                        {sd?.sale_type
-                          ? SALE_TYPE_LABELS[sd.sale_type] || sd.sale_type
-                          : '—'}
-                      </td>
-                      <td>
-                        {sd?.order ? (
-                          <span>Order #{sd.order}</span>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td
-                        style={{ fontSize: '0.9rem', maxWidth: '200px' }}
-                        title={sd?.dispatch_info?.logistics_notes || undefined}
-                      >
-                        {receivableDispatchLabel(sd)}
-                    </td>
-                    <td style={{ fontWeight: '600', color: '#28a745' }}>
-                      {parseFloat(receivable.amount).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                    </td>
-                    <td>{receivable.currency || 'USD'}</td>
-                    <td>
-                      <span className={`status-badge ${receivable.status}`}>
-                        {receivable.status}
-                      </span>
-                    </td>
-                    <td>{new Date(receivable.created_at).toLocaleString()}</td>
-                    <td>
-                      {receivable.paid_date
-                        ? new Date(receivable.paid_date).toLocaleString()
-                          : '—'}
-                      </td>
-                      <td>
-                        {canCollectReceivable(receivable) ? (
-                          <button
-                            type="button"
-                            className="btn-edit"
-                            onClick={() => beginCollectReceivable(receivable)}
-                          >
-                            Collect
-                          </button>
-                        ) : (
-                          '—'
-                        )}
-                    </td>
-                  </tr>
-                  );
-                })
-              )}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan="7" style={{ textAlign: 'right' }}>
-                  Pending balance due
-                </td>
-                <td style={{ fontWeight: 600, color: '#28a745' }}>
-                  {formatMultiCurrencyAmounts(receivableAmountTotals)}
-                </td>
-                <td colSpan="5">—</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-          </div>
-        </>
-      )}
-
-      {/* Payables Table */}
-      {activeTab === 'payables' && (
-        <div className="table-card">
-          <h2>Accounts Payable</h2>
-          <p style={{ color: '#666', fontSize: '0.9em', margin: '0 0 10px' }}>
-            Supplier, courier, and package obligations, plus customer prepayments on on-demand orders until you
-            sell (deposit rows drop off once the order is sold and the advance is applied).
-          </p>
-          <div className="data-table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <SortableTh columnId="id" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>ID</SortableTh>
-                <SortableTh columnId="payable_kind" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Payable type</SortableTh>
-                <SortableTh columnId="ref" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Ref</SortableTh>
-                <SortableTh columnId="customer" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Customer</SortableTh>
-                <SortableTh columnId="product" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Product</SortableTh>
-                <SortableTh columnId="context" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Context</SortableTh>
-                <SortableTh columnId="amount" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Amount</SortableTh>
-                <SortableTh columnId="currency" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Currency</SortableTh>
-                <SortableTh columnId="status" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Status</SortableTh>
-                <SortableTh columnId="created_at" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Created</SortableTh>
-                <SortableTh columnId="paid_date" sortCol={payablesTableSort.sortCol} sortDir={payablesTableSort.sortDir} onSort={payablesTableSort.onHeaderClick}>Paid date</SortableTh>
-              </tr>
-            </thead>
-            <tbody>
-              {payables.length === 0 ? (
-                <tr>
-                  <td colSpan="11" style={{ textAlign: 'center' }}>
-                    No payables found
-                  </td>
-                </tr>
-              ) : (
-                sortedPayableRows.map((payable) => {
-                  const { kind, ref } = payableKind(payable);
-                  const isDeposit = isCustomerDepositPayable(payable);
-                  const rowKey = isDeposit ? payable.virtual_id : payable.id;
-                  return (
-                  <tr key={rowKey} style={isDeposit ? { backgroundColor: '#f8f4ff' } : undefined}>
-                    <td>{isDeposit ? `Order #${payable.order_detail?.id}` : `#${payable.id}`}</td>
-                    <td>
-                        <span
-                          className="status-badge"
-                          style={{ background: isDeposit ? '#5e35b1' : '#6c757d', fontSize: '0.75rem' }}
-                        >
-                          {kind}
-                        </span>
-                    </td>
-                      <td style={{ fontSize: '0.9rem' }}>{ref}</td>
-                      <td>{payableCustomerName(payable)}</td>
-                    <td>
-                      {payable.order_detail?.product_detail
-                        ? `${payable.order_detail.product_detail.brand} ${payable.order_detail.product_detail.model}`
-                        : payable.dispatch_detail?.sale_detail?.product_detail
-                        ? `${payable.dispatch_detail.sale_detail.product_detail.brand} ${payable.dispatch_detail.sale_detail.product_detail.model}`
-                            : payable.package_history_detail?.package_detail
-                              ? `Packages · type ${payable.package_history_detail.package_detail.package_type}`
-                              : '—'}
-                    </td>
-                      <td style={{ fontSize: '0.9rem', maxWidth: '220px' }}>{payableContext(payable)}</td>
-                    <td style={{ fontWeight: '600', color: isDeposit ? '#5e35b1' : '#dc3545' }}>
-                      {formatMoneyAmount(payable.amount, payable.currency)}
-                      {isDeposit && (
-                        <div style={{ fontSize: '0.78em', color: '#666', fontWeight: 400 }}>Prepaid by customer</div>
-                      )}
-                    </td>
-                    <td>{payable.currency || 'USD'}</td>
-                    <td>
-                      <span className={`status-badge ${payable.status}`}>
-                        {isDeposit ? 'prepaid' : payable.status}
-                      </span>
-                    </td>
-                    <td>{new Date(payable.created_at).toLocaleString()}</td>
-                    <td>
-                      {payable.paid_date
-                        ? new Date(payable.paid_date).toLocaleString()
-                          : '—'}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan="6" style={{ textAlign: 'right' }}>
-                  Supplier / courier / package (pending)
-                </td>
-                <td style={{ fontWeight: 600, color: '#dc3545' }}>
-                  {formatMultiCurrencyAmounts(supplierPayableTotals)}
-                </td>
-                <td colSpan="4">—</td>
-              </tr>
-              {(customerDepositPayableTotals.USD > 0 || customerDepositPayableTotals.UZS > 0) && (
-                <tr>
-                  <td colSpan="6" style={{ textAlign: 'right', color: '#666' }}>
-                    Customer deposits (on-demand, not sold yet)
-                  </td>
-                  <td style={{ fontWeight: 600, color: '#5e35b1' }}>
-                    {formatMultiCurrencyAmounts(customerDepositPayableTotals)}
-                  </td>
-                  <td colSpan="4">—</td>
-                </tr>
-              )}
-            </tfoot>
-          </table>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

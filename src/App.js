@@ -12,6 +12,9 @@ import Orders from './pages/Orders';
 import Sales from './pages/Sales';
 import Returns from './pages/Returns';
 import Finance from './pages/Finance';
+import ReceivablesPayables from './pages/ReceivablesPayables';
+import Equity from './pages/Equity';
+import FixedAssets from './pages/FixedAssets';
 import ProfitLoss from './pages/ProfitLoss';
 import BalanceSheet from './pages/BalanceSheet';
 import MoneyBalance from './pages/MoneyBalance';
@@ -44,6 +47,9 @@ function App() {
             <Route path="sales" element={<Sales />} />
             <Route path="returns" element={<Returns />} />
             <Route path="finance" element={<Finance />} />
+            <Route path="receivables-payables" element={<ReceivablesPayables />} />
+            <Route path="equity" element={<Equity />} />
+            <Route path="fixed-assets" element={<FixedAssets />} />
             <Route path="profit-loss" element={<ProfitLoss />} />
             <Route path="balance-sheet" element={<BalanceSheet />} />
             <Route path="money-balance" element={<MoneyBalance />} />
