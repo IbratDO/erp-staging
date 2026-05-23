@@ -1,34 +1,82 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
+import useCbuExchangeRate from '../hooks/useCbuExchangeRate';
+import { formatDisplayAmount } from '../utils/currencyFormat';
 import {
   buildPaymentFormDataFromSale,
+  deliveryStep2PaymentFromStep1,
   computeAdvanceRemainingDue,
   computePaymentShortfallMeta,
   emptyPaymentFormState,
-  saleDiscountAmountPerUnit,
 } from '../utils/saleCompletePayHelpers';
+import {
+  runSalePaymentSubmitFlow,
+  combinedPaymentInSaleCurrency,
+} from '../utils/salePaymentFlowHelpers';
+
+function DeliveryPaymentAmountFields({ form, setForm, meta }) {
+  return (
+    <>
+      <div className="form-group">
+        <label>UZS</label>
+        <input
+          type="text"
+          inputMode="decimal"
+          placeholder="0"
+          value={form.uzs ?? ''}
+          onChange={(e) => setForm((prev) => ({ ...prev, uzs: e.target.value }))}
+        />
+      </div>
+      <div className="form-group">
+        <label>USD</label>
+        <input
+          type="text"
+          inputMode="decimal"
+          placeholder="0"
+          value={form.usd ?? ''}
+          onChange={(e) => setForm((prev) => ({ ...prev, usd: e.target.value }))}
+        />
+      </div>
+      {meta.due != null && !Number.isNaN(meta.due) && (
+        <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <p style={{ margin: 0, fontSize: '0.9em', color: '#444' }}>
+            <strong>Amount due:</strong> {formatDisplayAmount(meta.due, meta.sc)}
+            {meta.paid != null ? (
+              <>
+                {' '}
+                · <strong>Entered ({meta.sc}):</strong> {formatDisplayAmount(meta.paid, meta.sc)}
+              </>
+            ) : meta.mixed ? (
+              <span style={{ color: '#b45309' }}> — loading CBU rate…</span>
+            ) : null}
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
 
 /**
- * Shop delivery settlement: each open shows one step’s card matching the actions column (by sale timestamps).
- * Steps 1–2 close after save so the grid shows the next action; step 3 calls onSuccess and closes.
+ * Shop delivery settlement: 3 steps with UZS/USD + CBU (same rules as Complete & Pay).
  */
 export default function SaleDeliverySettlementForm({
   sale: saleProp,
   onClose,
   onSuccess,
-  /** Runs after steps 1 or 2 save — refresh grids before overlay closes */
   onAfterStepRecorded,
   showNotification,
 }) {
-  const [sale, setSale] = useState(saleProp);
+  const [sale, setSale] = useState(null);
+  const [step1, setStep1] = useState(() => emptyPaymentFormState());
   const [step2, setStep2] = useState(() => emptyPaymentFormState());
-  const [step1TotalCollected, setStep1TotalCollected] = useState('');
-  const [step1SaleCurrency, setStep1SaleCurrency] = useState('USD');
   const [step2Note, setStep2Note] = useState('');
-
-  const [dispAmount, setDispAmount] = useState('');
-  const [dispCurrency, setDispCurrency] = useState('UZS');
+  const [step3Pay, setStep3Pay] = useState({ uzs: '', usd: '' });
+  const [saleLoading, setSaleLoading] = useState(true);
   const cardRef = useRef(null);
+  const formInitSaleIdRef = useRef(null);
+  const step1PrefillSaleIdRef = useRef(null);
+  const step3PrefillSaleIdRef = useRef(null);
+  const { exchangeRate, exchangeRateError, cbuRate } = useCbuExchangeRate(!!saleProp?.id);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -39,39 +87,57 @@ export default function SaleDeliverySettlementForm({
 
   useEffect(() => {
     let cancel = false;
+    if (!saleProp?.id) {
+      setSaleLoading(false);
+      return undefined;
+    }
+    setSaleLoading(true);
+    formInitSaleIdRef.current = null;
+    step1PrefillSaleIdRef.current = null;
+    step3PrefillSaleIdRef.current = null;
     (async () => {
-      if (!saleProp?.id) return;
       try {
         const { data } = await api.get(`/sales/${saleProp.id}/`);
         if (!cancel) setSale(data);
       } catch {
-        /* use prop */
+        if (!cancel) setSale(saleProp);
+      } finally {
+        if (!cancel) setSaleLoading(false);
       }
     })();
     return () => {
       cancel = true;
     };
-  }, [saleProp?.id]);
+  }, [saleProp?.id]); // eslint-disable-line react-hooks/exhaustive-deps -- saleProp snapshot on fetch only
 
   useEffect(() => {
-    if (!sale) {
-      setStep2(emptyPaymentFormState());
-      return;
-    }
+    if (!sale?.id || saleLoading) return;
+    if (formInitSaleIdRef.current === sale.id) return;
+    formInitSaleIdRef.current = sale.id;
     const fd = buildPaymentFormDataFromSale(sale);
     fd.dispatch_payment_needed = false;
     fd.dispatch_payment_amount = '';
-    setStep2(fd);
-  }, [sale]);
+    const step2FromStep1 = deliveryStep2PaymentFromStep1(sale);
+    setStep1({ ...fd });
+    setStep2(
+      step2FromStep1
+        ? { ...fd, uzs: step2FromStep1.uzs, usd: step2FromStep1.usd }
+        : { ...fd },
+    );
+  }, [sale?.id, saleLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!sale?.id) return;
-    if (!sale.delivery_customer_paid_at) {
-      const expectedTotal = computeAdvanceRemainingDue(sale);
-      setStep1TotalCollected(expectedTotal > 0 ? expectedTotal.toFixed(2) : '');
-      setStep1SaleCurrency(sale.sale_currency || 'USD');
+    if (!sale?.id || saleLoading || sale.delivery_customer_paid_at) return;
+    if (step1PrefillSaleIdRef.current === sale.id) return;
+    step1PrefillSaleIdRef.current = sale.id;
+    const due = computeAdvanceRemainingDue(sale);
+    const sc = sale.sale_currency || 'USD';
+    if (sc === 'UZS' && due > 0) {
+      setStep1((prev) => ({ ...prev, uzs: String(Math.round(due)), usd: '' }));
+    } else if (due > 0) {
+      setStep1((prev) => ({ ...prev, usd: due.toFixed(2), uzs: '' }));
     }
-  }, [sale]);
+  }, [sale?.id, saleLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!sale?.id) return;
@@ -83,98 +149,117 @@ export default function SaleDeliverySettlementForm({
   const d = sale?.dispatch_info || null;
   const uzFee = d ? parseFloat(d.delivery_cost_uzs ?? 0) || 0 : 0;
   const usFee = d ? parseFloat(d.delivery_cost ?? 0) || 0 : 0;
+  const dispatchFeeCurrency = uzFee > 0 ? 'UZS' : 'USD';
+  const dispatchFeeDue = uzFee > 0 ? uzFee : usFee;
+
+  const activeStepPreview = sale
+    ? !sale.delivery_customer_paid_at
+      ? 1
+      : !sale.delivery_shop_remittance_at
+        ? 2
+        : !sale.delivery_dispatcher_fee_completed_at
+          ? 3
+          : 0
+    : 0;
 
   useEffect(() => {
-    if (!d) return;
-    if (uzFee > 0) {
-      setDispCurrency('UZS');
-      setDispAmount(d.delivery_cost_uzs != null && String(d.delivery_cost_uzs) !== '' ? String(d.delivery_cost_uzs) : '');
-    } else if (usFee > 0) {
-      setDispCurrency('USD');
-      setDispAmount(d.delivery_cost != null && String(d.delivery_cost) !== '' ? String(d.delivery_cost) : '');
-    } else {
-      setDispAmount('');
+    if (!sale?.id || saleLoading || activeStepPreview !== 3) return;
+    if (!d || dispatchFeeDue <= 0) {
+      setStep3Pay({ uzs: '', usd: '' });
+      step3PrefillSaleIdRef.current = sale.id;
+      return;
     }
-  }, [d, uzFee, usFee]);
+    if (step3PrefillSaleIdRef.current === sale.id) return;
+    step3PrefillSaleIdRef.current = sale.id;
+    if (dispatchFeeCurrency === 'UZS') {
+      setStep3Pay({ uzs: String(Math.round(dispatchFeeDue)), usd: '' });
+    } else {
+      setStep3Pay({ uzs: '', usd: String(dispatchFeeDue.toFixed(2)) });
+    }
+  }, [sale?.id, saleLoading, activeStepPreview, dispatchFeeDue, dispatchFeeCurrency, d]);
 
-  if (!sale) return null;
+  if (!sale || saleLoading) return null;
 
-  const meta2 = computePaymentShortfallMeta(sale, step2);
+  const meta1 = computePaymentShortfallMeta(sale, step1, cbuRate);
+  const meta2 = computePaymentShortfallMeta(sale, step2, cbuRate);
+  const step3CombinedTotal =
+    dispatchFeeDue > 0
+      ? combinedPaymentInSaleCurrency(
+          { sale_currency: dispatchFeeCurrency },
+          step3Pay.uzs,
+          step3Pay.usd,
+          cbuRate,
+        )
+      : null;
 
   const s1 = !!sale.delivery_customer_paid_at;
   const s2 = !!sale.delivery_shop_remittance_at;
   const s3 = !!sale.delivery_dispatcher_fee_completed_at;
-
-  /** 1–3 = which single card is shown; 0 = all recorded (normally the modal closes on step 3). */
   const activeStep = !s1 ? 1 : !s2 ? 2 : !s3 ? 3 : 0;
-
-  const needsDispatchFeePayment = !!(d && !d.is_paid && (uzFee > 0 || usFee > 0));
+  const needsDispatchFeePayment = !!(d && !d.is_paid && dispatchFeeDue > 0);
 
   const productLabel = sale.product_detail
     ? [sale.product_detail.brand, sale.product_detail.model].filter(Boolean).join(' ').trim() || 'Product'
     : 'Product';
 
-  const amountTolerance = (currency) => (currency === 'UZS' ? 1 : 0.02);
-
-  const paymentMatchesExpectedDue = (due, sc, uzsT, usdT) => {
-    if (due == null || Number.isNaN(due)) return false;
-    const tol = amountTolerance(sc);
-    if (sc === 'USD') {
-      return uzsT === 0 && Math.abs(usdT - due) <= tol;
-    }
-    return usdT === 0 && Math.abs(uzsT - due) <= tol;
-  };
-
   const handleStep1 = async () => {
-    const totalCollected = parseFloat(String(step1TotalCollected).replace(',', '.'));
-    if (Number.isNaN(totalCollected) || totalCollected < 0) {
-      showNotification?.('Enter a valid total amount collected (0 or greater).', 'error');
+    const sc = sale.sale_currency || 'USD';
+    const uzsT = parseFloat(step1.uzs) || 0;
+    const usdT = parseFloat(step1.usd) || 0;
+    if (uzsT + usdT === 0) {
+      showNotification?.('Enter at least one amount collected from the customer.', 'error');
       return;
     }
-    if (step1SaleCurrency !== 'USD' && step1SaleCurrency !== 'UZS') {
-      showNotification?.('Sale currency must be USD or UZS.', 'error');
+    const needsCbuRate =
+      (uzsT > 0 && usdT > 0) ||
+      (sc === 'USD' && uzsT > 0 && usdT === 0) ||
+      (sc === 'UZS' && usdT > 0 && uzsT === 0);
+    if (needsCbuRate && !cbuRate) {
+      showNotification?.(
+        exchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
+        'error',
+      );
       return;
     }
-    const qty = sale.quantity ?? 1;
-    const actualCurrency = sale.sale_currency || 'USD';
-    const actualDueAtDoor = computeAdvanceRemainingDue(sale);
-    const discPerUnit = saleDiscountAmountPerUnit(sale);
-    const discNote =
-      discPerUnit > 0
-        ? ` (includes $${discPerUnit.toFixed(2)}/unit discount off list)`
-        : '';
-    const actualFmt =
-      actualDueAtDoor != null && !Number.isNaN(actualDueAtDoor)
-        ? `${actualDueAtDoor.toFixed(2)} ${actualCurrency}${discNote}`
-        : '—';
-    const enteredFmt = `${totalCollected.toFixed(2)} ${step1SaleCurrency}`;
+    const totalInSaleCurrency = combinedPaymentInSaleCurrency(sale, step1.uzs, step1.usd, cbuRate);
+    if (totalInSaleCurrency == null) {
+      showNotification?.('Could not calculate total collected.', 'error');
+      return;
+    }
+    const due = computeAdvanceRemainingDue(sale);
+    const tol = sc === 'UZS' ? 1 : 0.02;
     const amountChanged =
-      actualDueAtDoor == null ||
-      Number.isNaN(actualDueAtDoor) ||
-      Math.abs(totalCollected - actualDueAtDoor) > amountTolerance(actualCurrency) ||
-      step1SaleCurrency !== actualCurrency;
+      due == null ||
+      Number.isNaN(due) ||
+      Math.abs(totalInSaleCurrency - due) > tol;
     if (amountChanged) {
       const ok = window.confirm(
         [
           'Confirm “Payment received by dispatch”?',
           '',
-          `Sale #${sale.id} · ${qty} × ${productLabel}`,
+          `Sale #${sale.id} · ${productLabel}`,
           '',
-          `Expected on record (total collected from customer): ${actualFmt}`,
-          `Entered · total collected: ${enteredFmt}`,
+          `Expected on record: ${formatDisplayAmount(due, sc)}`,
+          `Entered (in ${sc}, at CBU rate): ${formatDisplayAmount(totalInSaleCurrency, sc)}`,
+          `UZS: ${uzsT.toFixed(2)} · USD: ${usdT.toFixed(2)}`,
           '',
-          'Amount or currency differs from the sale on record.',
           'This records courier hand-off only (no shop cash movement yet).',
-        ].join('\n')
+        ].join('\n'),
       );
       if (!ok) return;
     }
-
     try {
-      await api.post(`/sales/${sale.id}/delivery_customer_paid/`, {
-        total_collected: totalCollected,
-        sale_currency: step1SaleCurrency,
-      });
+      const body = {
+        uzs: uzsT,
+        usd: usdT,
+        sale_currency: sc,
+      };
+      if (exchangeRate?.rate && (uzsT > 0 && usdT > 0)) {
+        body.exchange_rate = exchangeRate.rate;
+      } else if (exchangeRate?.rate && ((sc === 'USD' && uzsT > 0) || (sc === 'UZS' && usdT > 0))) {
+        body.exchange_rate = exchangeRate.rate;
+      }
+      await api.post(`/sales/${sale.id}/delivery_customer_paid/`, body);
       showNotification?.('Payment received by dispatch has been recorded.', 'success');
       await Promise.resolve(onAfterStepRecorded?.());
       onClose?.();
@@ -185,78 +270,19 @@ export default function SaleDeliverySettlementForm({
 
   const handleStep2 = async (e) => {
     e.preventDefault();
+    const flow = await runSalePaymentSubmitFlow({
+      sale,
+      paymentFormData: step2,
+      exchangeRate,
+      exchangeRateError,
+      showNotification,
+      allowDiscount: true,
+    });
+    if (!flow.ok) return;
+    const body = { ...flow.requestData };
+    const trimmedNote = String(step2Note || '').trim();
+    if (trimmedNote) body.delivery_shop_remittance_note = trimmedNote;
     try {
-      if (meta2.mixed && meta2.short > 0.01) {
-        showNotification?.(
-          'Pay in one currency only (UZS or USD), matching the sale list price currency, when paying less than the total.',
-          'error'
-        );
-        return;
-      }
-      if (
-        meta2.needs &&
-        step2.balance_shortfall_type !== 'discount'
-      ) {
-        showNotification?.(
-          'Payment is below the amount due. Select Discount to record the remainder, or collect more.',
-          'error'
-        );
-        return;
-      }
-      const eu = parseFloat(step2.uzs) || 0;
-      const ed = parseFloat(step2.usd) || 0;
-      const paymentChanged =
-        meta2.mixed ||
-        meta2.hasOverpayment ||
-        (meta2.needs && step2.balance_shortfall_type === 'discount') ||
-        !paymentMatchesExpectedDue(meta2.due, meta2.sc, eu, ed);
-
-      if (paymentChanged) {
-        const dueLines =
-          meta2.due != null && !Number.isNaN(meta2.due) && meta2.sc
-            ? [`Amount due / actual (${meta2.sc}): ${meta2.due.toFixed(2)} ${meta2.sc}`]
-            : [];
-        const enteredMainLines =
-          meta2.paid != null && !Number.isNaN(meta2.paid) && meta2.sc
-            ? [`Payment entered (in ${meta2.sc}, from UZS + USD buckets): ${meta2.paid.toFixed(2)} ${meta2.sc}`]
-            : [];
-        const overLines =
-          meta2.hasOverpayment && meta2.due != null && meta2.paid != null && meta2.overpaymentAmount != null
-            ? [
-                '',
-                `Overpayment warning: entered is ${meta2.paid.toFixed(2)} ${meta2.sc}; due is ${meta2.due.toFixed(2)} ${meta2.sc}; excess ${meta2.overpaymentAmount.toFixed(2)} ${meta2.sc}.`,
-              ]
-            : [];
-
-        const okShop = window.confirm(
-          [
-            'Confirm “Payment received by shop”?',
-            '',
-            ...dueLines,
-            ...enteredMainLines,
-            '',
-            `Entered · UZS: ${eu.toFixed(2)}`,
-            `Entered · USD: ${ed.toFixed(2)}`,
-            ...overLines,
-            '',
-            'Amount or currency differs from what is due on record.',
-            'Proceed?',
-          ].join('\n')
-        );
-        if (!okShop) return;
-      }
-
-      const body = {
-        uzs: parseFloat(step2.uzs) || 0,
-        usd: parseFloat(step2.usd) || 0,
-      };
-      if (meta2.needs && step2.balance_shortfall_type === 'discount') {
-        body.balance_shortfall_type = 'discount';
-      }
-      const trimmedNote = String(step2Note || '').trim();
-      if (trimmedNote) {
-        body.delivery_shop_remittance_note = trimmedNote;
-      }
       await api.post(`/sales/${sale.id}/delivery_shop_received_payment/`, body);
       showNotification?.('Payment received by shop has been recorded.', 'success');
       await Promise.resolve(onAfterStepRecorded?.());
@@ -264,7 +290,7 @@ export default function SaleDeliverySettlementForm({
     } catch (err) {
       showNotification?.(
         err.response?.data?.error || err.response?.data?.detail || 'Could not save step 2',
-        'error'
+        'error',
       );
     }
   };
@@ -274,37 +300,50 @@ export default function SaleDeliverySettlementForm({
     try {
       const body = {};
       if (needsDispatchFeePayment) {
-        const amt = parseFloat(String(dispAmount).replace(',', '.')) || 0;
-        if (amt <= 0) {
-          showNotification?.('Enter a positive delivery payment amount.', 'error');
+        const uzsT = parseFloat(step3Pay.uzs) || 0;
+        const usdT = parseFloat(step3Pay.usd) || 0;
+        if (uzsT + usdT === 0) {
+          showNotification?.('Enter at least one amount for the dispatch fee.', 'error');
           return;
         }
-        const plannedAmt = uzFee > 0 ? uzFee : usFee;
-        const plannedCcy = uzFee > 0 ? 'UZS' : 'USD';
-        const tol = amountTolerance(plannedCcy);
-        const dispatchPaymentChanged =
-          plannedCcy !== dispCurrency || Math.abs(plannedAmt - amt) > tol;
-        if (dispatchPaymentChanged) {
-          const plannedFmt = `${plannedAmt.toFixed(2)} ${plannedCcy}`;
-          const enteredFmt = `${amt.toFixed(2)} ${dispCurrency}`;
+        if ((uzsT > 0 && usdT > 0) || (dispatchFeeCurrency === 'USD' && uzsT > 0) || (dispatchFeeCurrency === 'UZS' && usdT > 0)) {
+          if (!cbuRate) {
+            showNotification?.(
+              exchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
+              'error',
+            );
+            return;
+          }
+        }
+        const paidTotal = combinedPaymentInSaleCurrency(
+          { sale_currency: dispatchFeeCurrency },
+          step3Pay.uzs,
+          step3Pay.usd,
+          cbuRate,
+        );
+        if (paidTotal == null) {
+          showNotification?.('Could not calculate dispatch payment total.', 'error');
+          return;
+        }
+        const tol = dispatchFeeCurrency === 'UZS' ? 1 : 0.02;
+        if (Math.abs(paidTotal - dispatchFeeDue) > tol) {
           const ok = window.confirm(
             [
               'Confirm “Pay for dispatch & complete sale”?',
               '',
-              `Sale #${sale.id}`,
+              `Planned dispatch fee: ${formatDisplayAmount(dispatchFeeDue, dispatchFeeCurrency)}`,
+              `Payment entered (at CBU): ${formatDisplayAmount(paidTotal, dispatchFeeCurrency)}`,
+              `UZS: ${uzsT.toFixed(2)} · USD: ${usdT.toFixed(2)}`,
               '',
-              `Planned dispatch fee on record (actual): ${plannedFmt}`,
-              `Delivery payment entered: ${enteredFmt}`,
-              '',
-              'Entered amount or currency differs from dispatch on record — the dispatch fee will be updated to match this payment.',
-              '',
-              'This withdraws from shop balances and marks the sale completed.',
-            ].join('\n')
+              'Amount differs from dispatch on record — fee will be updated to match.',
+              'Proceed?',
+            ].join('\n'),
           );
           if (!ok) return;
         }
-        body.dispatch_payment_amount = amt;
-        body.dispatch_payment_currency = dispCurrency;
+        body.uzs = uzsT;
+        body.usd = usdT;
+        if (exchangeRate?.rate) body.exchange_rate = exchangeRate.rate;
       }
       await api.post(`/sales/${sale.id}/delivery_pay_dispatch_fee/`, body);
       showNotification?.(
@@ -318,7 +357,7 @@ export default function SaleDeliverySettlementForm({
     } catch (err) {
       showNotification?.(
         err.response?.data?.error || err.response?.data?.detail || 'Could not complete step 3',
-        'error'
+        'error',
       );
     }
   };
@@ -334,46 +373,40 @@ export default function SaleDeliverySettlementForm({
       ) : null}
 
       {activeStep === 1 ? (
-      <div className="form-card" style={{ marginBottom: 20 }}>
-        <h2>Payment received by dispatch — Sale #{sale.id}</h2>
-        <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
-          The courier delivered and collected payment from the customer. Enter the full amount collected (same idea as
-          step 2). This confirms hand‑off only — no shop cash ledger change yet.
-        </p>
-        <div className="form-grid">
-          <div className="form-group">
-            <label>Total amount collected ({step1SaleCurrency})</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={step1TotalCollected}
-              onChange={(e) => setStep1TotalCollected(e.target.value)}
-            />
+        <div className="form-card" style={{ marginBottom: 20 }}>
+          <h2>Payment received by dispatch — Sale #{sale.id}</h2>
+          <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
+            Enter what the courier collected from the customer (UZS and/or USD; mixed amounts use the CBU rate).
+            Hand-off only — no shop cash movement yet.
+          </p>
+          {exchangeRate?.label ? (
+            <p style={{ color: '#4a5568', marginBottom: 12, fontSize: '0.85em' }}>{exchangeRate.label}</p>
+          ) : exchangeRateError ? (
+            <p style={{ color: '#b45309', marginBottom: 12, fontSize: '0.85em' }}>{exchangeRateError}</p>
+          ) : null}
+          <div className="form-grid">
+            <DeliveryPaymentAmountFields form={step1} setForm={setStep1} meta={meta1} />
           </div>
-          <div className="form-group">
-            <label>Sale currency</label>
-            <select value={step1SaleCurrency} onChange={(e) => setStep1SaleCurrency(e.target.value)}>
-              <option value="USD">USD</option>
-              <option value="UZS">UZS</option>
-            </select>
+          <div className="form-actions" style={{ marginTop: 12 }}>
+            <button type="button" className="btn-primary" onClick={handleStep1}>
+              Payment received by dispatch
+            </button>
           </div>
         </div>
-        <div className="form-actions" style={{ marginTop: 12 }}>
-          <button type="button" className="btn-primary" onClick={handleStep1}>
-            Payment received by dispatch
-          </button>
-        </div>
-      </div>
       ) : null}
 
       {activeStep === 2 ? (
-      <div className="form-card" style={{ marginBottom: 20 }}>
-        <h2>Payment received by shop — Sale #{sale.id}</h2>
-        <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
-          Enter what the courier remitted to the shop (UZS and/or USD — same rules as Complete & Pay). This books
-          sale income and clears receivable where applicable.
-        </p>
+        <div className="form-card" style={{ marginBottom: 20 }}>
+          <h2>Payment received by shop — Sale #{sale.id}</h2>
+          <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
+            Enter what the courier remitted to the shop (UZS and/or USD — same rules as Complete & Pay). Books sale
+            income and clears receivable where applicable.
+          </p>
+          {exchangeRate?.label ? (
+            <p style={{ color: '#4a5568', marginBottom: 12, fontSize: '0.85em' }}>{exchangeRate.label}</p>
+          ) : exchangeRateError ? (
+            <p style={{ color: '#b45309', marginBottom: 12, fontSize: '0.85em' }}>{exchangeRateError}</p>
+          ) : null}
           <form onSubmit={handleStep2}>
             <div className="form-grid">
               {step2.prepayment_amount && parseFloat(step2.prepayment_amount) > 0 ? (
@@ -382,45 +415,12 @@ export default function SaleDeliverySettlementForm({
                   <input readOnly style={{ background: '#f5f5f5' }} value={step2.prepayment_amount ?? ''} />
                 </div>
               ) : null}
-              <div className="form-group">
-                <label>UZS</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={step2.uzs ?? ''}
-                  onChange={(e) => setStep2({ ...step2, uzs: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>USD</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={step2.usd ?? ''}
-                  onChange={(e) => setStep2({ ...step2, usd: e.target.value })}
-                />
-              </div>
-
-              {meta2.due != null && !Number.isNaN(meta2.due) && (
-                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <p style={{ margin: 0, fontSize: '0.9em', color: '#444' }}>
-                    <strong>Amount due:</strong> {meta2.due.toFixed(2)} {meta2.sc || 'USD'}
-                    {meta2.paid != null ? (
-                      <>
-                        {' '}
-                        · <strong>Entered ({meta2.sc}):</strong> {meta2.paid.toFixed(2)}
-                      </>
-                    ) : null}
-                  </p>
-                </div>
-              )}
+              <DeliveryPaymentAmountFields form={step2} setForm={setStep2} meta={meta2} />
               {meta2.needs && (
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <p style={{ margin: '0 0 10px', fontSize: '0.9em', color: '#555', lineHeight: 1.45 }}>
-                    Payment is below the amount due. Choose{' '}
-                    <strong>Discount</strong> to record the remainder, or increase the payment.
+                    Payment is below the amount due. Choose <strong>Discount</strong> to record the remainder, or
+                    collect more.
                   </p>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                     <input
@@ -450,59 +450,77 @@ export default function SaleDeliverySettlementForm({
               </button>
             </div>
           </form>
-      </div>
+        </div>
       ) : null}
 
       {activeStep === 3 ? (
-      <div className="form-card" style={{ marginBottom: 20 }}>
-        <h2>
-          {needsDispatchFeePayment
-            ? `Pay for dispatch & complete sale — Sale #${sale.id}`
-            : `Complete sale — Sale #${sale.id}`}
-        </h2>
-        <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
-          {needsDispatchFeePayment
-            ? 'Edit the delivery fee if needed — the planned dispatch totals will be updated to match what you confirm. Pays from shop balances and marks the sale Completed.'
-            : 'No dispatch fee payout is configured. Submit to mark the sale Completed.'}
-        </p>
-        {needsDispatchFeePayment ? (
-          <form onSubmit={handleStep3}>
-            <div className="form-grid">
-              <div className="form-group">
-                <label>Delivery amount ({dispCurrency})</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={dispAmount}
-                  onChange={(e) => setDispAmount(e.target.value)}
-                  required
-                />
+        <div className="form-card" style={{ marginBottom: 20 }}>
+          <h2>
+            {needsDispatchFeePayment
+              ? `Pay for dispatch & complete sale — Sale #${sale.id}`
+              : `Complete sale — Sale #${sale.id}`}
+          </h2>
+          <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
+            {needsDispatchFeePayment
+              ? 'Pay the dispatch fee from shop balances (UZS and/or USD at CBU rate). Marks the sale completed.'
+              : 'No dispatch fee payout is configured. Submit to mark the sale completed.'}
+          </p>
+          {needsDispatchFeePayment ? (
+            <form onSubmit={handleStep3}>
+              {exchangeRate?.label ? (
+                <p style={{ color: '#4a5568', marginBottom: 12, fontSize: '0.85em' }}>{exchangeRate.label}</p>
+              ) : exchangeRateError ? (
+                <p style={{ color: '#b45309', marginBottom: 12, fontSize: '0.85em' }}>{exchangeRateError}</p>
+              ) : null}
+              <div className="form-grid">
+                <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                  <p style={{ margin: 0, fontSize: '0.9em', color: '#444' }}>
+                    <strong>Dispatch fee due:</strong>{' '}
+                    {formatDisplayAmount(dispatchFeeDue, dispatchFeeCurrency)}
+                    {step3CombinedTotal != null ? (
+                      <>
+                        {' '}
+                        · <strong>Entered:</strong>{' '}
+                        {formatDisplayAmount(step3CombinedTotal, dispatchFeeCurrency)}
+                      </>
+                    ) : null}
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label>UZS</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={step3Pay.uzs}
+                    onChange={(e) => setStep3Pay((prev) => ({ ...prev, uzs: e.target.value }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>USD</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={step3Pay.usd}
+                    onChange={(e) => setStep3Pay((prev) => ({ ...prev, usd: e.target.value }))}
+                  />
+                </div>
               </div>
-              <div className="form-group">
-                <label>Currency</label>
-                <select value={dispCurrency} onChange={(e) => setDispCurrency(e.target.value)} required>
-                  <option value="UZS">UZS</option>
-                  <option value="USD">USD</option>
-                </select>
+              <div className="form-actions">
+                <button type="submit" className="btn-primary">
+                  Pay for dispatch & complete sale
+                </button>
               </div>
-            </div>
-            <div className="form-actions">
-              <button type="submit" className="btn-primary">
-                Pay for dispatch & complete sale
-              </button>
-            </div>
-          </form>
-        ) : (
-          <form onSubmit={handleStep3}>
-            <div className="form-actions">
-              <button type="submit" className="btn-primary">
-                Complete sale
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
+            </form>
+          ) : (
+            <form onSubmit={handleStep3}>
+              <div className="form-actions">
+                <button type="submit" className="btn-primary">
+                  Complete sale
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       ) : null}
 
       <div className="form-actions">

@@ -4,6 +4,13 @@ import { cashBalanceTotalByCurrency, formatDisplayAmount, formatInsufficientLedg
 import SortableTh from '../components/SortableTh';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import { useClientTableSort } from '../utils/tableSort';
+import {
+  computeReturnRefundDue,
+  computeReturnRefundMeta,
+  buildReturnRefundRequest,
+  buildReturnCrossCurrencyConfirmMessage,
+  buildReturnCombinedRefundConfirmMessage,
+} from '../utils/returnRefundHelpers';
 import './TablePage.css';
 
 function returnProductPickerLabel(p) {
@@ -63,24 +70,6 @@ function computeReturnDue(returnItem) {
   return { amount, currency, unitPrice };
 }
 
-/** Refund due at mark-refunded: stored sold price from return creation, else legacy sale unit price. */
-function computeReturnRefundDue(returnItem) {
-  const qty = parseInt(returnItem?.quantity, 10) || 0;
-  const storedTotal = parseFloat(returnItem?.sold_price);
-  const storedCurrency = String(returnItem?.sold_price_currency || '').toUpperCase();
-  if (
-    returnItem?.sold_price != null &&
-    returnItem.sold_price !== '' &&
-    Number.isFinite(storedTotal) &&
-    storedTotal >= 0 &&
-    (storedCurrency === 'USD' || storedCurrency === 'UZS')
-  ) {
-    const unitPrice = qty > 0 ? storedTotal / qty : NaN;
-    return { amount: storedTotal, currency: storedCurrency, unitPrice };
-  }
-  return computeReturnDue(returnItem);
-}
-
 function computeFormReturnDue(sale, quantity) {
   if (!sale) return { amount: null, currency: 'USD', unitPrice: NaN };
   return computeReturnDue({ sale_detail: sale, quantity });
@@ -105,10 +94,12 @@ function formatRefundAmounts(uzs, usd) {
 }
 
 /** @returns {false} if user cancels */
-function confirmReturnRefund(returnItem, uzsEntered, usdEntered) {
+function confirmReturnRefund(returnItem, uzsEntered, usdEntered, meta) {
   const uzs = Number(uzsEntered) || 0;
   const usd = Number(usdEntered) || 0;
-  const due = computeReturnRefundDue(returnItem);
+  const due = meta
+    ? { amount: meta.due, currency: meta.sc, unitPrice: computeReturnRefundDue(returnItem).unitPrice }
+    : computeReturnRefundDue(returnItem);
   const productLabel = returnItem?.product_detail
     ? `${returnItem.product_detail.brand} ${returnItem.product_detail.model}`
     : `Product #${returnItem?.product ?? '?'}`;
@@ -201,6 +192,8 @@ const Returns = () => {
     usd: '',
   });
   const [showRefundForm, setShowRefundForm] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState(null);
+  const [exchangeRateError, setExchangeRateError] = useState(null);
 
   const productDropdownRef = useRef(null);
   const [productSearch, setProductSearch] = useState('');
@@ -231,6 +224,43 @@ const Returns = () => {
     fetchCustomers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!showRefundForm) {
+      setExchangeRate(null);
+      setExchangeRateError(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get('/exchange-rate/')
+      .then((res) => {
+        if (!cancelled) {
+          setExchangeRate(res.data);
+          setExchangeRateError(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setExchangeRate(null);
+          setExchangeRateError('Could not load CBU exchange rate.');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showRefundForm]);
+
+  const refundReturnItem = useMemo(
+    () => (refundFormData.returnId ? returns.find((r) => r.id === refundFormData.returnId) : null),
+    [returns, refundFormData.returnId],
+  );
+
+  const cbuRate = exchangeRate?.rate ?? null;
+  const refundMeta = useMemo(
+    () => computeReturnRefundMeta(refundReturnItem, refundFormData, cbuRate),
+    [refundReturnItem, refundFormData, cbuRate],
+  );
 
   const fetchReturns = async () => {
     try {
@@ -350,16 +380,113 @@ const Returns = () => {
     return sales.find((s) => s.id === id) || null;
   }, [formData.sale, sales]);
 
+  const returnableSales = useMemo(
+    () => sales.filter((s) => getRemainingReturnQtyForSale(s) > 0),
+    [sales, getRemainingReturnQtyForSale],
+  );
+
   const newReturnEligibleSales = useMemo(() => {
     const cid = formData.customer ? parseInt(formData.customer, 10) : null;
-    return sales.filter((s) => {
-      if (getRemainingReturnQtyForSale(s) <= 0) return false;
+    const pid = formData.product ? parseInt(formData.product, 10) : null;
+    return returnableSales.filter((s) => {
       if (cid != null && !Number.isNaN(cid) && s.customer !== cid) return false;
-      if (formData.product && s.product !== parseInt(formData.product, 10)) return false;
+      if (pid != null && !Number.isNaN(pid) && s.product !== pid) return false;
       if (formCategory && s.product_detail?.category !== formCategory) return false;
       return true;
     });
-  }, [sales, formData.customer, formData.product, formCategory, getRemainingReturnQtyForSale]);
+  }, [returnableSales, formData.customer, formData.product, formCategory]);
+
+  const newReturnFormCustomerIds = useMemo(() => {
+    const pid = formData.product ? parseInt(formData.product, 10) : null;
+    const ids = new Set();
+    for (const s of returnableSales) {
+      if (formCategory && s.product_detail?.category !== formCategory) continue;
+      if (pid != null && !Number.isNaN(pid) && s.product !== pid) continue;
+      if (s.customer) ids.add(s.customer);
+    }
+    return ids;
+  }, [returnableSales, formCategory, formData.product]);
+
+  const newReturnFormCustomers = useMemo(
+    () => customers.filter((c) => newReturnFormCustomerIds.has(c.id)),
+    [customers, newReturnFormCustomerIds],
+  );
+
+  const newReturnFormProducts = useMemo(() => {
+    const cid = formData.customer ? parseInt(formData.customer, 10) : null;
+    const productIds = new Set();
+    for (const s of returnableSales) {
+      if (cid != null && !Number.isNaN(cid) && s.customer !== cid) continue;
+      if (formCategory && s.product_detail?.category !== formCategory) continue;
+      if (s.product) productIds.add(s.product);
+    }
+    return products.filter((p) => productIds.has(p.id));
+  }, [returnableSales, products, formData.customer, formCategory]);
+
+  const newReturnFormCategories = useMemo(() => {
+    const cid = formData.customer ? parseInt(formData.customer, 10) : null;
+    const pid = formData.product ? parseInt(formData.product, 10) : null;
+    const cats = new Set();
+    for (const s of returnableSales) {
+      if (cid != null && !Number.isNaN(cid) && s.customer !== cid) continue;
+      if (pid != null && !Number.isNaN(pid) && s.product !== pid) continue;
+      const cat = s.product_detail?.category;
+      if (cat) cats.add(cat);
+    }
+    return [...cats].sort();
+  }, [returnableSales, formData.customer, formData.product]);
+
+  const pruneNewReturnForm = useCallback(
+    (patch, categoryValue = formCategory) => {
+      const merged = { ...formData, ...patch };
+      const cid = merged.customer ? parseInt(merged.customer, 10) : null;
+      const pid = merged.product ? parseInt(merged.product, 10) : null;
+      const matches = returnableSales.filter((s) => {
+        if (cid != null && !Number.isNaN(cid) && s.customer !== cid) return false;
+        if (pid != null && !Number.isNaN(pid) && s.product !== pid) return false;
+        if (categoryValue && s.product_detail?.category !== categoryValue) return false;
+        return true;
+      });
+      let customer = merged.customer;
+      let product = merged.product;
+      let sale = merged.sale;
+      if (customer && !matches.some((s) => s.customer === cid)) customer = '';
+      if (product && !matches.some((s) => s.product === pid)) product = '';
+      if (sale && !matches.some((s) => s.id === parseInt(sale, 10))) sale = '';
+      const pricingCleared = sale
+        ? {}
+        : { sold_price: '', sold_price_currency: 'USD' };
+      return { ...merged, customer, product, sale, ...pricingCleared };
+    },
+    [formData, formCategory, returnableSales],
+  );
+
+  useEffect(() => {
+    if (!showForm) return;
+    if (formCategory && !newReturnFormCategories.includes(formCategory)) {
+      setFormCategory('');
+    }
+    const cid = formData.customer ? parseInt(formData.customer, 10) : null;
+    if (formData.customer && (Number.isNaN(cid) || !newReturnFormCustomerIds.has(cid))) {
+      setFormData((prev) => pruneNewReturnForm({ ...prev, customer: '', sale: '' }));
+    }
+    const pid = formData.product ? parseInt(formData.product, 10) : null;
+    if (
+      formData.product &&
+      (Number.isNaN(pid) || !newReturnFormProducts.some((p) => p.id === pid))
+    ) {
+      setFormData((prev) => pruneNewReturnForm({ ...prev, product: '', sale: '' }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    showForm,
+    formCategory,
+    newReturnFormCategories,
+    newReturnFormCustomerIds,
+    newReturnFormProducts,
+    formData.customer,
+    formData.product,
+  ]);
 
   const resolveSaleForPricing = useCallback(() => {
     if (selectedSaleForReturn) return selectedSaleForReturn;
@@ -522,12 +649,90 @@ const Returns = () => {
 
   const handleRefundSubmit = async (e) => {
     e.preventDefault();
-    const returnItem = returns.find((r) => r.id === refundFormData.returnId);
+    const returnItem = refundReturnItem;
     const uzs = parseFloat(refundFormData.uzs) || 0;
     const usd = parseFloat(refundFormData.usd) || 0;
     if (uzs + usd === 0) {
       showNotification('Please enter at least one refund amount.', 'error');
       return;
+    }
+    const meta = computeReturnRefundMeta(returnItem, refundFormData, cbuRate);
+    if (meta.mixed) {
+      showNotification(
+        exchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
+        'error',
+      );
+      return;
+    }
+    if (meta.dueUnavailable) {
+      showNotification('Refund due amount is not available for this return.', 'error');
+      return;
+    }
+    const sc = meta.sc;
+    const crossSingle =
+      (sc === 'USD' && uzs > 0 && usd === 0) || (sc === 'UZS' && usd > 0 && uzs === 0);
+    const isCombinedRefund = uzs > 0 && usd > 0;
+    let acceptSplitUnderpayment = false;
+
+    if (isCombinedRefund && meta.splitCurrency) {
+      if (meta.needs) {
+        acceptSplitUnderpayment = true;
+      }
+      if (
+        !window.confirm(
+          buildReturnCombinedRefundConfirmMessage({
+            returnItem,
+            meta,
+            uzsAmount: uzs,
+            usdAmount: usd,
+            exchangeRate,
+            cbuRate,
+          }),
+        )
+      ) {
+        return;
+      }
+    } else {
+      if (crossSingle && cbuRate) {
+        const otherCurrency = sc === 'USD' ? 'UZS' : 'USD';
+        const otherAmount = sc === 'USD' ? uzs : usd;
+        if (
+          !window.confirm(
+            buildReturnCrossCurrencyConfirmMessage({
+              due: meta.due,
+              sc,
+              otherCurrency,
+              otherAmount,
+              paidInSaleCurrency: meta.paid,
+              exchangeRate,
+              cbuRate,
+            }),
+          )
+        ) {
+          return;
+        }
+      }
+      if (meta.needs) {
+        showNotification(
+          `Refund is below the amount due (${formatDisplayAmount(meta.due, meta.sc)}). Collect the full refund amount.`,
+          'error',
+        );
+        return;
+      }
+      if (meta.hasOverpayment && meta.due != null && meta.overpaymentAmount != null) {
+        const dueLabel = formatDisplayAmount(meta.due, meta.sc);
+        const paidLabel = formatDisplayAmount(meta.paid, meta.sc);
+        const excessLabel = formatDisplayAmount(meta.overpaymentAmount, meta.sc);
+        const msg = [
+          'Refund entered is higher than the amount due.',
+          `Due: ${dueLabel} · Entered: ${paidLabel} · Excess: ${excessLabel}.`,
+          'The extra amount will still be paid out from the cash ledger.',
+          'Continue?',
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+        if (!window.confirm(msg)) return;
+      }
     }
     try {
       const balanceResponse = await api.get('/cash-balance/');
@@ -548,13 +753,13 @@ const Returns = () => {
           }
         }
       }
-      if (!confirmReturnRefund(returnItem, uzs, usd)) {
+      if (!isCombinedRefund && !confirmReturnRefund(returnItem, uzs, usd, meta)) {
         return;
       }
-      await api.post(`/returns/${refundFormData.returnId}/mark_refunded/`, {
-        uzs,
-        usd,
+      const requestData = buildReturnRefundRequest(refundFormData, exchangeRate, {
+        acceptSplitUnderpayment,
       });
+      await api.post(`/returns/${refundFormData.returnId}/mark_refunded/`, requestData);
       setShowRefundForm(false);
       setRefundFormData({ returnId: null, uzs: '', usd: '' });
       showNotification('Return marked as refunded.', 'success');
@@ -603,75 +808,84 @@ const Returns = () => {
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               {(() => {
-                const eligibleSales = sales.filter((s) => getRemainingReturnQtyForSale(s) > 0);
-                const customerEligibleSales = formData.customer
-                  ? eligibleSales.filter((s) => s.customer === parseInt(formData.customer, 10))
-                  : eligibleSales;
-                const customerProductIds = new Set(customerEligibleSales.map((s) => s.product).filter(Boolean));
-                const availableProducts = formData.customer
-                  ? products.filter((p) => customerProductIds.has(p.id))
-                  : products.filter((p) => eligibleSales.some((s) => s.product === p.id));
-
-                const availableCategories = [...new Set(availableProducts.map((p) => p.category).filter(Boolean))].sort();
-
-                const filteredByCategory = availableProducts.filter(
-                  (p) => !formCategory || p.category === formCategory,
-                );
                 const searchLower = productSearch.toLowerCase();
-                const filteredProductOptions = filteredByCategory.filter((p) => {
+                const filteredProductOptions = newReturnFormProducts.filter((p) => {
                   if (!productSearch) return true;
                   const haystack = `${p.id} ${p.brand ?? ''} ${p.model ?? ''} ${p.size ?? ''} ${p.color ?? ''}`.toLowerCase();
                   return haystack.includes(searchLower);
                 });
                 const selectedReturnProduct =
-                  filteredByCategory.find((p) => p.id === parseInt(formData.product, 10)) ||
-                  availableProducts.find((p) => p.id === parseInt(formData.product, 10));
+                  newReturnFormProducts.find((p) => p.id === parseInt(formData.product, 10)) || null;
 
                 return (
                   <>
                   <div className="form-group">
                     <label>Customer (Optional)</label>
                     <CustomerSearchableSelect
-                      customers={customers}
+                      customers={newReturnFormCustomers}
                       value={formData.customer}
                       allowEmpty
                       emptyLabel="All customers"
                       placeholder="All customers"
                       aria-label="Customer"
                       onChange={(customerId) => {
-                        setFormCategory('');
                         setProductSearch('');
                         setProductDropdownOpen(false);
-                        setFormData({
-                          ...formData,
-                          customer: customerId,
-                          sale: '',
-                          product: '',
-                          sold_price: '',
-                          sold_price_currency: 'USD',
-                        });
+                        setFormData((prev) =>
+                          pruneNewReturnForm({
+                            ...prev,
+                            customer: customerId,
+                            sale: '',
+                            sold_price: '',
+                            sold_price_currency: 'USD',
+                          }),
+                        );
                       }}
                     />
+                    {(formCategory || formData.product) && (
+                      <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
+                        Showing customers with returnable sales
+                        {formCategory ? <> in <strong>{formCategory}</strong></> : null}
+                        {formData.product
+                          ? (() => {
+                              const p = products.find((x) => x.id === parseInt(formData.product, 10));
+                              return p ? (
+                                <>
+                                  {' '}
+                                  for <strong>{p.brand} {p.model}</strong>
+                                </>
+                              ) : null;
+                            })()
+                          : null}
+                        .
+                      </small>
+                    )}
                   </div>
                   <div className="form-group">
-                    <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
+                    <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter)</span></label>
                     <select
                       value={formCategory}
                       onChange={(e) => {
+                        const nextCat = e.target.value;
                         setProductSearch('');
                         setProductDropdownOpen(false);
-                        setFormCategory(e.target.value);
-                        setFormData({
-                          ...formData,
-                          product: '',
-                          sale: '',
-                          sold_price: '',
-                          sold_price_currency: 'USD',
-                        });
+                        setFormCategory(nextCat);
+                        setFormData((prev) =>
+                          pruneNewReturnForm(
+                            {
+                              ...prev,
+                              product: '',
+                              sale: '',
+                              sold_price: '',
+                              sold_price_currency: 'USD',
+                            },
+                            nextCat,
+                          ),
+                        );
                       }}
                     >
                       <option value="">All Categories</option>
-                      {availableCategories.map(cat => (
+                      {newReturnFormCategories.map((cat) => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>
@@ -758,13 +972,20 @@ const Returns = () => {
                                   key={product.id}
                                   role="presentation"
                                   onClick={() => {
-                                    setFormData({
-                                      ...formData,
-                                      product: String(product.id),
-                                      sale: '',
-                                      sold_price: '',
-                                      sold_price_currency: 'USD',
-                                    });
+                                    const nextCategory = product.category || formCategory;
+                                    if (product.category) setFormCategory(product.category);
+                                    setFormData((prev) =>
+                                      pruneNewReturnForm(
+                                        {
+                                          ...prev,
+                                          product: String(product.id),
+                                          sale: '',
+                                          sold_price: '',
+                                          sold_price_currency: 'USD',
+                                        },
+                                        nextCategory,
+                                      ),
+                                    );
                                     setProductDropdownOpen(false);
                                     setProductSearch('');
                                   }}
@@ -794,11 +1015,25 @@ const Returns = () => {
                         </div>
                       )}
                     </>
-                    {formData.customer && (
+                    {(formData.customer || formCategory) && (
                       <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
-                        Showing only products purchased by{' '}
-                        <strong>{customers.find((c) => c.id === parseInt(formData.customer, 10))?.name}</strong> that
-                        still have returnable quantity.
+                        {formData.customer ? (
+                          <>
+                            Products with returnable sales for{' '}
+                            <strong>
+                              {customers.find((c) => c.id === parseInt(formData.customer, 10))?.name}
+                            </strong>
+                          </>
+                        ) : (
+                          <>Products with returnable sales</>
+                        )}
+                        {formCategory ? (
+                          <>
+                            {' '}
+                            in <strong>{formCategory}</strong>
+                          </>
+                        ) : null}
+                        .
                       </small>
                     )}
                   </div>
@@ -828,12 +1063,21 @@ const Returns = () => {
                     </option>
                   ))}
                 </select>
-                {(formData.customer || formData.product) && (
+                {(formData.customer || formData.product || formCategory) && (
                   <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
                     Filtered by:{' '}
-                    {formData.customer && <strong>{customers.find(c => c.id === parseInt(formData.customer))?.name}</strong>}
-                    {formData.customer && formData.product && ' · '}
-                    {formData.product && <strong>{products.find(p => p.id === parseInt(formData.product))?.brand} {products.find(p => p.id === parseInt(formData.product))?.model}</strong>}
+                    {formData.customer && (
+                      <strong>{customers.find((c) => c.id === parseInt(formData.customer, 10))?.name}</strong>
+                    )}
+                    {formData.customer && (formCategory || formData.product) && ' · '}
+                    {formCategory && <strong>{formCategory}</strong>}
+                    {formCategory && formData.product && ' · '}
+                    {formData.product && (
+                      <strong>
+                        {products.find((p) => p.id === parseInt(formData.product, 10))?.brand}{' '}
+                        {products.find((p) => p.id === parseInt(formData.product, 10))?.model}
+                      </strong>
+                    )}
                   </small>
                 )}
               </div>
@@ -956,8 +1200,44 @@ const Returns = () => {
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>Mark Return #{refundFormData.returnId} as Refunded</h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Enter the UZS and/or USD refund amount.
+            Enter the UZS and/or USD refund amount. Combined refunds use the CBU rate (one confirmation).
+            Single-currency refunds must cover the full amount due.
           </p>
+          {exchangeRate?.label && (
+            <p style={{ color: '#4a5568', marginBottom: '12px', fontSize: '0.85em' }}>
+              {exchangeRate.label}
+            </p>
+          )}
+          {exchangeRateError && (
+            <p style={{ color: '#b45309', marginBottom: '12px', fontSize: '0.85em' }}>{exchangeRateError}</p>
+          )}
+          {refundMeta.due != null && !refundMeta.dueUnavailable && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: '12px 14px',
+                background: '#f8f9fa',
+                borderRadius: 6,
+                fontSize: '0.9em',
+                color: '#444',
+              }}
+            >
+              <div>
+                <strong>Refund due:</strong> {formatDisplayAmount(refundMeta.due, refundMeta.sc)}
+              </div>
+              {refundMeta.paid != null && (parseFloat(refundFormData.uzs) || parseFloat(refundFormData.usd)) ? (
+                <div style={{ marginTop: 6 }}>
+                  <strong>Entered (in {refundMeta.sc}):</strong>{' '}
+                  {formatDisplayAmount(refundMeta.paid, refundMeta.sc)}
+                  {refundMeta.needs && (
+                    <span style={{ color: '#c62828', marginLeft: 8 }}>
+                      — below due by {formatDisplayAmount(refundMeta.short, refundMeta.sc)}
+                    </span>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
           <form onSubmit={handleRefundSubmit}>
             <div className="form-grid">
               <div className="form-group">

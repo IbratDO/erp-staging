@@ -179,7 +179,6 @@ const FixedAssets = () => {
       let url = '';
       if (paymentForm.action === 'pay') url = `/fixed-assets/${asset.id}/pay_purchase/`;
       else if (paymentForm.action === 'receive') url = `/fixed-assets/${asset.id}/receive_asset/`;
-      else if (paymentForm.action === 'pay_receive') url = `/fixed-assets/${asset.id}/pay_and_receive/`;
       else if (paymentForm.action === 'sell') url = `/fixed-assets/${asset.id}/sell_asset/`;
 
       await api.post(url, payload);
@@ -232,7 +231,6 @@ const FixedAssets = () => {
     if (!a) return 'Payment';
     if (paymentForm.action === 'pay') return `Pay for asset #${a.id} — ${a.name}`;
     if (paymentForm.action === 'receive') return `Receive asset #${a.id} — ${a.name}`;
-    if (paymentForm.action === 'pay_receive') return `Pay & receive — ${a.name}`;
     if (paymentForm.action === 'sell') return `Sell asset — ${a.name}`;
     return 'Payment';
   };
@@ -257,8 +255,9 @@ const FixedAssets = () => {
       )}
 
       <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em', maxWidth: 820 }}>
-        Purchase workflow matches packages and expenses: create an order (payable), pay supplier, then receive
-        onto the balance sheet. Sell or write off updates cash and removes the asset from non-current assets.
+        Create a purchase order (payable), pay supplier (cash down — shows as fixed-asset receivable until
+        received), then receive onto the balance sheet. You may also receive on credit first (payable stays
+        until paid). Sell or write off updates cash and removes the asset from the books.
       </p>
 
       {showForm && isAdmin && (
@@ -336,13 +335,13 @@ const FixedAssets = () => {
                     checked={form.pay_immediately}
                     onChange={(e) => setForm({ ...form, pay_immediately: e.target.checked })}
                   />
-                  Pay and receive immediately (skip payable; deduct cash now)
+                  Pay immediately from cash (receive separately when the asset arrives)
                 </label>
               </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                {form.pay_immediately ? 'Pay, receive & add to books' : 'Create purchase order'}
+                {form.pay_immediately ? 'Pay now (receive later)' : 'Create purchase order'}
               </button>
             </div>
           </form>
@@ -435,12 +434,14 @@ const FixedAssets = () => {
             ) : (
               assets.map((a) => {
                 const cost = parseFloat(a.purchase_cost) || 0;
-                const showPay = a.purchase_status === 'ordered' && !a.is_paid && cost > 0;
+                const showPay =
+                  !a.is_paid &&
+                  cost > 0 &&
+                  (a.purchase_status === 'ordered' || a.purchase_status === 'received');
                 const showReceive =
-                  (a.purchase_status === 'order_paid' ||
-                    (a.purchase_status === 'ordered' && cost <= 0)) &&
-                  a.status === 'active';
-                const showPayReceive = showPay;
+                  a.status === 'active' &&
+                  a.purchase_status !== 'received' &&
+                  (a.purchase_status === 'order_paid' || a.purchase_status === 'ordered');
                 const onBooks = a.purchase_status === 'received' && a.status === 'active';
                 const canDelete = a.purchase_status === 'ordered' && !a.is_paid;
 
@@ -451,8 +452,8 @@ const FixedAssets = () => {
                     <td>{a.purchase_date}</td>
                     <td>
                       {cost.toLocaleString()} {a.currency}
-                      {a.payable_status === 'pending' && (
-                        <div style={{ fontSize: '0.8em', color: '#c62828' }}>Payable pending</div>
+                      {a.payable_status === 'pending' && a.purchase_status === 'received' && (
+                        <div style={{ fontSize: '0.8em', color: '#c62828' }}>Payable (on credit)</div>
                       )}
                     </td>
                     <td>
@@ -486,17 +487,7 @@ const FixedAssets = () => {
                             Pay
                           </button>
                         )}
-                        {showPayReceive && (
-                          <button
-                            type="button"
-                            className="btn-status"
-                            style={{ marginRight: 4 }}
-                            onClick={() => prefillPaymentForAsset(a, 'pay_receive')}
-                          >
-                            Pay & receive
-                          </button>
-                        )}
-                        {showReceive && a.purchase_status !== 'received' && (
+                        {showReceive && (
                           <button
                             type="button"
                             className="btn-status"

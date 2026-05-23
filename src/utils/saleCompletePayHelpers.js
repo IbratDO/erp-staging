@@ -72,7 +72,7 @@ export function computeAdvanceRemainingDue(sale, sellingPriceOverride) {
   return Math.max(0, (Number.isFinite(total) ? total : 0) - advance);
 }
 
-function paymentHasShortfall(due, paid, saleCurrency) {
+export function paymentHasShortfall(due, paid, saleCurrency) {
   const d = parseFloat(due) || 0;
   const p = parseFloat(paid) || 0;
   if ((saleCurrency || 'USD').toUpperCase() === 'UZS') {
@@ -239,6 +239,22 @@ export const emptyPaymentFormState = () => ({
 /**
  * Build initial payment form from a sale (same rules as Sales handleStatusUpdate → completed).
  */
+/** Step 2 prefill: same UZS/USD split recorded at delivery step 1 (not CBU-converted total). */
+export function deliveryStep2PaymentFromStep1(sale) {
+  if (!sale?.delivery_customer_paid_at || sale.delivery_shop_remittance_at) {
+    return null;
+  }
+  const uzs = parseFloat(sale.delivery_customer_collected_uzs) || 0;
+  const usd = parseFloat(sale.delivery_customer_collected_usd) || 0;
+  if (uzs <= 0 && usd <= 0) {
+    return null;
+  }
+  return {
+    uzs: uzs > 0 ? String(Math.round(uzs) === uzs ? Math.round(uzs) : uzs) : '',
+    usd: usd > 0 ? (Number.isInteger(usd) ? String(usd) : usd.toFixed(2)) : '',
+  };
+}
+
 export function buildPaymentFormDataFromSale(sale) {
   if (!sale) return emptyPaymentFormState();
 

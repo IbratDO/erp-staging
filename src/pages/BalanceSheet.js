@@ -7,10 +7,29 @@ function fmtUsd(n) {
   return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function LineRow({ label, value, indent = 0, bold = false }) {
+function SectionHeader({ number, title }) {
   return (
-    <tr style={bold ? { fontWeight: 600, backgroundColor: '#f8f9fa' } : undefined}>
-      <td style={{ paddingLeft: 12 + indent * 16 }}>{label}</td>
+    <tr className="balance-sheet-section-header">
+      <td colSpan={2}>
+        {number}. {title}
+      </td>
+    </tr>
+  );
+}
+
+function LineRow({ label, value, indent = 0 }) {
+  return (
+    <tr className="balance-sheet-line">
+      <td style={{ paddingLeft: 20 + indent * 16 }}>{label}</td>
+      <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{value}</td>
+    </tr>
+  );
+}
+
+function TotalRow({ label, value }) {
+  return (
+    <tr className="balance-sheet-total-row">
+      <td>{label}</td>
       <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{value}</td>
     </tr>
   );
@@ -57,6 +76,42 @@ const BalanceSheet = () => {
   const liabilities = data?.liabilities;
   const equity = data?.equity;
   const eqn = data?.equation;
+
+  const cashBlock = assets?.current?.cash;
+  const cashUsd = parseFloat(cashBlock?.cash_usd) || 0;
+  const bankUsd = parseFloat(cashBlock?.bank_usd) || 0;
+
+  const customerRecv =
+    assets?.current?.customer_receivables?.total_usd
+    ?? assets?.current?.accounts_receivable?.total_usd
+    ?? 0;
+  const productRecv =
+    assets?.current?.product_receivables?.total_usd
+    ?? assets?.current?.supplier_advances_usd
+    ?? 0;
+  const fixedAssetRecv = assets?.current?.fixed_asset_receivables?.total_usd ?? 0;
+
+  const inv = assets?.current?.inventory;
+  const invTotal = parseFloat(inv?.total_usd) || 0;
+  const packageUsd = parseFloat(inv?.package_value_usd) || 0;
+  const productInvUsd = Math.max(invTotal - packageUsd, 0);
+
+  const faNonCurrent =
+    assets?.non_current?.fixed_assets_usd
+    ?? assets?.fixed_assets?.non_current_usd
+    ?? assets?.non_current?.fixed_assets?.total_usd
+    ?? 0;
+
+  const payableExpenses =
+    liabilities?.current?.payable_expenses?.total_usd
+    ?? liabilities?.current?.accounts_payable?.total_usd
+    ?? 0;
+  const customerAdvances = liabilities?.current?.customer_advances?.total_usd ?? 0;
+
+  const prepaid = parseFloat(assets?.current?.prepaid_expenses_usd) || 0;
+
+  const totalLiabEquity =
+    (parseFloat(liabilities?.total_usd) || 0) + (parseFloat(equity?.total_equity_usd) || 0);
 
   return (
     <div className="page-container">
@@ -164,99 +219,111 @@ const BalanceSheet = () => {
             </div>
           )}
 
-          <div className="metrics-grid" style={{ marginBottom: 20 }}>
+          <div className="metrics-grid metrics-grid--balance-sheet-summary">
             <div className="metric-card" style={{ border: '2px solid #007bff' }}>
               <div className="metric-label">Total assets</div>
               <div className="metric-value" style={{ color: '#007bff', fontSize: '1.4em' }}>
                 {fmtUsd(assets?.total_usd)}
               </div>
             </div>
-            <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-              <div className="metric-label">Total liabilities</div>
-              <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.4em' }}>
-                {fmtUsd(liabilities?.total_usd)}
-              </div>
-            </div>
             <div className="metric-card" style={{ border: '2px solid #6f42c1' }}>
-              <div className="metric-label">Total equity</div>
+              <div className="metric-label">Equity + liabilities</div>
               <div className="metric-value" style={{ color: '#6f42c1', fontSize: '1.4em' }}>
-                {fmtUsd(equity?.total_equity_usd)}
+                {fmtUsd(totalLiabEquity)}
               </div>
             </div>
           </div>
 
-          <div
-            className="balance-sheet-columns"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-              gap: 20,
-              alignItems: 'start',
-              marginBottom: 20,
-            }}
-          >
-            <div className="table-card" style={{ marginBottom: 0 }}>
-              <h3 style={{ borderBottom: '3px solid #007bff', paddingBottom: 8 }}>Assets</h3>
-              <table className="data-table">
-                <tbody>
-                  <LineRow label="Cash (USD + UZS converted)" value={fmtUsd(assets?.current?.cash?.total_usd)} bold />
-                  <LineRow label="Bank / card buckets" value={fmtUsd(assets?.current?.cash?.bank_usd)} indent={1} />
-                  <LineRow
-                    label="Accounts receivable"
-                    value={fmtUsd(assets?.current?.accounts_receivable?.total_usd)}
-                    indent={1}
-                  />
-                  <LineRow
-                    label="Inventory (products + packages, FIFO)"
-                    value={fmtUsd(assets?.current?.inventory?.total_usd)}
-                    indent={1}
-                  />
-                  {(assets?.current?.inventory?.package_units || 0) > 0 && (
-                    <LineRow
-                      label={`Packages on hand (${assets.current.inventory.package_units} units)`}
-                      value={fmtUsd(assets.current.inventory.package_value_usd)}
-                      indent={2}
-                    />
-                  )}
-                  <LineRow label="Prepaid expenses" value={fmtUsd(assets?.current?.prepaid_expenses_usd)} indent={1} />
-                  <LineRow label="Total current assets" value={fmtUsd(assets?.current?.total_usd)} bold />
-                  <LineRow
-                    label="Fixed assets (non-current)"
-                    value={fmtUsd(assets?.non_current?.fixed_assets_usd)}
-                    indent={1}
-                  />
-                  <LineRow label="Total non-current assets" value={fmtUsd(assets?.non_current?.total_usd)} bold />
-                  <LineRow label="TOTAL ASSETS" value={fmtUsd(assets?.total_usd)} bold />
-                </tbody>
-              </table>
-            </div>
-
-            <div>
-              <div className="table-card" style={{ marginBottom: 16 }}>
-                <h3 style={{ borderBottom: '3px solid #dc3545', paddingBottom: 8 }}>Liabilities</h3>
-                <table className="data-table">
+          <div className="balance-sheet-layout">
+            <div className="balance-sheet-panel balance-sheet-panel--assets">
+              <div className="table-card balance-sheet-card balance-sheet-card--fill">
+                <h3 style={{ borderBottom: '3px solid #007bff', paddingBottom: 8, marginTop: 0 }}>
+                  Assets
+                </h3>
+                <table className="data-table balance-sheet-table">
                   <tbody>
+                    <SectionHeader number={1} title="Money" />
+                    <LineRow label="Cash" value={fmtUsd(cashUsd)} indent={1} />
+                    <LineRow label="Bank" value={fmtUsd(bankUsd)} indent={1} />
+
+                    <SectionHeader number={2} title="Receivables" />
                     <LineRow
-                      label="Accounts payable"
-                      value={fmtUsd(liabilities?.current?.accounts_payable?.total_usd)}
-                    />
-                    <LineRow
-                      label="Customer advances (deposits)"
-                      value={fmtUsd(liabilities?.current?.customer_advances?.total_usd)}
+                      label="Customer receivables (unpaid sales)"
+                      value={fmtUsd(customerRecv)}
                       indent={1}
                     />
-                    <LineRow label="Total current liabilities" value={fmtUsd(liabilities?.current?.total_usd)} bold />
-                    <LineRow label="Long-term liabilities" value={fmtUsd(liabilities?.long_term?.total_usd)} />
-                    <LineRow label="TOTAL LIABILITIES" value={fmtUsd(liabilities?.total_usd)} bold />
+                    <LineRow
+                      label="Product receivables (prepaid orders, goods in transit)"
+                      value={fmtUsd(productRecv)}
+                      indent={1}
+                    />
+                    <LineRow
+                      label="Fixed asset receivables (paid, not yet received)"
+                      value={fmtUsd(fixedAssetRecv)}
+                      indent={1}
+                    />
+
+                    <SectionHeader number={3} title="Inventory" />
+                    <LineRow label="Products" value={fmtUsd(productInvUsd)} indent={1} />
+                    <LineRow
+                      label={
+                        inv?.package_units
+                          ? `Packages (${inv.package_units} units)`
+                          : 'Packages'
+                      }
+                      value={fmtUsd(packageUsd)}
+                      indent={1}
+                    />
+
+                    {prepaid > 0.005 && (
+                      <LineRow label="Prepaid expenses" value={fmtUsd(prepaid)} indent={1} />
+                    )}
+
+                    <SectionHeader number={4} title="Fixed assets" />
+                    <LineRow
+                      label="Fixed assets (on the books)"
+                      value={fmtUsd(faNonCurrent)}
+                      indent={1}
+                    />
+
+                    <TotalRow label="TOTAL ASSETS" value={fmtUsd(assets?.total_usd)} />
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="balance-sheet-panel balance-sheet-panel--right">
+              <div className="table-card balance-sheet-card">
+                <h3 style={{ borderBottom: '3px solid #dc3545', paddingBottom: 8, marginTop: 0 }}>
+                  Liabilities
+                </h3>
+                <table className="data-table balance-sheet-table">
+                  <tbody>
+                    <SectionHeader number={1} title="Payables" />
+                    <LineRow label="Payable expenses" value={fmtUsd(payableExpenses)} indent={1} />
+                    <LineRow
+                      label="Customer advances (deposits)"
+                      value={fmtUsd(customerAdvances)}
+                      indent={1}
+                    />
+                    <TotalRow
+                      label="TOTAL LIABILITIES"
+                      value={fmtUsd(liabilities?.total_usd)}
+                    />
                   </tbody>
                 </table>
               </div>
 
-              <div className="table-card" style={{ marginBottom: 0 }}>
-                <h3 style={{ borderBottom: '3px solid #6f42c1', paddingBottom: 8 }}>Equity</h3>
-                <table className="data-table">
+              <div className="table-card balance-sheet-card balance-sheet-card--fill">
+                <h3 style={{ borderBottom: '3px solid #6f42c1', paddingBottom: 8, marginTop: 0 }}>
+                  Equity
+                </h3>
+                <table className="data-table balance-sheet-table">
                   <tbody>
-                    <LineRow label="Owner capital (net contributions)" value={fmtUsd(equity?.owner_capital_net_usd)} />
+                    <LineRow
+                      label="Owner capital (net contributions)"
+                      value={fmtUsd(equity?.owner_capital_net_usd)}
+                    />
                     <LineRow
                       label="Retained earnings (prior periods)"
                       value={fmtUsd(equity?.retained_earnings_usd)}
@@ -267,19 +334,9 @@ const BalanceSheet = () => {
                       value={fmtUsd(equity?.current_period_profit_usd)}
                       indent={1}
                     />
-                    <LineRow label="TOTAL EQUITY" value={fmtUsd(equity?.total_equity_usd)} bold />
+                    <TotalRow label="TOTAL EQUITY" value={fmtUsd(equity?.total_equity_usd)} />
                   </tbody>
                 </table>
-                <p style={{ fontSize: '0.85em', color: '#666', marginTop: 10 }}>
-                  Liabilities + equity:{' '}
-                  <strong>
-                    {fmtUsd(
-                      (parseFloat(liabilities?.total_usd) || 0) + (parseFloat(equity?.total_equity_usd) || 0),
-                    )}
-                  </strong>
-                  {' · '}
-                  <a href="/profit-loss">Profit / Loss</a> {equity?.period_start} – {equity?.period_end}
-                </p>
               </div>
             </div>
           </div>

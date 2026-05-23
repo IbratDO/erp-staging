@@ -14,10 +14,10 @@ import ProductSearchableSelect from '../components/ProductSearchableSelect';
 import { layerSalePickerLabel, resolveLayerListPrice } from '../utils/productCost';
 import {
   computeAdvanceRemainingDue,
-  validateAdvanceCompletionPayment,
-  buildCrossCurrencyAdvanceConfirmMessage,
   saleHasOrderAdvance,
 } from '../utils/saleCompletePayHelpers';
+import { runSalePaymentSubmitFlow } from '../utils/salePaymentFlowHelpers';
+import useCbuExchangeRate from '../hooks/useCbuExchangeRate';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
@@ -846,6 +846,8 @@ const Sales = () => {
   const [completePaySale, setCompletePaySale] = useState(null);
   
   const [showCompleteFromOrderForm, setShowCompleteFromOrderForm] = useState(false);
+  const { exchangeRate: cfoExchangeRate, exchangeRateError: cfoExchangeRateError } =
+    useCbuExchangeRate(showCompleteFromOrderForm);
   const [completeFromOrderPackageLines, setCompleteFromOrderPackageLines] = useState(EMPTY_PKG_LINES());
   const [completeFromOrderData, setCompleteFromOrderData] = useState({
     saleId: null,
@@ -1080,18 +1082,32 @@ const Sales = () => {
       }
 
       const saleForComplete = sales.find((s) => s.id === completeFromOrderData.saleId);
-      const advanceCheck = validateAdvanceCompletionPayment(
-        saleForComplete,
-        completeFromOrderData.now_uzs,
-        completeFromOrderData.now_usd,
-        completeFromOrderData.selling_price,
-      );
-      if (!advanceCheck.ok) {
-        showNotification(advanceCheck.error, 'error');
-        return;
-      }
-      if (advanceCheck.needsCrossCurrencyConfirm) {
-        if (!window.confirm(buildCrossCurrencyAdvanceConfirmMessage(advanceCheck))) return;
+      let paymentPayload = {
+        uzs: parseFloat(completeFromOrderData.now_uzs) || 0,
+        usd: parseFloat(completeFromOrderData.now_usd) || 0,
+      };
+      if (completeFromOrderData.sale_type !== 'reserved') {
+        const flow = await runSalePaymentSubmitFlow({
+          sale: saleForComplete,
+          paymentFormData: {
+            uzs: completeFromOrderData.now_uzs,
+            usd: completeFromOrderData.now_usd,
+            balance_shortfall_type: '',
+          },
+          exchangeRate: cfoExchangeRate,
+          exchangeRateError: cfoExchangeRateError,
+          showNotification,
+          sellingPriceOverride: completeFromOrderData.selling_price,
+          allowDiscount: false,
+        });
+        if (!flow.ok) return;
+        paymentPayload = {
+          uzs: flow.requestData.uzs,
+          usd: flow.requestData.usd,
+          ...(flow.requestData.exchange_rate != null
+            ? { exchange_rate: flow.requestData.exchange_rate }
+            : {}),
+        };
       }
 
       const requestData = {
@@ -1100,8 +1116,11 @@ const Sales = () => {
         sale_type: completeFromOrderData.sale_type,
         package_type: null,
         package_quantity: null,
-        uzs: parseFloat(completeFromOrderData.now_uzs) || 0,
-        usd: parseFloat(completeFromOrderData.now_usd) || 0,
+        uzs: paymentPayload.uzs,
+        usd: paymentPayload.usd,
+        ...(paymentPayload.exchange_rate != null
+          ? { exchange_rate: paymentPayload.exchange_rate }
+          : {}),
         ...(cfoActiveLines.length > 0 ? {
           package_lines: cfoActiveLines.map(({ package_type, quantity }) => ({ package_type, quantity })),
         } : {}),
@@ -1718,8 +1737,14 @@ const Sales = () => {
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1', borderTop: '1px solid #eee', paddingTop: '12px', marginTop: '4px' }}>
                 <p style={{ margin: '0 0 10px 0', color: '#555', fontSize: '0.9em', fontWeight: 600 }}>
-                  Payment:
+                  Payment (UZS and/or USD — mixed amounts use CBU rate):
                 </p>
+                {cfoExchangeRate?.label && (
+                  <p style={{ margin: '0 0 8px', color: '#4a5568', fontSize: '0.85em' }}>{cfoExchangeRate.label}</p>
+                )}
+                {cfoExchangeRateError && (
+                  <p style={{ margin: '0 0 8px', color: '#b45309', fontSize: '0.85em' }}>{cfoExchangeRateError}</p>
+                )}
               </div>
               <div className="form-group">
                 <label>UZS</label>
