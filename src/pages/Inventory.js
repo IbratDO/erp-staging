@@ -6,6 +6,14 @@ import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
 
+const PRODUCT_CATEGORY_TYPES = [
+  { value: 'sports', label: 'Sports' },
+  { value: 'casual', label: 'Casual' },
+];
+
+const categoryTypeLabel = (value) =>
+  PRODUCT_CATEGORY_TYPES.find((t) => t.value === value)?.label ?? '';
+
 /** Landed unit cost for one FIFO layer row (supplier + cargo per unit). */
 function layerLandedCostCells(layer) {
   const supUzs = parseFloat(layer.unit_supplier_cost_uzs) || 0;
@@ -48,6 +56,7 @@ function invSellingPriceNum(item) {
 }
 
 const INVENTORY_SORT_ACCESSORS = {
+  category_type: (it) => String(it.product_detail?.category_type ?? '').toLowerCase(),
   category: (it) => String(it.product_detail?.category ?? '').toLowerCase(),
   rec_no: (it) => Number(it.product_detail?.id ?? it.product) || 0,
   product: (it) =>
@@ -74,8 +83,10 @@ const Inventory = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [formCategoryType, setFormCategoryType] = useState('');
   const [formCategory, setFormCategory] = useState('');
   const [filters, setFilters] = useState({
+    category_type: '',
     category: '',
     brand: '',
     model: '',
@@ -124,6 +135,11 @@ const Inventory = () => {
   const applyFilters = (inventoryList) => {
     let filtered = inventoryList;
     
+    if (filters.category_type) {
+      filtered = filtered.filter(
+        (item) => item.product_detail?.category_type === filters.category_type,
+      );
+    }
     if (filters.category) {
       filtered = filtered.filter(item =>
         item.product_detail?.category === filters.category
@@ -232,6 +248,7 @@ const Inventory = () => {
       };
       await api.post('/inventory/', payload);
       setShowForm(false);
+      setFormCategoryType('');
       setFormCategory('');
       setFormData({
         product: '',
@@ -278,15 +295,45 @@ const Inventory = () => {
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
+                <label>
+                  Category type{' '}
+                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span>
+                </label>
+                <select
+                  value={formCategoryType}
+                  onChange={(e) => {
+                    setFormCategoryType(e.target.value);
+                    setFormCategory('');
+                    setFormData({ ...formData, product: '' });
+                  }}
+                >
+                  <option value="">All types</option>
+                  {PRODUCT_CATEGORY_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
                 <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
                 <select
                   value={formCategory}
                   onChange={(e) => { setFormCategory(e.target.value); setFormData({ ...formData, product: '' }); }}
                 >
                   <option value="">All Categories</option>
-                  {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
+                  {[...new Set(
+                    products
+                      .filter((p) => !formCategoryType || p.category_type === formCategoryType)
+                      .map((p) => p.category)
+                      .filter(Boolean),
+                  )]
+                    .sort()
+                    .map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
                 </select>
               </div>
               <div className="form-group">
@@ -308,7 +355,11 @@ const Inventory = () => {
                 >
                   <option value="">Select a product</option>
                   {products
-                    .filter(p => !formCategory || p.category === formCategory)
+                    .filter(
+                      (p) =>
+                        (!formCategoryType || p.category_type === formCategoryType) &&
+                        (!formCategory || p.category === formCategory),
+                    )
                     .slice()
                     .sort((a, b) => b.id - a.id)
                     .map((product) => (
@@ -407,15 +458,42 @@ const Inventory = () => {
           <h3 className="filter-card__title">Filters</h3>
         <div className="filter-toolbar">
           <div className="filter-field">
+            <label>Category type</label>
+            <select
+              value={filters.category_type}
+              onChange={(e) => setFilters({ ...filters, category_type: e.target.value })}
+            >
+              <option value="">All types</option>
+              {PRODUCT_CATEGORY_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-field">
             <label>Category</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             >
               <option value="">All Categories</option>
-              {[...new Set(inventory.map(i => i.product_detail?.category).filter(Boolean))].sort().map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
+              {[...new Set(
+                inventory
+                  .filter(
+                    (i) =>
+                      !filters.category_type ||
+                      i.product_detail?.category_type === filters.category_type,
+                  )
+                  .map((i) => i.product_detail?.category)
+                  .filter(Boolean),
+              )]
+                .sort()
+                .map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
             </select>
           </div>
           <div className="filter-field">
@@ -529,7 +607,19 @@ const Inventory = () => {
             <button
               type="button"
               className="btn-edit"
-              onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', status: '', year: '', month: '' })}
+              onClick={() =>
+                setFilters({
+                  category_type: '',
+                  category: '',
+                  brand: '',
+                  model: '',
+                  size: '',
+                  color: '',
+                  status: '',
+                  year: '',
+                  month: '',
+                })
+              }
             >
               Clear all
             </button>
@@ -543,6 +633,9 @@ const Inventory = () => {
         <table className="data-table">
           <thead>
             <tr>
+              <SortableTh columnId="category_type" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
+                Category type
+              </SortableTh>
               <SortableTh columnId="category" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
                 Category
               </SortableTh>
@@ -590,7 +683,7 @@ const Inventory = () => {
           <tbody>
             {filteredInventory.length === 0 ? (
               <tr>
-                <td colSpan="14" style={{ textAlign: 'center' }}>
+                <td colSpan="15" style={{ textAlign: 'center' }}>
                   No inventory in stock
                 </td>
               </tr>
@@ -601,6 +694,11 @@ const Inventory = () => {
                 const sellTip = plannedSellingSummary(item.stocking_order) || '';
                 return (
                 <tr key={item.batch_id}>
+                  <td>
+                    {categoryTypeLabel(item.product_detail?.category_type) || (
+                      <span style={{ color: '#999' }}>—</span>
+                    )}
+                  </td>
                   <td>{item.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td><strong>#{item.product_detail?.id ?? item.product}</strong></td>
                   <td>{item.product_detail?.brand || '-'}</td>
@@ -628,7 +726,7 @@ const Inventory = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="7" style={{ textAlign: 'right' }}>
+              <td colSpan="8" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td style={{ fontWeight: 600, fontSize: '0.9em' }}>

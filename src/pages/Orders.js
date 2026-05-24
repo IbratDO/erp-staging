@@ -290,6 +290,7 @@ const Orders = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [filters, setFilters] = useState({
+    category_type: '',
     category: '',
     brand: '',
     model: '',
@@ -496,6 +497,11 @@ const Orders = () => {
   const applyFilters = (ordersList) => {
     let filtered = ordersList;
     
+    if (filters.category_type) {
+      filtered = filtered.filter(
+        (order) => order.product_detail?.category_type === filters.category_type,
+      );
+    }
     if (filters.category) {
       filtered = filtered.filter(order =>
         order.product_detail?.category === filters.category
@@ -2112,15 +2118,38 @@ const Orders = () => {
           <h3 className="filter-card__title">Filters</h3>
         <div className="filter-toolbar">
           <div className="filter-field">
+            <label>Category type</label>
+            <select
+              value={filters.category_type}
+              onChange={(e) => setFilters({ ...filters, category_type: e.target.value })}
+            >
+              <option value="">All types</option>
+              {PRODUCT_CATEGORY_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-field">
             <label>Category</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             >
               <option value="">All Categories</option>
-              {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
+              {[...new Set(
+                products
+                  .filter((p) => !filters.category_type || p.category_type === filters.category_type)
+                  .map((p) => p.category)
+                  .filter(Boolean),
+              )]
+                .sort()
+                .map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
             </select>
           </div>
           <div className="filter-field">
@@ -2262,6 +2291,7 @@ const Orders = () => {
               className="btn-edit"
               onClick={() =>
                 setFilters({
+                  category_type: '',
                   category: '',
                   brand: '',
                   model: '',
