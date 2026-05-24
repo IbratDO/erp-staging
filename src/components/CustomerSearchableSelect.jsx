@@ -23,6 +23,8 @@ export default function CustomerSearchableSelect({
   placeholder = 'Select a customer…',
   emptyLabel = 'All customers',
   allowEmpty = false,
+  extraOptions = [],
+  variant = 'default',
   disabled = false,
   className = '',
   triggerClassName = '',
@@ -35,6 +37,13 @@ export default function CustomerSearchableSelect({
   const panelRef = useRef(null);
   const searchRef = useRef(null);
 
+  const isFilter = variant === 'filter';
+
+  const extraSelected = useMemo(
+    () => extraOptions.find((o) => String(o.value) === String(value)),
+    [extraOptions, value],
+  );
+
   const selected = useMemo(
     () => customers.find((c) => String(c.id) === String(value)),
     [customers, value],
@@ -44,6 +53,11 @@ export default function CustomerSearchableSelect({
     () => customers.filter((c) => customerMatchesSearch(c, query)),
     [customers, query],
   );
+
+  const filteredExtraOptions = useMemo(() => {
+    const q = String(query || '').trim().toLowerCase();
+    return extraOptions.filter((o) => !q || String(o.label || '').toLowerCase().includes(q));
+  }, [extraOptions, query]);
 
   const showEmptyOption = useMemo(() => {
     if (!allowEmpty) return false;
@@ -97,8 +111,19 @@ export default function CustomerSearchableSelect({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  const display = selected ? customerLabel(selected) : allowEmpty && value === '' ? emptyLabel : '';
-  const noCustomers = !customers.length;
+  const display = extraSelected
+    ? extraSelected.label
+    : selected
+      ? customerLabel(selected)
+      : allowEmpty && value === ''
+        ? emptyLabel
+        : '';
+  const noCustomers = !customers.length && !allowEmpty && !extraOptions.length;
+
+  const rootClassName = [className, isFilter ? 'filter-searchable-select' : ''].filter(Boolean).join(' ');
+  const mergedTriggerClassName = [triggerClassName, isFilter ? 'filter-searchable-select__trigger' : '']
+    .filter(Boolean)
+    .join(' ');
 
   const handleToggle = () => {
     if (disabled) return;
@@ -201,7 +226,36 @@ export default function CustomerSearchableSelect({
                   </button>
                 </li>
               ) : null}
-              {filtered.length === 0 ? (
+              {filteredExtraOptions.map((opt) => {
+                const isSel = String(opt.value) === String(value);
+                return (
+                  <li key={String(opt.value)}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isSel}
+                      onClick={() => handlePick(opt.value)}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 10px',
+                        border: 'none',
+                        background: isSel ? '#e3f2fd' : 'transparent',
+                        cursor: 'pointer',
+                        fontSize: 13,
+                        fontFamily: 'inherit',
+                        color: '#666',
+                        borderRadius: 4,
+                        lineHeight: 1.35,
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  </li>
+                );
+              })}
+              {filtered.length === 0 && !showEmptyOption && filteredExtraOptions.length === 0 ? (
                 <li style={{ padding: '12px 10px', color: '#666', fontSize: 14 }}>No matches</li>
               ) : (
                 filtered.map((c) => {
@@ -239,8 +293,31 @@ export default function CustomerSearchableSelect({
         )
       : null;
 
+  const triggerStyle = isFilter
+    ? {
+        width: '100%',
+        textAlign: 'left',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        color: display ? '#212529' : '#6c757d',
+      }
+    : {
+        width: '100%',
+        textAlign: 'left',
+        padding: '10px 12px',
+        border: '1px solid #ddd',
+        borderRadius: 5,
+        fontSize: 14,
+        fontFamily: 'inherit',
+        background: disabled ? '#f5f5f5' : '#fff',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        color: display ? '#2c3e50' : '#999',
+      };
+
   return (
-    <div className={className} style={{ position: 'relative', width: '100%' }}>
+    <div
+      className={rootClassName || undefined}
+      style={{ position: 'relative', width: isFilter ? 'auto' : '100%' }}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -249,19 +326,8 @@ export default function CustomerSearchableSelect({
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label={ariaLabel}
-        className={triggerClassName || undefined}
-        style={{
-          width: '100%',
-          textAlign: 'left',
-          padding: '10px 12px',
-          border: '1px solid #ddd',
-          borderRadius: 5,
-          fontSize: 14,
-          fontFamily: 'inherit',
-          background: disabled ? '#f5f5f5' : '#fff',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          color: display ? '#2c3e50' : '#999',
-        }}
+        className={mergedTriggerClassName || undefined}
+        style={triggerStyle}
       >
         {display || placeholder}
       </button>

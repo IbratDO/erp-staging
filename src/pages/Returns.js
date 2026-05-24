@@ -3,7 +3,7 @@ import api from '../utils/api';
 import { cashBalanceTotalByCurrency, formatDisplayAmount, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import SortableTh from '../components/SortableTh';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
-import { useClientTableSort } from '../utils/tableSort';
+import { useClientTableSort, compareForSort } from '../utils/tableSort';
 import {
   computeReturnRefundDue,
   computeReturnRefundMeta,
@@ -123,6 +123,13 @@ function confirmReturnRefund(returnItem, uzsEntered, usdEntered, meta) {
     'Proceed with this refund?';
 
   return window.confirm(msg);
+}
+
+/** Pending refunds first; refunded rows sink to the bottom. */
+function compareNotRefundedFirst(a, b) {
+  const aDone = a.refund_status === 'refunded' ? 1 : 0;
+  const bDone = b.refund_status === 'refunded' ? 1 : 0;
+  return aDone - bDone;
 }
 
 const RETURNS_SORT_ACCESSORS = {
@@ -774,10 +781,26 @@ const Returns = () => {
   };
 
   const returnsSort = useClientTableSort(RETURNS_SORT_ACCESSORS);
-  const displayReturns = useMemo(
-    () => returnsSort.sortRows(filteredReturns),
-    [filteredReturns, returnsSort]
-  );
+  const displayReturns = useMemo(() => {
+    const rows = filteredReturns;
+    if (!rows?.length) return rows;
+    if (returnsSort.sortCol && RETURNS_SORT_ACCESSORS[returnsSort.sortCol]) {
+      const get = RETURNS_SORT_ACCESSORS[returnsSort.sortCol];
+      const sign = returnsSort.sortDir === 'desc' ? -1 : 1;
+      return [...rows].sort((a, b) => {
+        const pending = compareNotRefundedFirst(a, b);
+        if (pending !== 0) return pending;
+        return compareForSort(get(a), get(b)) * sign;
+      });
+    }
+    return [...rows].sort((a, b) => {
+      const pending = compareNotRefundedFirst(a, b);
+      if (pending !== 0) return pending;
+      const ta = new Date(a.return_date).getTime() || 0;
+      const tb = new Date(b.return_date).getTime() || 0;
+      return tb - ta;
+    });
+  }, [filteredReturns, returnsSort]);
 
   if (loading) {
     return <div className="page-container">Loading...</div>;

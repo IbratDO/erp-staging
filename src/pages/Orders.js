@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount, cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import { uniqueSupplierCountriesFromOrdersAndProducts } from '../utils/supplierCountries';
+import { uniqueSupplierCargosFromOrders } from '../utils/supplierCargo';
 import { prefillPayOrderSimpleTotals } from '../utils/orderPayPrefill';
 import {
   numOrZero,
@@ -12,7 +13,16 @@ import {
 } from '../utils/orderPlannedPricing';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
+import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import { useClientTableSort, compareForSort } from '../utils/tableSort';
+
+const PRODUCT_CATEGORY_TYPES = [
+  { value: 'sports', label: 'Sports' },
+  { value: 'casual', label: 'Casual' },
+];
+
+const categoryTypeLabel = (value) =>
+  PRODUCT_CATEGORY_TYPES.find((t) => t.value === value)?.label ?? '';
 
 const ORDER_STATUS_LABELS = {
   ordered: 'Ordered',
@@ -246,12 +256,14 @@ function orderCostPerUnitForSort(order) {
 const ORDER_SORT_ACCESSORS = {
   id: (o) => Number(o.id) || 0,
   status: (o) => String(o.status ?? '').toLowerCase(),
+  category_type: (o) => String(o.product_detail?.category_type ?? '').toLowerCase(),
   category: (o) => String(o.product_detail?.category ?? '').toLowerCase(),
   brand: (o) => String(o.product_detail?.brand ?? '').toLowerCase(),
   model: (o) => String(o.product_detail?.model ?? '').toLowerCase(),
   size: (o) => String(o.product_detail?.size ?? '').toLowerCase(),
   color: (o) => String(o.product_detail?.color ?? '').toLowerCase(),
   supplier_country: (o) => String(o.supplier_country ?? '').toLowerCase(),
+  supplier_cargo: (o) => String(o.supplier_cargo ?? '').toLowerCase(),
   eshop: (o) => String(o.eshop ?? '').toLowerCase(),
   order_type: (o) => String(o.order_type ?? '').toLowerCase(),
   customer: (o) => String(o.customer_detail?.name ?? '').toLowerCase(),
@@ -285,6 +297,7 @@ const Orders = () => {
     color: '',
     order_type: '',
     status: '',
+    customer: '',
     year: '',
     month: '',
   });
@@ -292,6 +305,7 @@ const Orders = () => {
     order_type: 'stock',
     product: '',
     supplier_country: '',
+    supplier_cargo: '',
     eshop: '',
     client_eshop_notes: '',
     ordered_quantity: '',
@@ -327,11 +341,12 @@ const Orders = () => {
   const [showMoveToInventoryForm, setShowMoveToInventoryForm] = useState(false);
   const [isNewEshop, setIsNewEshop] = useState(false);
   const [isNewCountry, setIsNewCountry] = useState(false);
+  const [isNewCargo, setIsNewCargo] = useState(false);
+  const [formCategoryType, setFormCategoryType] = useState('');
   const [formCategory, setFormCategory] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const productDropdownRef = useRef(null);
-
   const paymentFormRef = useRef(null);
   const cargoFormRef = useRef(null);
   const moveToInventoryFormRef = useRef(null);
@@ -464,6 +479,20 @@ const Orders = () => {
     return [...new Set(values)].sort();
   };
 
+  const customerFilterOptions = useMemo(() => {
+    const map = new Map();
+    for (const c of customers) {
+      if (c?.id != null) map.set(c.id, c);
+    }
+    for (const o of orders) {
+      const d = o.customer_detail;
+      if (d?.id != null && !map.has(d.id)) map.set(d.id, d);
+    }
+    return [...map.values()].sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }),
+    );
+  }, [customers, orders]);
+
   const applyFilters = (ordersList) => {
     let filtered = ordersList;
     
@@ -497,6 +526,18 @@ const Orders = () => {
     }
     if (filters.status) {
       filtered = filtered.filter(order => order.status === filters.status);
+    }
+    if (filters.customer) {
+      if (filters.customer === '__none__') {
+        filtered = filtered.filter((order) => !order.customer && !order.customer_detail?.id);
+      } else {
+        const customerId = parseInt(filters.customer, 10);
+        filtered = filtered.filter(
+          (order) =>
+            order.customer === customerId ||
+            order.customer_detail?.id === customerId,
+        );
+      }
     }
     if (filters.year) {
       filtered = filtered.filter(order => {
@@ -739,6 +780,7 @@ const Orders = () => {
         order_type: formData.order_type,
         product: parseInt(formData.product, 10),
         supplier_country: formData.supplier_country || null,
+        supplier_cargo: formData.supplier_cargo?.trim() || null,
         eshop: formData.eshop || '',
         client_eshop_notes: String(formData.client_eshop_notes || '').trim(),
         ordered_quantity: qty,
@@ -764,6 +806,8 @@ const Orders = () => {
       setShowForm(false);
       setIsNewEshop(false);
       setIsNewCountry(false);
+      setIsNewCargo(false);
+      setFormCategoryType('');
       setFormCategory('');
       setProductSearch('');
       setProductDropdownOpen(false);
@@ -771,6 +815,7 @@ const Orders = () => {
         order_type: 'stock',
         product: '',
         supplier_country: '',
+        supplier_cargo: '',
         eshop: '',
         client_eshop_notes: '',
         ordered_quantity: '',
@@ -1427,7 +1472,7 @@ const Orders = () => {
           <h2>New Order</h2>
           <form onSubmit={handleSubmit}>
             <div className="orders-new-order-form">
-              <div className="orders-new-order-row orders-new-order-row--5">
+              <div className="orders-new-order-row orders-new-order-row--6">
               <div className="form-group">
                 <label>Order Type</label>
                 <select
@@ -1440,6 +1485,34 @@ const Orders = () => {
                 </select>
               </div>
               <div className="form-group">
+                <label>Category type <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
+                <select
+                  value={formCategoryType}
+                  onChange={(e) => {
+                    setFormCategoryType(e.target.value);
+                    setFormCategory('');
+                    setProductSearch('');
+                    setProductDropdownOpen(false);
+                    setFormData({
+                      ...formData,
+                      product: '',
+                      supplier_country: '',
+                      selling_usd_per_unit: '',
+                      selling_uzs_per_unit: '',
+                      cost_usd_per_unit: '',
+                      cost_uzs_per_unit: '',
+                    });
+                  }}
+                >
+                  <option value="">— None —</option>
+                  {PRODUCT_CATEGORY_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
                 <label>Category <span style={{ color: '#e53e3e' }}>*</span> <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
                 <select
                   value={formCategory}
@@ -1447,7 +1520,12 @@ const Orders = () => {
                   required
                 >
                   <option value="">Select category</option>
-                  {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
+                  {[...new Set(
+                    products
+                      .filter((p) => !formCategoryType || p.category_type === formCategoryType)
+                      .map((p) => p.category)
+                      .filter(Boolean),
+                  )].sort().map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -1456,7 +1534,11 @@ const Orders = () => {
                 <label>Product</label>
                 {(() => {
                   const selectedProduct = products.find(p => p.id === parseInt(formData.product));
-                  const filteredByCategory = products.filter(p => !formCategory || p.category === formCategory);
+                  const filteredByCategory = products.filter(
+                    (p) =>
+                      (!formCategoryType || p.category_type === formCategoryType) &&
+                      (!formCategory || p.category === formCategory),
+                  );
                   const searchLower = productSearch.toLowerCase();
                   const filteredProducts = filteredByCategory.filter(p =>
                     !productSearch ||
@@ -1528,6 +1610,7 @@ const Orders = () => {
                                   key={product.id}
                                   onClick={() => {
                                     setIsNewCountry(false);
+      setIsNewCargo(false);
                                     const psp = parseFloat(product.selling_price);
                                     const sellingUsd = psp > 0 && !Number.isNaN(psp) ? psp.toFixed(2) : '';
                                     setFormData({
@@ -1600,6 +1683,7 @@ const Orders = () => {
                       type="button"
                       onClick={() => {
                         setIsNewCountry(false);
+      setIsNewCargo(false);
                         setFormData({ ...formData, supplier_country: '' });
                       }}
                       style={{
@@ -1616,6 +1700,61 @@ const Orders = () => {
                   </div>
                 )}
               </div>
+              <div className="form-group">
+                <label>Supplier cargo <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(optional)</span></label>
+                {!isNewCargo ? (
+                  <select
+                    value={formData.supplier_cargo}
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setIsNewCargo(true);
+                        setFormData({ ...formData, supplier_cargo: '' });
+                      } else {
+                        setFormData({ ...formData, supplier_cargo: e.target.value });
+                      }
+                    }}
+                  >
+                    <option value="">— None —</option>
+                    {uniqueSupplierCargosFromOrders(orders).map((cargo) => (
+                      <option key={cargo} value={cargo}>
+                        {cargo.charAt(0).toUpperCase() + cargo.slice(1)}
+                      </option>
+                    ))}
+                    <option value="__new__">+ Add new supplier cargo...</option>
+                  </select>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="text"
+                      placeholder="Enter supplier cargo name"
+                      value={formData.supplier_cargo}
+                      onChange={(e) => setFormData({ ...formData, supplier_cargo: e.target.value })}
+                      autoFocus
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsNewCargo(false);
+                        setFormData({ ...formData, supplier_cargo: '' });
+                      }}
+                      style={{
+                        padding: '0 10px',
+                        background: '#eee',
+                        border: '1px solid #ccc',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      ← Back
+                    </button>
+                  </div>
+                )}
+              </div>
+              </div>
+
+              <div className="orders-new-order-row orders-new-order-row--eshop-prices">
               <div className="form-group">
                 <label>eShop <span style={{ color: '#e53e3e' }}>*</span></label>
                 {!isNewEshop ? (
@@ -1694,29 +1833,6 @@ const Orders = () => {
                   </div>
                 )}
               </div>
-              </div>
-
-              {isClientEshopSlug(formData.eshop) && (
-                <div className="orders-new-order-row orders-new-order-row--notes">
-                  <div className="form-group">
-                    <label>
-                      Notes <span style={{ color: '#e53e3e' }}>*</span>
-                    </label>
-                    <textarea
-                      className="orders-client-notes-field"
-                      value={formData.client_eshop_notes}
-                      onChange={(e) =>
-                        setFormData({ ...formData, client_eshop_notes: e.target.value })
-                      }
-                      required
-                      rows={2}
-                      placeholder="Who / reference / sourcing (required when eShop is Client)"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="orders-new-order-row orders-new-order-row--qty-prices">
               <div className="form-group orders-new-order-field--qty">
                 <label>Ordered Quantity</label>
                 <input
@@ -1777,6 +1893,26 @@ const Orders = () => {
                 )}
               </div>
               </div>
+
+              {isClientEshopSlug(formData.eshop) && (
+                <div className="orders-new-order-row orders-new-order-row--notes">
+                  <div className="form-group">
+                    <label>
+                      Notes <span style={{ color: '#e53e3e' }}>*</span>
+                    </label>
+                    <textarea
+                      className="orders-client-notes-field"
+                      value={formData.client_eshop_notes}
+                      onChange={(e) =>
+                        setFormData({ ...formData, client_eshop_notes: e.target.value })
+                      }
+                      required
+                      rows={2}
+                      placeholder="Who / reference / sourcing (required when eShop is Client)"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="orders-new-order-row orders-new-order-row--payment-flags">
               <div className="form-group orders-new-order-checkbox-row">
@@ -1875,13 +2011,16 @@ const Orders = () => {
                   setShowForm(false);
                   setIsNewEshop(false);
                   setIsNewCountry(false);
-                  setFormCategory('');
+      setIsNewCargo(false);
+                  setFormCategoryType('');
+      setFormCategory('');
                   setProductSearch('');
                   setProductDropdownOpen(false);
                   setFormData({
                     order_type: 'stock',
                     product: '',
                     supplier_country: '',
+                    supplier_cargo: '',
                     eshop: '',
                     client_eshop_notes: '',
                     ordered_quantity: '',
@@ -2066,6 +2205,20 @@ const Orders = () => {
             </select>
           </div>
           <div className="filter-field">
+            <label>Customer</label>
+            <CustomerSearchableSelect
+              variant="filter"
+              customers={customerFilterOptions}
+              value={filters.customer}
+              allowEmpty
+              emptyLabel="All Customers"
+              placeholder="All Customers"
+              extraOptions={[{ value: '__none__', label: 'No customer' }]}
+              aria-label="Filter by customer"
+              onChange={(customerId) => setFilters({ ...filters, customer: customerId })}
+            />
+          </div>
+          <div className="filter-field">
             <label>Year</label>
             <select
               value={filters.year}
@@ -2107,7 +2260,20 @@ const Orders = () => {
             <button
               type="button"
               className="btn-edit"
-              onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', order_type: '', status: '', year: '', month: '' })}
+              onClick={() =>
+                setFilters({
+                  category: '',
+                  brand: '',
+                  model: '',
+                  size: '',
+                  color: '',
+                  order_type: '',
+                  status: '',
+                  customer: '',
+                  year: '',
+                  month: '',
+                })
+              }
             >
               Clear all
             </button>
@@ -2124,12 +2290,14 @@ const Orders = () => {
               <SortableTh columnId="id" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>ID</SortableTh>
               <th>Actions</th>
               <SortableTh columnId="status" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Status</SortableTh>
+              <SortableTh columnId="category_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Category type</SortableTh>
               <SortableTh columnId="category" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Category</SortableTh>
               <SortableTh columnId="brand" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Brand</SortableTh>
               <SortableTh columnId="model" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Model</SortableTh>
               <SortableTh columnId="size" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Size</SortableTh>
               <SortableTh columnId="color" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Color</SortableTh>
               <SortableTh columnId="supplier_country" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Supplier Country</SortableTh>
+              <SortableTh columnId="supplier_cargo" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Supplier Cargo</SortableTh>
               <SortableTh columnId="eshop" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>eShop</SortableTh>
               <SortableTh columnId="order_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Order Type</SortableTh>
               <SortableTh columnId="customer" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Customer</SortableTh>
@@ -2148,7 +2316,7 @@ const Orders = () => {
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="22" style={{ textAlign: 'center' }}>
+                <td colSpan="24" style={{ textAlign: 'center' }}>
                   No orders found
                 </td>
               </tr>
@@ -2227,12 +2395,18 @@ const Orders = () => {
                       {formatOrderStatus(order.status)}
                     </span>
                   </td>
+                  <td>
+                    {categoryTypeLabel(order.product_detail?.category_type) || (
+                      <span style={{ color: '#999' }}>—</span>
+                    )}
+                  </td>
                   <td>{order.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>{order.product_detail?.brand || '-'}</td>
                   <td>{order.product_detail?.model || '-'}</td>
                   <td><strong>{order.product_detail?.size || '-'}</strong></td>
                   <td><strong>{order.product_detail?.color || '-'}</strong></td>
                   <td>{order.supplier_country || <span style={{ color: '#999' }}>—</span>}</td>
+                  <td>{order.supplier_cargo || <span style={{ color: '#999' }}>—</span>}</td>
                   <td title={order.client_eshop_notes ? String(order.client_eshop_notes) : eshopLabel || ''}>
                     {eshopLabel ? (
                       <span>{eshopLabel}</span>

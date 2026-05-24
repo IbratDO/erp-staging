@@ -660,7 +660,7 @@ const Customers = () => {
               <thead>
                 <tr>
                   <SortableTh columnId="timestamp" sortCol={balanceTxSort.sortCol} sortDir={balanceTxSort.sortDir} onSort={balanceTxSort.onHeaderClick}>Date</SortableTh>
-                  <SortableTh columnId="transaction_type_key" sortCol={balanceTxSort.sortCol} sortDir={balanceTxSort.sortDir} onSort={balanceTxSort.onHeaderClick}>Type</SortableTh>
+                  <SortableTh columnId="transaction_type_key" sortCol={balanceTxSort.sortCol} sortDir={balanceTxSort.sortDir} onSort={balanceTxSort.onHeaderClick}>Transaction type</SortableTh>
                   <SortableTh columnId="amount" sortCol={balanceTxSort.sortCol} sortDir={balanceTxSort.sortDir} onSort={balanceTxSort.onHeaderClick}>Amount</SortableTh>
                   <SortableTh columnId="currency" sortCol={balanceTxSort.sortCol} sortDir={balanceTxSort.sortDir} onSort={balanceTxSort.onHeaderClick}>Currency</SortableTh>
                   <SortableTh columnId="notes" sortCol={balanceTxSort.sortCol} sortDir={balanceTxSort.sortDir} onSort={balanceTxSort.onHeaderClick}>Notes</SortableTh>

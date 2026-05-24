@@ -4,8 +4,17 @@ import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import './TablePage.css';
 
+const PRODUCT_CATEGORY_TYPES = [
+  { value: 'sports', label: 'Sports' },
+  { value: 'casual', label: 'Casual' },
+];
+
+const categoryTypeLabel = (value) =>
+  PRODUCT_CATEGORY_TYPES.find((t) => t.value === value)?.label ?? '';
+
 const PRODUCTS_SORT_ACCESSORS = {
   id: (p) => Number(p.id) || 0,
+  category_type: (p) => String(p.category_type ?? '').toLowerCase(),
   category: (p) => String(p.category ?? '').toLowerCase(),
   brand: (p) => String(p.brand ?? '').toLowerCase(),
   model: (p) => String(p.model ?? '').toLowerCase(),
@@ -126,6 +135,7 @@ const Products = () => {
   });
   const [formData, setFormData] = useState({
     name: '',
+    category_type: '',
     category: '',
     brand: '',
     model: '',
@@ -301,6 +311,7 @@ const Products = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const payload = { ...formData };
+    if (!payload.category_type) payload.category_type = null;
     if (payload.size) payload.size = normalizeSizeValue(payload.size);
     try {
       if (editingProduct) {
@@ -343,6 +354,22 @@ const Products = () => {
           showNotification('Product updated.', 'success');
         }
       } else {
+        if (!String(formData.category_type || '').trim()) {
+          showNotification('Please select a category type.', 'error');
+          return;
+        }
+        if (!String(formData.category || '').trim()) {
+          showNotification('Please select or enter a category.', 'error');
+          return;
+        }
+        if (!String(formData.brand || '').trim()) {
+          showNotification('Please select or enter a brand.', 'error');
+          return;
+        }
+        if (!String(formData.model || '').trim()) {
+          showNotification('Please select or enter a model.', 'error');
+          return;
+        }
         if (selectedSizes.length === 0) {
           showNotification('Please select at least one size.', 'error');
           return;
@@ -399,6 +426,7 @@ const Products = () => {
       setSizeDropdownOpen(false);
       setFormData({
         name: '',
+        category_type: '',
         category: '',
         brand: '',
         model: '',
@@ -429,6 +457,7 @@ const Products = () => {
     setSizeDropdownOpen(false);
     setFormData({
       name: product.name,
+      category_type: product.category_type || '',
       category: product.category || '',
       brand: product.brand,
       model: product.model,
@@ -490,6 +519,7 @@ const Products = () => {
             setSizeDropdownOpen(false);
             setFormData({
               name: '',
+              category_type: '',
               category: '',
               brand: '',
               model: '',
@@ -508,7 +538,33 @@ const Products = () => {
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(optional)</span></label>
+                <label>
+                  Category type{' '}
+                  {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
+                </label>
+                <select
+                  value={formData.category_type}
+                  onChange={(e) => setFormData({ ...formData, category_type: e.target.value })}
+                  required={!editingProduct}
+                >
+                  {editingProduct ? <option value="">— None —</option> : null}
+                  {!editingProduct ? <option value="">Select category type</option> : null}
+                  {PRODUCT_CATEGORY_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>
+                  Category{' '}
+                  {editingProduct ? (
+                    <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(optional)</span>
+                  ) : (
+                    <span style={{ color: '#e53e3e' }}>*</span>
+                  )}
+                </label>
                 {!isNewCategory ? (
                   <select
                     value={formData.category}
@@ -520,8 +576,10 @@ const Products = () => {
                         setFormData({ ...formData, category: e.target.value });
                       }
                     }}
+                    required={!editingProduct}
                   >
-                    <option value="">— None —</option>
+                    {editingProduct ? <option value="">— None —</option> : null}
+                    {!editingProduct ? <option value="">Select category</option> : null}
                     {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
@@ -534,6 +592,7 @@ const Products = () => {
                       placeholder="e.g. Shoes, T-Shirt, Cap"
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      required={!editingProduct}
                       autoFocus
                       style={{ flex: 1 }}
                     />
@@ -548,7 +607,9 @@ const Products = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Brand</label>
+                <label>
+                  Brand {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
+                </label>
                 {!isNewBrand ? (
                   <select
                     value={formData.brand}
@@ -600,7 +661,9 @@ const Products = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Model</label>
+                <label>
+                  Model {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
+                </label>
                 {!isNewModel ? (
                   <select
                     value={formData.model}
@@ -652,7 +715,17 @@ const Products = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Size{!editingProduct && <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em', marginLeft: '6px' }}>— click to select multiple</span>}</label>
+                <label>
+                  Size
+                  {!editingProduct ? (
+                    <>
+                      <span style={{ color: '#e53e3e' }}> *</span>
+                      <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em', marginLeft: '6px' }}>
+                        — click to select at least one
+                      </span>
+                    </>
+                  ) : null}
+                </label>
                 {editingProduct ? (
                   <select
                     value={formData.size}
@@ -810,9 +883,18 @@ const Products = () => {
               <div className="form-group">
                 <label>
                   Color
-                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em', marginLeft: '6px' }}>
-                    — click to select multiple
-                  </span>
+                  {!editingProduct ? (
+                    <>
+                      <span style={{ color: '#e53e3e' }}> *</span>
+                      <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em', marginLeft: '6px' }}>
+                        — click to select at least one
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em', marginLeft: '6px' }}>
+                      — click to select multiple
+                    </span>
+                  )}
                 </label>
                 <div ref={colorDropdownRef} style={{ position: 'relative' }}>
                   <div
@@ -1136,6 +1218,9 @@ const Products = () => {
               <SortableTh columnId="id" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
                 ID
               </SortableTh>
+              <SortableTh columnId="category_type" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
+                Category type
+              </SortableTh>
               <SortableTh columnId="category" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
                 Category
               </SortableTh>
@@ -1157,7 +1242,7 @@ const Products = () => {
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center' }}>
+                <td colSpan="8" style={{ textAlign: 'center' }}>
                   No products found
                 </td>
               </tr>
@@ -1166,6 +1251,11 @@ const Products = () => {
                 return (
                 <tr key={product.id}>
                   <td>#{product.id}</td>
+                  <td>
+                    {categoryTypeLabel(product.category_type) || (
+                      <span style={{ color: '#999' }}>—</span>
+                    )}
+                  </td>
                   <td>{product.category || <span style={{ color: '#999' }}>—</span>}</td>
                   <td>{product.brand}</td>
                   <td>{product.model}</td>
@@ -1192,7 +1282,7 @@ const Products = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="7" style={{ textAlign: 'right', color: '#718096', fontSize: '0.85em' }}>
+              <td colSpan="8" style={{ textAlign: 'right', color: '#718096', fontSize: '0.85em' }}>
                 {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
               </td>
             </tr>

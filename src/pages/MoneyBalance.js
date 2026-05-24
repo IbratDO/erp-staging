@@ -103,6 +103,50 @@ const MONEY_BALANCE_TX_SORT_ACCESSORS = (() => {
   return o;
 })();
 
+/** Build API date_from / date_to from year / month / day filters. */
+function buildTransactionDateRange({ year, month, day }) {
+  if (!year && !month && !day) return null;
+
+  const yNum = year ? parseInt(year, 10) : new Date().getFullYear();
+  const y = String(yNum);
+
+  if (day) {
+    const mNum = month ? parseInt(month, 10) : new Date().getMonth() + 1;
+    const mm = String(mNum).padStart(2, '0');
+    const lastDay = new Date(yNum, mNum, 0).getDate();
+    const d = Math.min(parseInt(day, 10) || 1, lastDay);
+    const dd = String(d).padStart(2, '0');
+    const date = `${y}-${mm}-${dd}`;
+    return { dateFrom: date, dateTo: date };
+  }
+
+  if (year && month) {
+    const mNum = parseInt(month, 10);
+    const mm = String(mNum).padStart(2, '0');
+    const lastDay = new Date(yNum, mNum, 0).getDate();
+    return {
+      dateFrom: `${y}-${mm}-01`,
+      dateTo: `${y}-${mm}-${String(lastDay).padStart(2, '0')}`,
+    };
+  }
+
+  if (year) {
+    return { dateFrom: `${y}-01-01`, dateTo: `${y}-12-31` };
+  }
+
+  if (month) {
+    const mNum = parseInt(month, 10);
+    const mm = String(mNum).padStart(2, '0');
+    const lastDay = new Date(yNum, mNum, 0).getDate();
+    return {
+      dateFrom: `${y}-${mm}-01`,
+      dateTo: `${y}-${mm}-${String(lastDay).padStart(2, '0')}`,
+    };
+  }
+
+  return null;
+}
+
 const MoneyBalance = () => {
   const { isAdmin } = useAuth();
   const [balances, setBalances] = useState([]);
@@ -121,6 +165,7 @@ const MoneyBalance = () => {
     currency: '',
     year: '',
     month: '',
+    day: '',
   });
 
   useEffect(() => {
@@ -180,29 +225,9 @@ const MoneyBalance = () => {
       const params = new URLSearchParams();
       if (filter.balance_type) params.append('balance_type', filter.balance_type);
       if (filter.transaction_type) params.append('transaction_type', filter.transaction_type);
-      if (filter.year || filter.month) {
-        let dateFrom;
-        let dateTo;
-        if (filter.year && filter.month) {
-          dateFrom = `${filter.year}-${filter.month.padStart(2, '0')}-01`;
-          const lastDay = new Date(
-            parseInt(filter.year, 10),
-            parseInt(filter.month, 10),
-            0
-          ).getDate();
-          dateTo = `${filter.year}-${filter.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-        } else if (filter.year) {
-          dateFrom = `${filter.year}-01-01`;
-          dateTo = `${filter.year}-12-31`;
-        } else if (filter.month) {
-          const y = new Date().getFullYear();
-          dateFrom = `${y}-${filter.month.padStart(2, '0')}-01`;
-          const lastDay = new Date(y, parseInt(filter.month, 10), 0).getDate();
-          dateTo = `${y}-${filter.month.padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-        }
-        if (dateFrom) params.append('date_from', dateFrom);
-        if (dateTo) params.append('date_to', dateTo);
-      }
+      const dateRange = buildTransactionDateRange(filter);
+      if (dateRange?.dateFrom) params.append('date_from', dateRange.dateFrom);
+      if (dateRange?.dateTo) params.append('date_to', dateRange.dateTo);
       if (params.toString()) url += `?${params.toString()}`;
 
       const response = await api.get(url);
@@ -394,7 +419,7 @@ const MoneyBalance = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Txn type</label>
+            <label>Transaction type</label>
             <select
               value={filter.transaction_type}
               onChange={(e) => setFilter({ ...filter, transaction_type: e.target.value })}
@@ -447,12 +472,33 @@ const MoneyBalance = () => {
               <option value="12">December</option>
             </select>
           </div>
+          <div className="filter-field">
+            <label>Day</label>
+            <select
+              value={filter.day}
+              onChange={(e) => setFilter({ ...filter, day: e.target.value })}
+            >
+              <option value="">All Days</option>
+              {Array.from({ length: 31 }, (_, i) => (
+                <option key={i + 1} value={String(i + 1)}>
+                  {i + 1}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="filter-toolbar__actions">
             <button
               type="button"
               className="btn-edit"
               onClick={() =>
-                setFilter({ balance_type: '', transaction_type: '', currency: '', year: '', month: '' })
+                setFilter({
+                  balance_type: '',
+                  transaction_type: '',
+                  currency: '',
+                  year: '',
+                  month: '',
+                  day: '',
+                })
               }
             >
               Clear all

@@ -11,6 +11,7 @@ import SaleDeliverySettlementForm from '../components/SaleDeliverySettlementForm
 import { shopDeliverySettlementRequired } from '../utils/saleCompletePayHelpers';
 import ShopDeliverySettlementButtons from '../components/ShopDeliverySettlementButtons';
 import ProductSearchableSelect from '../components/ProductSearchableSelect';
+import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import { layerSalePickerLabel, resolveLayerListPrice } from '../utils/productCost';
 import {
   computeAdvanceRemainingDue,
@@ -306,6 +307,7 @@ const Sales = () => {
     color: '',
     status: '',
     sale_type: '',
+    customer: '',
     year: '',
     month: '',
   });
@@ -428,6 +430,20 @@ const Sales = () => {
     return [...new Set(values)].sort();
   };
 
+  const customerFilterOptions = useMemo(() => {
+    const map = new Map();
+    for (const c of customers) {
+      if (c?.id != null) map.set(c.id, c);
+    }
+    for (const s of sales) {
+      const d = s.customer_detail;
+      if (d?.id != null && !map.has(d.id)) map.set(d.id, d);
+    }
+    return [...map.values()].sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }),
+    );
+  }, [customers, sales]);
+
   const applyFilters = (salesList) => {
     let filtered = salesList;
     
@@ -461,6 +477,18 @@ const Sales = () => {
     }
     if (filters.sale_type) {
       filtered = filtered.filter((sale) => sale.sale_type === filters.sale_type);
+    }
+    if (filters.customer) {
+      if (filters.customer === '__none__') {
+        filtered = filtered.filter((sale) => !sale.customer && !sale.customer_detail?.id);
+      } else {
+        const customerId = parseInt(filters.customer, 10);
+        filtered = filtered.filter(
+          (sale) =>
+            sale.customer === customerId ||
+            sale.customer_detail?.id === customerId,
+        );
+      }
     }
     if (filters.year) {
       filtered = filtered.filter(sale => {
@@ -2249,6 +2277,20 @@ const Sales = () => {
             </select>
           </div>
           <div className="filter-field">
+            <label>Customer</label>
+            <CustomerSearchableSelect
+              variant="filter"
+              customers={customerFilterOptions}
+              value={filters.customer}
+              allowEmpty
+              emptyLabel="All Customers"
+              placeholder="All Customers"
+              extraOptions={[{ value: '__none__', label: 'No customer' }]}
+              aria-label="Filter by customer"
+              onChange={(customerId) => setFilters({ ...filters, customer: customerId })}
+            />
+          </div>
+          <div className="filter-field">
             <label>Year</label>
             <select
               value={filters.year}
@@ -2299,6 +2341,7 @@ const Sales = () => {
                   color: '',
                   status: '',
                   sale_type: '',
+                  customer: '',
                   year: '',
                   month: '',
                 })
