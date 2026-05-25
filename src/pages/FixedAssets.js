@@ -43,7 +43,8 @@ function formatApiError(data) {
 }
 
 const FixedAssets = () => {
-  const { isAdmin } = useAuth();
+  const { hasPermission } = useAuth();
+  const isAdmin = hasPermission('fixed_assets.create');
   const [assets, setAssets] = useState([]);
   const [balances, setBalances] = useState([]);
   const [loading, setLoading] = useState(true);

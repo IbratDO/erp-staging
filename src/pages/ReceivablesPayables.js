@@ -8,6 +8,7 @@ import { formatDisplayAmount } from '../utils/currencyFormat';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import { usePermissions } from '../hooks/usePermissions';
 
 const SALE_TYPE_LABELS = {
   bought_from_shop: 'Shop',
@@ -156,6 +157,8 @@ const PAYABLE_TABLE_SORT_ACCESSORS = {
 };
 
 const ReceivablesPayables = () => {
+  const { hasPermission } = usePermissions();
+  const canCollect = hasPermission('receivables.collect');
   const [activeTab, setActiveTab] = useState('receivables');
   const [receivables, setReceivables] = useState([]);
   const [payables, setPayables] = useState([]);
@@ -586,7 +589,7 @@ const ReceivablesPayables = () => {
       {/* Receivables Table */}
       {activeTab === 'receivables' && (
         <>
-          {collectTarget && (
+          {collectTarget && canCollect && (
             <div className="form-card" style={{ marginBottom: '20px' }}>
               <h2>
                 Collect payment — receivable #{collectTarget.id}{' '}
@@ -722,7 +725,7 @@ const ReceivablesPayables = () => {
                           : '—'}
                       </td>
                       <td>
-                        {canCollectReceivable(receivable) ? (
+                        {canCollectReceivable(receivable) && canCollect ? (
                           <button
                             type="button"
                             className="btn-edit"

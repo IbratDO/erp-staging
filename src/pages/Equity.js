@@ -4,7 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import './TablePage.css';
 
 const Equity = () => {
-  const { isAdmin } = useAuth();
+  const { hasPermission } = useAuth();
+  const isAdmin = hasPermission('equity.create');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);

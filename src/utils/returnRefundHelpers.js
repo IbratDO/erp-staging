@@ -69,7 +69,7 @@ export function computeRefundPaidInDueCurrency(uzsT, usdT, dueCurrency, cbuRate)
 }
 
 /**
- * Refund validation meta (no discount path — underpayment is always blocked).
+ * Refund validation meta. Underpayment vs sold_price due is allowed when the user confirms partial refund.
  */
 export function computeReturnRefundMeta(returnItem, refundFormData, cbuRate) {
   const dueInfo = computeReturnRefundDue(returnItem);
@@ -141,7 +141,8 @@ export function buildReturnRefundRequest(refundFormData, exchangeRate, options =
       requestData.exchange_rate = exchangeRate.rate;
     }
   }
-  if (options.acceptSplitUnderpayment) {
+  if (options.acceptPartialRefund || options.acceptSplitUnderpayment) {
+    requestData.accept_partial_refund = true;
     requestData.accept_split_underpayment = true;
   }
   return requestData;

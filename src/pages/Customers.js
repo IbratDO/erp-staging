@@ -4,6 +4,7 @@ import { formatDisplayAmount, formatAmountByBalanceType, formatPlainAmount } fro
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import { usePermissions } from '../hooks/usePermissions';
 
 const CUSTOMER_SORT_ACCESSORS = {
   name: (c) => String(c.name ?? '').toLowerCase(),
@@ -63,6 +64,10 @@ const BALANCE_TX_SORT_ACCESSORS = {
 };
 
 const Customers = () => {
+  const { hasPermission } = usePermissions();
+  const canCreate = hasPermission('customers.create');
+  const canUpdate = hasPermission('customers.update');
+  const canDelete = hasPermission('customers.delete');
   const [customers, setCustomers] = useState([]);
   const [filteredCustomers, setFilteredCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -271,6 +276,7 @@ const Customers = () => {
     <div className="page-container">
       <div className="page-header">
         <h1>Customers</h1>
+        {canCreate && (
         <button className="btn-primary" onClick={() => {
           setShowForm(!showForm);
           if (!showForm) {
@@ -279,9 +285,10 @@ const Customers = () => {
         }}>
           {showForm ? 'Cancel' : '+ New Customer'}
         </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && (canCreate || canUpdate) && (
         <div className="form-card">
           <h2>{formData.id ? 'Edit Customer' : 'New Customer'}</h2>
           <form onSubmit={handleSubmit}>
@@ -434,6 +441,7 @@ const Customers = () => {
                         : '—'}
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
+                      {canUpdate && (
                       <button
                         className="btn-edit"
                         onClick={() => handleEdit(customer)}
@@ -441,12 +449,15 @@ const Customers = () => {
                       >
                         Edit
                       </button>
+                      )}
+                      {canDelete && (
                       <button
                         className="btn-delete"
                         onClick={() => handleDelete(customer.id)}
                       >
                         Delete
                       </button>
+                      )}
                     </td>
                   </tr>
                 ))

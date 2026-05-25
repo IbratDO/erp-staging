@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import PrivateRoute from './components/PrivateRoute';
+import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -19,6 +20,8 @@ import ProfitLoss from './pages/ProfitLoss';
 import BalanceSheet from './pages/BalanceSheet';
 import MoneyBalance from './pages/MoneyBalance';
 import AuditLogs from './pages/AuditLogs';
+import BonusRules from './pages/BonusRules';
+import Users from './pages/Users';
 import Customers from './pages/Customers';
 import Dispatchers from './pages/Dispatchers';
 import Workers from './pages/Workers';
@@ -39,24 +42,166 @@ function App() {
             }
           >
             <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="products" element={<Products />} />
-            <Route path="inventory/products" element={<Inventory />} />
-            <Route path="inventory/packages" element={<Packages />} />
-            <Route path="orders" element={<Orders />} />
-            <Route path="sales" element={<Sales />} />
-            <Route path="returns" element={<Returns />} />
-            <Route path="finance" element={<Finance />} />
-            <Route path="receivables-payables" element={<ReceivablesPayables />} />
-            <Route path="equity" element={<Equity />} />
-            <Route path="fixed-assets" element={<FixedAssets />} />
-            <Route path="profit-loss" element={<ProfitLoss />} />
-            <Route path="balance-sheet" element={<BalanceSheet />} />
-            <Route path="money-balance" element={<MoneyBalance />} />
-            <Route path="audit-logs" element={<AuditLogs />} />
-            <Route path="customers" element={<Customers />} />
-            <Route path="dispatchers" element={<Dispatchers />} />
-            <Route path="workers" element={<Workers />} />
+            <Route
+              path="dashboard"
+              element={
+                <ProtectedRoute permission="dashboard.view">
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="products"
+              element={
+                <ProtectedRoute permission="products.view">
+                  <Products />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="inventory/products"
+              element={
+                <ProtectedRoute permission="inventory.view">
+                  <Inventory />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="inventory/packages"
+              element={
+                <ProtectedRoute permission="packages.view">
+                  <Packages />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="orders"
+              element={
+                <ProtectedRoute permission="orders.view">
+                  <Orders />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="sales"
+              element={
+                <ProtectedRoute permission="sales.view">
+                  <Sales />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="returns"
+              element={
+                <ProtectedRoute permission="returns.view">
+                  <Returns />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="finance"
+              element={
+                <ProtectedRoute permission="finance.view">
+                  <Finance />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="receivables-payables"
+              element={
+                <ProtectedRoute permission="receivables.view">
+                  <ReceivablesPayables />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="equity"
+              element={
+                <ProtectedRoute permission="equity.view">
+                  <Equity />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="fixed-assets"
+              element={
+                <ProtectedRoute permission="fixed_assets.view">
+                  <FixedAssets />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="profit-loss"
+              element={
+                <ProtectedRoute permission="finance.profit_loss">
+                  <ProfitLoss />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="balance-sheet"
+              element={
+                <ProtectedRoute permission="finance.balance_sheet">
+                  <BalanceSheet />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="money-balance"
+              element={
+                <ProtectedRoute permission="cash.view">
+                  <MoneyBalance />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="bonus-rules"
+              element={
+                <ProtectedRoute permission="bonus.manage">
+                  <BonusRules />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="users"
+              element={
+                <ProtectedRoute permission="users.view">
+                  <Users />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="audit-logs"
+              element={
+                <ProtectedRoute permission="audit_logs.view">
+                  <AuditLogs />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="customers"
+              element={
+                <ProtectedRoute permission="customers.view">
+                  <Customers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="dispatchers"
+              element={
+                <ProtectedRoute permission="dispatchers.view">
+                  <Dispatchers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="workers"
+              element={
+                <ProtectedRoute permission="workers.view">
+                  <Workers />
+                </ProtectedRoute>
+              }
+            />
           </Route>
         </Routes>
       </Router>
@@ -65,4 +210,3 @@ function App() {
 }
 
 export default App;
-

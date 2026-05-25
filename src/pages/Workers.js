@@ -3,6 +3,8 @@ import api from '../utils/api';
 import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import { usePermissions } from '../hooks/usePermissions';
+import UserAccountsPanel from '../components/UserAccountsPanel';
 import './TablePage.css';
 
 const WORKERS_SORT = {
@@ -35,6 +37,10 @@ const WORKER_TX_SORT = {
 };
 
 const Workers = () => {
+  const { hasPermission } = usePermissions();
+  const canManage = hasPermission('workers.manage');
+  const canViewUsers = hasPermission('users.view');
+  const [mainTab, setMainTab] = useState('workers');
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedWorker, setSelectedWorker] = useState(null);
@@ -161,7 +167,7 @@ const Workers = () => {
     [workerTransactions?.finance_records, workerTxSort]
   );
 
-  if (loading) {
+  if (loading && mainTab === 'workers') {
     return <div className="page-container">Loading...</div>;
   }
 
@@ -169,6 +175,7 @@ const Workers = () => {
     <div className="page-container">
       <div className="page-header">
         <h1>Workers</h1>
+        {mainTab === 'workers' && canManage && (
         <button className="btn-primary" onClick={() => {
           setShowForm(!showForm);
           if (!showForm) {
@@ -177,10 +184,50 @@ const Workers = () => {
         }}>
           {showForm ? 'Cancel' : '+ New Worker'}
         </button>
+        )}
       </div>
 
-      {/* Add/Edit Form */}
-      {showForm && (
+      {canViewUsers && (
+        <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid #e0e0e0' }}>
+          <button
+            type="button"
+            onClick={() => setMainTab('workers')}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              background: mainTab === 'workers' ? '#007bff' : 'transparent',
+              color: mainTab === 'workers' ? 'white' : '#666',
+              cursor: 'pointer',
+              borderBottom: mainTab === 'workers' ? '3px solid #007bff' : '3px solid transparent',
+              fontWeight: mainTab === 'workers' ? '600' : '400',
+            }}
+          >
+            Field workers
+          </button>
+          <button
+            type="button"
+            onClick={() => setMainTab('accounts')}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              background: mainTab === 'accounts' ? '#007bff' : 'transparent',
+              color: mainTab === 'accounts' ? 'white' : '#666',
+              cursor: 'pointer',
+              borderBottom: mainTab === 'accounts' ? '3px solid #007bff' : '3px solid transparent',
+              fontWeight: mainTab === 'accounts' ? '600' : '400',
+            }}
+          >
+            Login accounts
+          </button>
+        </div>
+      )}
+
+      {mainTab === 'accounts' && canViewUsers ? (
+        <UserAccountsPanel embedded />
+      ) : (
+        <>
+
+      {showForm && canManage && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>{formData.id ? 'Edit Worker' : 'Add New Worker'}</h2>
           <form onSubmit={handleSubmit}>
@@ -267,6 +314,7 @@ const Workers = () => {
                   <td>{worker.telephone || '-'}</td>
                   <td>{worker.notes ? (worker.notes.length > 50 ? worker.notes.substring(0, 50) + '...' : worker.notes) : '-'}</td>
                   <td>
+                    {canManage && (
                     <button
                       className="btn-edit"
                       onClick={() => handleEdit(worker)}
@@ -274,6 +322,7 @@ const Workers = () => {
                     >
                       Edit
                     </button>
+                    )}
                     <button
                       className="btn-edit"
                       onClick={() => handleViewPerformance(worker)}
@@ -288,6 +337,7 @@ const Workers = () => {
                     >
                       View Transactions
                     </button>
+                    {canManage && (
                     <button
                       className="btn-edit"
                       onClick={() => handleDelete(worker.id)}
@@ -295,6 +345,7 @@ const Workers = () => {
                     >
                       Delete
                     </button>
+                    )}
                   </td>
                 </tr>
               ))
@@ -582,6 +633,8 @@ const Workers = () => {
             </tbody>
           </table>
         </div>
+      )}
+        </>
       )}
     </div>
   );

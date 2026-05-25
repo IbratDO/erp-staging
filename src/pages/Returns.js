@@ -4,6 +4,7 @@ import { cashBalanceTotalByCurrency, formatDisplayAmount, formatInsufficientLedg
 import SortableTh from '../components/SortableTh';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import { useClientTableSort, compareForSort } from '../utils/tableSort';
+import { usePermissions } from '../hooks/usePermissions';
 import {
   computeReturnRefundDue,
   computeReturnRefundMeta,
@@ -75,15 +76,15 @@ function computeFormReturnDue(sale, quantity) {
   return computeReturnDue({ sale_detail: sale, quantity });
 }
 
-function soldPriceExceedsDue(soldPrice, soldCurrency, due) {
+function refundAmountExceedsDue(refundAmount, refundCurrency, due) {
   if (due.amount == null || !Number.isFinite(due.amount)) return false;
-  const soldCcy = String(soldCurrency || 'USD').toUpperCase();
+  const refundCcy = String(refundCurrency || 'USD').toUpperCase();
   const dueCcy = String(due.currency || 'USD').toUpperCase();
-  if (soldCcy !== dueCcy) return false;
-  const sold = parseFloat(soldPrice);
-  if (!Number.isFinite(sold)) return false;
-  const tol = soldCcy === 'UZS' ? 0.5 : 0.01;
-  return sold > due.amount + tol;
+  if (refundCcy !== dueCcy) return false;
+  const refund = parseFloat(refundAmount);
+  if (!Number.isFinite(refund)) return false;
+  const tol = refundCcy === 'UZS' ? 0.5 : 0.01;
+  return refund > due.amount + tol;
 }
 
 function formatRefundAmounts(uzs, usd) {
@@ -159,6 +160,9 @@ const RETURNS_SORT_ACCESSORS = {
 };
 
 const Returns = () => {
+  const { hasPermission } = usePermissions();
+  const canMarkRefunded = hasPermission('returns.mark_refunded');
+  const canCreateReturn = hasPermission('returns.create');
   const [returns, setReturns] = useState([]);
   const [filteredReturns, setFilteredReturns] = useState([]);
   const [products, setProducts] = useState([]);
@@ -199,6 +203,8 @@ const Returns = () => {
     usd: '',
   });
   const [showRefundForm, setShowRefundForm] = useState(false);
+  /** When true, sale/qty changes do not overwrite the refund amount field. */
+  const [refundAmountTouched, setRefundAmountTouched] = useState(false);
   const [exchangeRate, setExchangeRate] = useState(null);
   const [exchangeRateError, setExchangeRateError] = useState(null);
 
@@ -210,6 +216,7 @@ const Returns = () => {
     if (!showForm) {
       setProductSearch('');
       setProductDropdownOpen(false);
+      setRefundAmountTouched(false);
     }
   }, [showForm]);
 
@@ -503,7 +510,7 @@ const Returns = () => {
     return null;
   }, [selectedSaleForReturn, formData.product, newReturnEligibleSales]);
 
-  const applyAutoSoldPrice = useCallback((sale, quantity) => {
+  const applySuggestedRefundAmount = useCallback((sale, quantity) => {
     if (!sale) return {};
     const currency = getSaleCurrency(sale);
     const unitPrice = getSaleUnitPrice(sale);
@@ -515,13 +522,21 @@ const Returns = () => {
     };
   }, []);
 
+  const mergeSuggestedRefund = useCallback(
+    (patch, sale, quantity) => {
+      if (refundAmountTouched) return patch;
+      return { ...patch, ...applySuggestedRefundAmount(sale, quantity) };
+    },
+    [refundAmountTouched, applySuggestedRefundAmount],
+  );
+
   const formReturnDue = useMemo(() => {
     const sale = resolveSaleForPricing();
     return computeFormReturnDue(sale, formData.quantity);
   }, [resolveSaleForPricing, formData.quantity]);
 
-  const soldPriceOverDue = useMemo(
-    () => soldPriceExceedsDue(formData.sold_price, formData.sold_price_currency, formReturnDue),
+  const refundAmountOverDue = useMemo(
+    () => refundAmountExceedsDue(formData.sold_price, formData.sold_price_currency, formReturnDue),
     [formData.sold_price, formData.sold_price_currency, formReturnDue],
   );
 
@@ -568,19 +583,19 @@ const Returns = () => {
       showNotification('Please enter a valid quantity (at least 1).', 'error');
       return;
     }
-    const soldTotal = parseFloat(String(formData.sold_price ?? '').trim());
-    if (!Number.isFinite(soldTotal) || soldTotal < 0) {
-      showNotification('Please enter a valid sold price.', 'error');
+    const refundTotal = parseFloat(String(formData.sold_price ?? '').trim());
+    if (!Number.isFinite(refundTotal) || refundTotal <= 0) {
+      showNotification('Please enter a valid refund amount (greater than zero).', 'error');
       return;
     }
-    const soldPriceApi = formatSoldPriceForApi(soldTotal, formData.sold_price_currency);
-    if (!soldPriceApi) {
-      showNotification('Please enter a valid sold price.', 'error');
+    const refundAmountApi = formatSoldPriceForApi(refundTotal, formData.sold_price_currency);
+    if (!refundAmountApi) {
+      showNotification('Please enter a valid refund amount.', 'error');
       return;
     }
-    if (soldPriceOverDue) {
+    if (refundAmountOverDue) {
       showNotification(
-        `Sold price (${formatDisplayAmount(parseFloat(formData.sold_price), formData.sold_price_currency)}) cannot exceed the due amount (${formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}).`,
+        `Refund amount (${formatDisplayAmount(parseFloat(formData.sold_price), formData.sold_price_currency)}) cannot exceed the sale amount due (${formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}).`,
         'error',
       );
       return;
@@ -607,7 +622,7 @@ const Returns = () => {
         reason: formData.reason,
         notes: String(formData.notes || '').trim(),
         sale: parseInt(formData.sale, 10),
-        sold_price: soldPriceApi,
+        sold_price: refundAmountApi,
         sold_price_currency: formData.sold_price_currency,
       };
       if (formData.customer) {
@@ -679,11 +694,11 @@ const Returns = () => {
     const crossSingle =
       (sc === 'USD' && uzs > 0 && usd === 0) || (sc === 'UZS' && usd > 0 && uzs === 0);
     const isCombinedRefund = uzs > 0 && usd > 0;
-    let acceptSplitUnderpayment = false;
+    let acceptPartialRefund = false;
 
     if (isCombinedRefund && meta.splitCurrency) {
       if (meta.needs) {
-        acceptSplitUnderpayment = true;
+        acceptPartialRefund = true;
       }
       if (
         !window.confirm(
@@ -720,20 +735,29 @@ const Returns = () => {
         }
       }
       if (meta.needs) {
-        showNotification(
-          `Refund is below the amount due (${formatDisplayAmount(meta.due, meta.sc)}). Collect the full refund amount.`,
-          'error',
-        );
-        return;
-      }
-      if (meta.hasOverpayment && meta.due != null && meta.overpaymentAmount != null) {
+        acceptPartialRefund = true;
+        if (
+          !window.confirm(
+            buildReturnCombinedRefundConfirmMessage({
+              returnItem,
+              meta,
+              uzsAmount: uzs,
+              usdAmount: usd,
+              exchangeRate,
+              cbuRate,
+            }),
+          )
+        ) {
+          return;
+        }
+      } else if (meta.hasOverpayment && meta.due != null && meta.overpaymentAmount != null) {
         const dueLabel = formatDisplayAmount(meta.due, meta.sc);
         const paidLabel = formatDisplayAmount(meta.paid, meta.sc);
         const excessLabel = formatDisplayAmount(meta.overpaymentAmount, meta.sc);
         const msg = [
           'Refund entered is higher than the amount due.',
           `Due: ${dueLabel} · Entered: ${paidLabel} · Excess: ${excessLabel}.`,
-          'The extra amount will still be paid out from the cash ledger.',
+          'Payable and profit/loss will use the settled refund amount.',
           'Continue?',
         ]
           .filter(Boolean)
@@ -760,11 +784,11 @@ const Returns = () => {
           }
         }
       }
-      if (!isCombinedRefund && !confirmReturnRefund(returnItem, uzs, usd, meta)) {
+      if (!isCombinedRefund && !meta.needs && !confirmReturnRefund(returnItem, uzs, usd, meta)) {
         return;
       }
       const requestData = buildReturnRefundRequest(refundFormData, exchangeRate, {
-        acceptSplitUnderpayment,
+        acceptPartialRefund,
       });
       await api.post(`/returns/${refundFormData.returnId}/mark_refunded/`, requestData);
       setShowRefundForm(false);
@@ -820,12 +844,14 @@ const Returns = () => {
       )}
       <div className="page-header">
         <h1>Returns</h1>
+        {canCreateReturn && (
         <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
           {showForm ? 'Cancel' : '+ New Return'}
         </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && canCreateReturn && (
         <div className="form-card">
           <h2>New Return</h2>
           <form onSubmit={handleSubmit}>
@@ -1074,8 +1100,14 @@ const Returns = () => {
                       ? sales.find((s) => s.id === parseInt(saleId, 10))
                       : null;
                     const quantity = formData.quantity || '1';
-                    const pricing = applyAutoSoldPrice(sale, quantity);
-                    setFormData({ ...formData, sale: saleId, quantity, ...pricing });
+                    setFormData((prev) =>
+                      mergeSuggestedRefund(
+                        { ...prev, sale: saleId, quantity },
+                        sale,
+                        quantity,
+                      ),
+                    );
+                    setRefundAmountTouched(false);
                   }}
                 >
                   <option value="">Select sale</option>
@@ -1122,8 +1154,9 @@ const Returns = () => {
                   onChange={(e) => {
                     const quantity = e.target.value;
                     const sale = resolveSaleForPricing();
-                    const pricing = applyAutoSoldPrice(sale, quantity);
-                    setFormData((prev) => ({ ...prev, quantity, ...pricing }));
+                    setFormData((prev) =>
+                      mergeSuggestedRefund({ ...prev, quantity }, sale, quantity),
+                    );
                   }}
                   required
                 />
@@ -1141,48 +1174,85 @@ const Returns = () => {
                   );
                 })()}
               </div>
-              <div className="form-group">
-                <label>Sold price <span style={{ color: '#e53e3e' }}>*</span></label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                {formReturnDue.amount != null && !Number.isNaN(formReturnDue.amount) && (
+                  <div
+                    style={{
+                      marginBottom: '10px',
+                      padding: '10px 12px',
+                      background: '#f0f4f8',
+                      borderRadius: '6px',
+                      fontSize: '0.9em',
+                    }}
+                  >
+                    <strong>Sale amount due:</strong>{' '}
+                    {formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}
+                    {Number.isFinite(formReturnDue.unitPrice) && (
+                      <span style={{ color: '#666', marginLeft: '8px' }}>
+                        ({formatDisplayAmount(formReturnDue.unitPrice, formReturnDue.currency)} / unit)
+                      </span>
+                    )}
+                  </div>
+                )}
+                <label>Refund amount <span style={{ color: '#e53e3e' }}>*</span></label>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
                   <input
                     type="number"
                     step={formData.sold_price_currency === 'UZS' ? '1' : '0.01'}
-                    min="0"
+                    min="0.01"
                     required
                     value={formData.sold_price}
-                    onChange={(e) => setFormData({ ...formData, sold_price: e.target.value })}
-                    placeholder="Auto-calculated from quantity"
-                    style={{ flex: 1 }}
+                    onChange={(e) => {
+                      setRefundAmountTouched(true);
+                      setFormData({ ...formData, sold_price: e.target.value });
+                    }}
+                    placeholder={
+                      formReturnDue.amount != null
+                        ? `Up to ${formReturnDue.amount}`
+                        : 'Enter refund to customer'
+                    }
+                    style={{ flex: '1 1 160px' }}
                   />
                   <select
                     value={formData.sold_price_currency}
-                    onChange={(e) => setFormData({ ...formData, sold_price_currency: e.target.value })}
+                    onChange={(e) => {
+                      setRefundAmountTouched(true);
+                      setFormData({ ...formData, sold_price_currency: e.target.value });
+                    }}
                     style={{ width: '96px', flexShrink: 0 }}
                   >
                     <option value="USD">USD</option>
                     <option value="UZS">UZS</option>
                   </select>
+                  {formReturnDue.amount != null && (
+                    <button
+                      type="button"
+                      className="btn-edit"
+                      style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                      onClick={() => {
+                        const sale = resolveSaleForPricing();
+                        const pricing = applySuggestedRefundAmount(sale, formData.quantity);
+                        setRefundAmountTouched(false);
+                        setFormData((prev) => ({ ...prev, ...pricing }));
+                      }}
+                    >
+                      Use full sale amount
+                    </button>
+                  )}
                 </div>
-                {(() => {
-                  const sale = resolveSaleForPricing();
-                  const unitPrice = getSaleUnitPrice(sale);
-                  const currency = getSaleCurrency(sale);
-                  if (!Number.isFinite(unitPrice)) {
-                    return (
-                      <small style={{ color: '#888', marginTop: '4px', display: 'block' }}>
-                        Select a sale to show sold price per unit.
-                      </small>
-                    );
-                  }
-                  return (
-                    <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
-                      Sold price/unit: <strong>{formatDisplayAmount(unitPrice, currency)}</strong>
-                    </small>
-                  );
-                })()}
-                {soldPriceOverDue && formReturnDue.amount != null && (
+                <small style={{ color: '#666', marginTop: '6px', display: 'block' }}>
+                  Amount owed to the customer for this return. Payables and profit/loss use this value when
+                  the return is created (can be less than the sale amount due).
+                </small>
+                {(formReturnDue.amount == null || Number.isNaN(formReturnDue.amount)) && (
+                  <small style={{ color: '#888', marginTop: '4px', display: 'block' }}>
+                    Select a sale and quantity to see the sale amount due.
+                  </small>
+                )}
+                {refundAmountOverDue && formReturnDue.amount != null && (
                   <small style={{ color: '#e65100', marginTop: '6px', display: 'block', fontWeight: 500 }}>
-                    Warning: sold price ({formatDisplayAmount(parseFloat(formData.sold_price), formData.sold_price_currency)}) exceeds due amount ({formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}).
+                    Refund amount cannot exceed sale amount due (
+                    {formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}).
                   </small>
                 )}
               </div>
@@ -1224,7 +1294,7 @@ const Returns = () => {
           <h2>Mark Return #{refundFormData.returnId} as Refunded</h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
             Enter the UZS and/or USD refund amount. Combined refunds use the CBU rate (one confirmation).
-            Single-currency refunds must cover the full amount due.
+            You may refund less than the amount due; payable and profit/loss will match the cash you pay.
           </p>
           {exchangeRate?.label && (
             <p style={{ color: '#4a5568', marginBottom: '12px', fontSize: '0.85em' }}>
@@ -1504,7 +1574,7 @@ const Returns = () => {
                 <tr key={returnItem.id}>
                   <td>#{returnItem.id}</td>
                   <td>
-                    {returnItem.refund_status === 'not_refunded' && (
+                    {returnItem.refund_status === 'not_refunded' && canMarkRefunded && (
                       <button
                         className="btn-status"
                         onClick={() => handleMarkRefunded(returnItem.id)}

@@ -3,6 +3,7 @@ import api from '../utils/api';
 import { cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import { usePermissions } from '../hooks/usePermissions';
 import './TablePage.css';
 
 const PKG_INV_SORT = {
@@ -67,6 +68,11 @@ function formatApiError(data) {
 }
 
 const Packages = () => {
+  const { hasPermission } = usePermissions();
+  const canCreate = hasPermission('packages.create');
+  const canMarkPaid = hasPermission('packages.mark_paid');
+  const canMarkReceived = hasPermission('packages.mark_received');
+  const canMarkReceivedAndPay = hasPermission('packages.mark_received_and_pay');
   const [packages, setPackages] = useState([]);
   const [packageBatches, setPackageBatches] = useState([]);
   const [packageHistory, setPackageHistory] = useState([]);
@@ -488,6 +494,7 @@ const Packages = () => {
 
       <div className="page-header">
         <h1>Packages</h1>
+        {canCreate && (
         <button
           className="btn-primary"
           onClick={() => {
@@ -502,6 +509,7 @@ const Packages = () => {
         >
           {showForm ? 'Cancel' : '+ Order Package Stock'}
         </button>
+        )}
       </div>
 
       <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em', maxWidth: 820 }}>
@@ -510,7 +518,7 @@ const Packages = () => {
         balance sheet; COGS on sales uses oldest layers first.
       </p>
 
-      {showForm && (
+      {showForm && canCreate && (
         <div className="form-card">
           <h2>{editingPackage ? `Add Stock — Package ${editingPackage.package_type}` : 'Order Package Stock'}</h2>
           <form onSubmit={handleSubmit}>
@@ -898,8 +906,9 @@ const Packages = () => {
                   <td>{historyItem.created_by_detail?.username || '-'}</td>
                   <td>{new Date(historyItem.created_at).toLocaleString()}</td>
                   <td>
-                    {historyItem.status === 'ordered' && (
+                    {historyItem.status === 'ordered' && (canMarkPaid || canMarkReceivedAndPay) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {canMarkPaid && (
                         <button
                           type="button"
                           className="btn-status"
@@ -907,6 +916,8 @@ const Packages = () => {
                         >
                           Pay
                         </button>
+                        )}
+                        {canMarkReceivedAndPay && (
                         <button
                           type="button"
                           className="btn-primary"
@@ -915,9 +926,10 @@ const Packages = () => {
                         >
                           Pay & receive
                         </button>
+                        )}
                       </div>
                     )}
-                    {historyItem.status === 'order_paid' && (
+                    {historyItem.status === 'order_paid' && canMarkReceived && (
                       <button
                         type="button"
                         className="btn-status"

@@ -99,7 +99,8 @@ function FinanceLegTotal({ value, leg }) {
 }
 
 const Finance = () => {
-  const { isAdmin } = useAuth();
+  const { hasPermission } = useAuth();
+  const isAdmin = hasPermission('finance.create_manual');
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showExpenseForm, setShowExpenseForm] = useState(false);

@@ -148,7 +148,8 @@ function buildTransactionDateRange({ year, month, day }) {
 }
 
 const MoneyBalance = () => {
-  const { isAdmin } = useAuth();
+  const { hasPermission } = useAuth();
+  const isAdmin = hasPermission('cash.adjust');
   const [balances, setBalances] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);

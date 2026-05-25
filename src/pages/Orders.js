@@ -13,6 +13,7 @@ import {
 } from '../utils/orderPlannedPricing';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
+import { usePermissions } from '../hooks/usePermissions';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import { useClientTableSort, compareForSort } from '../utils/tableSort';
 
@@ -283,6 +284,12 @@ const ORDER_SORT_ACCESSORS = {
   order_date: (o) => new Date(o.order_date || o.created_at).getTime() || 0,
 };
 const Orders = () => {
+  const { hasPermission } = usePermissions();
+  const canPayOrder = hasPermission('orders.pay_order');
+  const canPayCargo = hasPermission('orders.pay_cargo');
+  const canMoveInventory = hasPermission('orders.move_to_inventory');
+  const canSellProduct = hasPermission('orders.sell_product');
+  const canUpdateStatus = hasPermission('orders.update_status');
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
   const [balances, setBalances] = useState([]);
@@ -2360,7 +2367,7 @@ const Orders = () => {
                   <td>#{order.id}</td>
                   <td>
                     {/* Show status update buttons based on current status */}
-                    {showMarkAsReceivedAction(order) && (
+                    {showMarkAsReceivedAction(order) && canUpdateStatus && (
                       <button
                         className="btn-status"
                         onClick={() => handleStatusUpdate(order.id, 'received')}
@@ -2369,8 +2376,7 @@ const Orders = () => {
                         Mark as Received
                       </button>
                     )}
-                    {/* Payment buttons — shown simultaneously until each is paid */}
-                    {!order.order_is_paid && (
+                    {!order.order_is_paid && canPayOrder && (
                       <button
                         className="btn-status"
                         onClick={() => handlePayOrder(order.id)}
@@ -2379,7 +2385,7 @@ const Orders = () => {
                         Pay for the Order
                       </button>
                     )}
-                    {!order.cargo_is_paid && (
+                    {!order.cargo_is_paid && canPayCargo && (
                       <button
                         className="btn-status"
                         onClick={() => handlePayCargo(order.id)}
@@ -2388,8 +2394,7 @@ const Orders = () => {
                         Pay for the Cargo
                       </button>
                     )}
-                    {/* Move to Inventory — only shown once both payments are done */}
-                    {orderReadyForInventoryActions(order) && order.order_type === 'stock' && (
+                    {orderReadyForInventoryActions(order) && order.order_type === 'stock' && canMoveInventory && (
                       <button
                         className="btn-status"
                         onClick={() => handleStatusUpdate(order.id, 'in_inventory')}
@@ -2398,11 +2403,11 @@ const Orders = () => {
                         Move to Inventory
                       </button>
                     )}
-                    {/* On-demand order specific buttons when received / order paid */}
                     {order.order_type === 'on_demand' &&
                       orderReadyForInventoryActions(order) &&
                       !order.has_sale && (
                       <>
+                        {canSellProduct && (
                         <button
                           className="btn-status"
                           onClick={() => handleSellProduct(order.id)}
@@ -2410,6 +2415,8 @@ const Orders = () => {
                         >
                           Sell the Product
                         </button>
+                        )}
+                        {canMoveInventory && (
                         <button
                           className="btn-status"
                           onClick={() => handleMoveToInventoryFromOrder(order.id)}
@@ -2417,6 +2424,7 @@ const Orders = () => {
                         >
                           Move to Inventory
                         </button>
+                        )}
                       </>
                     )}
                   </td>

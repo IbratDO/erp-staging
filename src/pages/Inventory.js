@@ -4,6 +4,7 @@ import { productCostPickerLabel } from '../utils/productCost';
 import { plannedSellingSummary } from '../utils/orderPlannedPricing';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import { usePermissions } from '../hooks/usePermissions';
 import './TablePage.css';
 
 const PRODUCT_CATEGORY_TYPES = [
@@ -78,6 +79,8 @@ const INVENTORY_SORT_ACCESSORS = {
 };
 
 const Inventory = () => {
+  const { hasPermission } = usePermissions();
+  const canAddInventory = hasPermission('inventory.create');
   const [inventory, setInventory] = useState([]);
   const [filteredInventory, setFilteredInventory] = useState([]);
   const [products, setProducts] = useState([]);
@@ -284,12 +287,14 @@ const Inventory = () => {
     <div className="page-container">
       <div className="page-header">
         <h1>Inventory</h1>
-        <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : '+ Add Inventory Item'}
-        </button>
+        {canAddInventory && (
+          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancel' : '+ Add Inventory Item'}
+          </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && canAddInventory && (
         <div className="form-card">
           <h2>New Inventory Item</h2>
           <form onSubmit={handleSubmit}>

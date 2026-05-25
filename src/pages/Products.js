@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import { usePermissions } from '../hooks/usePermissions';
 import './TablePage.css';
 
 const PRODUCT_CATEGORY_TYPES = [
@@ -113,6 +114,10 @@ function apiErrorMessage(error, fallback = 'Request failed') {
 }
 
 const Products = () => {
+  const { hasPermission } = usePermissions();
+  const canCreate = hasPermission('products.create');
+  const canUpdate = hasPermission('products.update');
+  const canDelete = hasPermission('products.delete');
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -507,6 +512,7 @@ const Products = () => {
       )}
       <div className="page-header">
         <h1>Products</h1>
+        {canCreate && (
         <button className="btn-primary" onClick={() => {
           setShowForm(!showForm);
           // Clear editing state and reset form when canceling or opening new form
@@ -534,9 +540,10 @@ const Products = () => {
         }}>
           {showForm ? 'Cancel' : '+ Add Product'}
         </button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && (canCreate || (canUpdate && editingProduct)) && (
         <div className="form-card">
           <h2>{editingProduct ? 'Edit Product' : 'New Product'}</h2>
           <form onSubmit={handleSubmit}>
@@ -1300,18 +1307,22 @@ const Products = () => {
                   <td><strong>{product.size}</strong></td>
                   <td><strong>{product.color}</strong></td>
                   <td>
+                    {canUpdate && (
                     <button
                       className="btn-edit"
                       onClick={() => handleEdit(product)}
                     >
                       Edit
                     </button>
+                    )}
+                    {canDelete && (
                     <button
                       className="btn-delete"
                       onClick={() => handleDelete(product.id)}
                     >
                       Delete
                     </button>
+                    )}
                   </td>
                 </tr>
                 );

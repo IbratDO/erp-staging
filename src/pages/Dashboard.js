@@ -53,7 +53,7 @@ const Dashboard = () => {
     return <div className="page-container">No data available</div>;
   }
 
-  const { business_metrics, user_metrics, time_based_metrics, trends, status_distribution, expense_metrics } = stats;
+  const { business_metrics, user_metrics, time_based_metrics, trends, status_distribution, expense_metrics, shared_dashboard, ceo_dashboard, role_code } = stats;
 
   return (
     <div className="dashboard">
@@ -323,6 +323,148 @@ const Dashboard = () => {
           </div>
         )}
       </div>
+
+      {shared_dashboard && (
+        <section className="dashboard-section">
+          <h2>Manager insights</h2>
+          {shared_dashboard.my_performance && (
+            <div className="metrics-grid" style={{ marginBottom: 16 }}>
+              <div className="metric-card">
+                <div className="metric-label">Your sales (30d)</div>
+                <div className="metric-value">{shared_dashboard.my_performance.sales_count}</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">Your units (30d)</div>
+                <div className="metric-value">{shared_dashboard.my_performance.units}</div>
+              </div>
+              <div className="metric-card">
+                <div className="metric-label">Your revenue (30d)</div>
+                <div className="metric-value">{shared_dashboard.my_performance.revenue?.toLocaleString()}</div>
+              </div>
+            </div>
+          )}
+          <div className="metrics-grid">
+            <div className="metric-card">
+              <div className="metric-label">New customers (30d)</div>
+              <div className="metric-value">{shared_dashboard.new_customers}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Returning customers</div>
+              <div className="metric-value">{shared_dashboard.returning_customers}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Your bonus (accumulated)</div>
+              <div className="metric-value">{shared_dashboard.bonus_accumulated?.toLocaleString()}</div>
+            </div>
+          </div>
+          {shared_dashboard.category_donut?.length > 0 && (
+            <div className="chart-card">
+              <h3>Sales by category</h3>
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={shared_dashboard.category_donut.map((r) => ({
+                      name: r.product__category || 'Uncategorized',
+                      value: Number(r.revenue) || 0,
+                    }))}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={90}
+                    label
+                  >
+                    {shared_dashboard.category_donut.map((_, index) => (
+                      <Cell key={`cat-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
+      )}
+
+      {ceo_dashboard && role_code === 'ceo' && (
+        <section className="dashboard-section ceo-dashboard">
+          <h2>CEO analytics</h2>
+          <div className="metrics-grid">
+            <div className="metric-card">
+              <div className="metric-label">Daily net profit (USD)</div>
+              <div className="metric-value">${ceo_dashboard.daily_net_profit_usd?.toLocaleString()}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Monthly net profit (USD)</div>
+              <div className="metric-value">${ceo_dashboard.monthly_net_profit_usd?.toLocaleString()}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">UZS free cash</div>
+              <div className="metric-value">
+                {ceo_dashboard.cash_availability?.uzs_free_cash?.toLocaleString()} UZS
+              </div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">USD free cash</div>
+              <div className="metric-value">${ceo_dashboard.cash_availability?.usd_free_cash?.toLocaleString()}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Inventory turnover</div>
+              <div className="metric-value">{ceo_dashboard.inventory_turnover_ratio?.toFixed(2)}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Sales acquisition cost</div>
+              <div className="metric-value">${ceo_dashboard.marketing_metrics?.sales_acquisition_cost?.toFixed(2)}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Customer acquisition cost (CAC)</div>
+              <div className="metric-value">${ceo_dashboard.marketing_metrics?.cac?.toFixed(2)}</div>
+            </div>
+          </div>
+          <div className="metrics-grid">
+            <div className="metric-card">
+              <div className="metric-label">Inventory aging 3–5 mo (units)</div>
+              <div className="metric-value">{ceo_dashboard.inventory_aging_units?.['3_5_months']}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Inventory aging 5–8 mo (units)</div>
+              <div className="metric-value">{ceo_dashboard.inventory_aging_units?.['5_8_months']}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Inventory aging 8+ mo (units)</div>
+              <div className="metric-value">{ceo_dashboard.inventory_aging_units?.['8_plus_months']}</div>
+            </div>
+          </div>
+          {ceo_dashboard.gross_profit_by_manager?.length > 0 && (
+            <div className="chart-card">
+              <h3>Gross profit by manager</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={ceo_dashboard.gross_profit_by_manager}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="manager" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="estimated_gross_profit" fill="#00C49F" name="Est. gross profit" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {ceo_dashboard.shop_vs_delivery?.length > 0 && (
+            <div className="chart-card">
+              <h3>Shop vs delivery sales</h3>
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={ceo_dashboard.shop_vs_delivery}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="sale_type" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="revenue" fill="#0088FE" name="Revenue" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 };

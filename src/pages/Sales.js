@@ -19,6 +19,7 @@ import {
 } from '../utils/saleCompletePayHelpers';
 import { runSalePaymentSubmitFlow } from '../utils/salePaymentFlowHelpers';
 import useCbuExchangeRate from '../hooks/useCbuExchangeRate';
+import { usePermissions } from '../hooks/usePermissions';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
@@ -284,6 +285,18 @@ function PackageLinesSelector({ lines, onChange, packages: pkgList }) {
 const EMPTY_PKG_LINES = () => [{ key: `${Date.now()}`, package_type: '', quantity: 1 }];
 
 const Sales = () => {
+  const { hasPermission, hasAnyPermission } = usePermissions();
+  const canCompletePay = hasPermission('sales.complete_pay');
+  const canCompleteSale = hasPermission('sales.complete_from_order') || hasPermission('sales.complete');
+  const canCompleteWithoutPay = canCompleteSale && !canCompletePay;
+  const canDispatch = hasPermission('sales.update_status');
+  const canSellReserved = hasPermission('sales.sell_reserved');
+  const canCancelReserved = hasPermission('sales.cancel_reserved');
+  const canDeliverySettle = hasAnyPermission([
+    'sales.delivery_customer_paid',
+    'sales.delivery_shop_received',
+    'sales.delivery_pay_dispatch_fee',
+  ]);
   const [sales, setSales] = useState([]);
   const [filteredSales, setFilteredSales] = useState([]);
   const [products, setProducts] = useState([]);
@@ -923,7 +936,19 @@ const Sales = () => {
           console.warn('Sale not found when trying to complete:', saleId);
           return;
         }
-        setCompletePaySale(sale);
+        if (canCompletePay) {
+          setCompletePaySale(sale);
+        } else if (canCompleteSale) {
+          if (targetSales) {
+            for (const s of targetSales) {
+              await api.post(`/sales/${s.id}/update_status/`, { status: 'completed', notes: '' });
+            }
+          } else {
+            await api.post(`/sales/${saleId}/update_status/`, { status: 'completed', notes: '' });
+          }
+          fetchSales();
+          showNotification('Sale completed', 'success');
+        }
       } else if (targetSales) {
         for (const s of targetSales) {
           await api.post(`/sales/${s.id}/update_status/`, { status: newStatus, notes: '' });
@@ -1294,29 +1319,42 @@ const Sales = () => {
       <>
         {(sale.status === 'pending' || sale.status === 'confirmed') &&
           sale.sale_type === 'delivery' &&
-          !sale.dispatch_info && (
+          !sale.dispatch_info &&
+          canDispatch && (
             <button type="button" className="btn-status" onClick={() => actionFor('dispatched')}>
               Dispatch
             </button>
           )}
-        {(sale.status === 'pending' || sale.status === 'confirmed') && sale.sale_type === 'bought_from_shop' && (
+        {(sale.status === 'pending' || sale.status === 'confirmed') && sale.sale_type === 'bought_from_shop' && canCompletePay && (
           <button type="button" className="btn-status" onClick={() => actionFor('completed')}>
             Complete & Pay
           </button>
         )}
-        {sale.status === 'dispatched' && shopDeliverySettlementRequired(sale) && (
+        {(sale.status === 'pending' || sale.status === 'confirmed') &&
+          sale.sale_type === 'bought_from_shop' &&
+          canCompleteWithoutPay && (
+            <button
+              type="button"
+              className="btn-status"
+              onClick={() => actionFor('completed')}
+              style={{ backgroundColor: '#4caf50', color: 'white' }}
+            >
+              Complete Sale
+            </button>
+          )}
+        {sale.status === 'dispatched' && shopDeliverySettlementRequired(sale) && canDeliverySettle && (
           <ShopDeliverySettlementButtons
             sale={sale}
             classNameButton="btn-status"
             onOpenSettlement={openDeliverySettlementModal}
           />
         )}
-        {sale.status === 'dispatched' && !shopDeliverySettlementRequired(sale) && (
+        {sale.status === 'dispatched' && !shopDeliverySettlementRequired(sale) && canCompletePay && (
           <button type="button" className="btn-status" onClick={() => actionFor('completed')}>
             Complete & Pay
           </button>
         )}
-        {sale.status === 'pending' && sale.sale_type === 'from_order' && (
+        {sale.status === 'pending' && sale.sale_type === 'from_order' && canCompleteSale && (
           <button
             type="button"
             className="btn-status"
@@ -1328,6 +1366,7 @@ const Sales = () => {
         )}
         {sale.status === 'reserved' && sale.sale_type === 'reserved' && (
           <>
+            {canSellReserved && (
             <button
               type="button"
               className="btn-status"
@@ -1336,6 +1375,8 @@ const Sales = () => {
             >
               Sell
             </button>
+            )}
+            {canCancelReserved && (
             <button
               type="button"
               className="btn-edit"
@@ -1344,6 +1385,7 @@ const Sales = () => {
             >
               Cancel
             </button>
+            )}
             {sale.deposit_received && (
               <span style={{ fontSize: '0.85em', color: '#666', display: 'block', marginTop: '5px' }}>
                 Deposit: {formatDisplayAmount(sale.deposit_amount, sale.deposit_currency || 'USD')}

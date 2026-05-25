@@ -7,8 +7,9 @@ import { shopDeliverySettlementRequired } from '../utils/saleCompletePayHelpers'
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import { usePermissions } from '../hooks/usePermissions';
 
-const canCompleteAndPay = (sale) => !!(sale && sale.status === 'dispatched');
+const saleReadyToComplete = (sale) => !!(sale && sale.status === 'dispatched');
 
 /** Synthetic “partner” row for BTS (company) dispatches — not a DB dispatcher id. */
 const BTS_ROW_ID = 'bts';
@@ -97,6 +98,15 @@ const formatCost = (d) => {
 };
 
 const Dispatchers = () => {
+  const { hasPermission, hasAnyPermission } = usePermissions();
+  const canCompletePay = hasPermission('sales.complete_pay');
+  const canDeliverySettle = hasAnyPermission([
+    'sales.delivery_customer_paid',
+    'sales.delivery_shop_received',
+    'sales.delivery_pay_dispatch_fee',
+  ]);
+  const canShowCompleteActions = canCompletePay || canDeliverySettle;
+
   const [loading, setLoading] = useState(true);
   const [dispatchers, setDispatchers] = useState([]);
   const [activeDispatchers, setActiveDispatchers] = useState([]);
@@ -824,7 +834,7 @@ const Dispatchers = () => {
                                 />
                               </td>
                               <td onClick={(e) => e.stopPropagation()}>
-                                {canCompleteAndPay(sale) &&
+                                {saleReadyToComplete(sale) && canShowCompleteActions &&
                                   (shopDeliverySettlementRequired(sale) ? (
                                     <ShopDeliverySettlementButtons sale={sale} onOpenSettlement={openCompleteAndPay} />
                                   ) : (
@@ -1028,7 +1038,7 @@ const Dispatchers = () => {
                         />
                       </td>
                       <td>
-                        {canCompleteAndPay(sale) &&
+                        {saleReadyToComplete(sale) && canShowCompleteActions &&
                           (shopDeliverySettlementRequired(sale) ? (
                             <ShopDeliverySettlementButtons sale={sale} onOpenSettlement={openCompleteAndPay} />
                           ) : (

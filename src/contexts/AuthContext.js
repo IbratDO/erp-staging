@@ -1,5 +1,6 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import api from '../utils/api';
+import { hasPermission, getRoleCode } from '../utils/permissions';
 
 const AuthContext = createContext();
 
@@ -15,13 +16,33 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+  const refreshUser = useCallback(async () => {
+    try {
+      const userResponse = await api.get('/users/me/');
+      setUser(userResponse.data);
+      localStorage.setItem('user', JSON.stringify(userResponse.data));
+      return userResponse.data;
+    } catch {
+      return null;
     }
-    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      const storedUser = localStorage.getItem('user');
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        const fresh = await refreshUser();
+        if (!fresh && storedUser) {
+          setUser(JSON.parse(storedUser));
+        }
+      } else if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
+      setLoading(false);
+    };
+    init();
+  }, [refreshUser]);
 
   const login = async (username, password) => {
     try {
@@ -34,14 +55,12 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('access_token', access);
       localStorage.setItem('refresh_token', refresh);
 
-      // Fetch user data
       let userData;
       try {
         const userResponse = await api.get('/users/me/');
         userData = userResponse.data;
-      } catch (error) {
-        // Fallback: create user object from username
-        userData = { username, role: 'salesman' };
+      } catch {
+        userData = { username, role_code: 'sales_manager', permissions: [] };
       }
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
@@ -67,10 +86,12 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     loading,
+    refreshUser,
     isAuthenticated: !!user,
-    isAdmin: user?.role === 'admin',
+    roleCode: getRoleCode(user),
+    isAdmin: hasPermission(user, 'finance.create_manual'),
+    hasPermission: (code) => hasPermission(user, code),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
-

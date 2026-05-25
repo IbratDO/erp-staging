@@ -1,0 +1,251 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import api from '../utils/api';
+import { usePermissions } from '../hooks/usePermissions';
+import './TablePage.css';
+
+const emptyRule = () => ({
+  user: '',
+  product: '',
+  category: '',
+  sale_type: '',
+  bonus_type: 'fixed',
+  bonus_amount: '',
+  bonus_percent: '',
+  is_active: true,
+});
+
+const BonusRules = () => {
+  const { hasPermission } = usePermissions();
+  const canManage = hasPermission('bonus.manage');
+  const [rules, setRules] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [formData, setFormData] = useState(emptyRule());
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [rulesRes, txRes, usersRes, productsRes] = await Promise.all([
+        api.get('/bonus-rules/'),
+        api.get('/bonus-transactions/'),
+        canManage ? api.get('/users/') : Promise.resolve({ data: [] }),
+        canManage ? api.get('/products/') : Promise.resolve({ data: [] }),
+      ]);
+      setRules(rulesRes.data.results || rulesRes.data);
+      setTransactions(txRes.data.results || txRes.data);
+      setUsers(usersRes.data.results || usersRes.data);
+      setProducts(productsRes.data.results || productsRes.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [canManage]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  const openCreate = () => {
+    setEditingId(null);
+    setFormData(emptyRule());
+    setShowForm(true);
+  };
+
+  const openEdit = (rule) => {
+    setEditingId(rule.id);
+    setFormData({
+      user: rule.user,
+      product: rule.product || '',
+      category: rule.category || '',
+      sale_type: rule.sale_type || '',
+      bonus_type: rule.bonus_type,
+      bonus_amount: rule.bonus_amount,
+      bonus_percent: rule.bonus_percent,
+      is_active: rule.is_active,
+    });
+    setShowForm(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const payload = {
+      user: Number(formData.user),
+      product: formData.product ? Number(formData.product) : null,
+      category: formData.category || '',
+      sale_type: formData.sale_type || '',
+      bonus_type: formData.bonus_type,
+      bonus_amount: formData.bonus_amount || 0,
+      bonus_percent: formData.bonus_percent || 0,
+      is_active: formData.is_active,
+    };
+    try {
+      if (editingId) {
+        await api.put(`/bonus-rules/${editingId}/`, payload);
+      } else {
+        await api.post('/bonus-rules/', payload);
+      }
+      setShowForm(false);
+      loadAll();
+    } catch (err) {
+      alert(err.response?.data?.detail || err.response?.data?.error || 'Could not save rule');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this bonus rule?')) return;
+    try {
+      await api.delete(`/bonus-rules/${id}/`);
+      loadAll();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not delete rule');
+    }
+  };
+
+  if (loading) return <div className="page-container">Loading...</div>;
+
+  return (
+    <div className="page-container">
+      <div className="page-header">
+        <h1>Bonus Rules</h1>
+        {canManage && (
+          <button type="button" className="btn-primary" onClick={openCreate}>
+            + New rule
+          </button>
+        )}
+      </div>
+
+      {showForm && canManage && (
+        <div className="form-card" style={{ marginBottom: 16 }}>
+          <h2>{editingId ? 'Edit rule' : 'New bonus rule'}</h2>
+          <form onSubmit={handleSubmit}>
+            <div className="form-grid">
+              <label>
+                Sales manager *
+                <select required value={formData.user} onChange={(e) => setFormData({ ...formData, user: e.target.value })}>
+                  <option value="">Select user</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.username} ({u.role_name || u.role_code})</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Product (optional)
+                <select value={formData.product} onChange={(e) => setFormData({ ...formData, product: e.target.value })}>
+                  <option value="">Any product</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>{p.brand} {p.model}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Category (optional)
+                <input value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} placeholder="e.g. sneakers" />
+              </label>
+              <label>
+                Sale type (optional)
+                <select value={formData.sale_type} onChange={(e) => setFormData({ ...formData, sale_type: e.target.value })}>
+                  <option value="">Any</option>
+                  <option value="bought_from_shop">Shop</option>
+                  <option value="delivery">Delivery</option>
+                  <option value="from_order">From order</option>
+                  <option value="reserved">Reserved</option>
+                </select>
+              </label>
+              <label>
+                Bonus type
+                <select value={formData.bonus_type} onChange={(e) => setFormData({ ...formData, bonus_type: e.target.value })}>
+                  <option value="fixed">Fixed per unit</option>
+                  <option value="percent">Percent of revenue</option>
+                </select>
+              </label>
+              {formData.bonus_type === 'fixed' ? (
+                <label>
+                  Amount per unit
+                  <input type="number" step="0.01" required value={formData.bonus_amount} onChange={(e) => setFormData({ ...formData, bonus_amount: e.target.value })} />
+                </label>
+              ) : (
+                <label>
+                  Percent
+                  <input type="number" step="0.01" required value={formData.bonus_percent} onChange={(e) => setFormData({ ...formData, bonus_percent: e.target.value })} />
+                </label>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={formData.is_active} onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })} />
+                Active
+              </label>
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+              <button type="submit" className="btn-primary">Save</button>
+              <button type="button" className="btn-edit" onClick={() => setShowForm(false)}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="table-card" style={{ marginBottom: 24 }}>
+        <h3 style={{ padding: '12px 16px', margin: 0 }}>Rules</h3>
+        <div className="data-table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Manager</th><th>Target</th><th>Type</th><th>Value</th><th>Active</th>
+                {canManage && <th>Actions</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rules.length === 0 ? (
+                <tr><td colSpan={canManage ? 6 : 5} style={{ textAlign: 'center' }}>No bonus rules</td></tr>
+              ) : rules.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.username || r.user}</td>
+                  <td>{r.product_name || r.category || r.sale_type || 'All sales'}</td>
+                  <td>{r.bonus_type}</td>
+                  <td>{r.bonus_type === 'percent' ? `${r.bonus_percent}%` : r.bonus_amount}</td>
+                  <td>{r.is_active ? 'Yes' : 'No'}</td>
+                  {canManage && (
+                    <td>
+                      <button type="button" className="btn-edit" onClick={() => openEdit(r)}>Edit</button>
+                      {' '}
+                      <button type="button" className="btn-delete" onClick={() => handleDelete(r.id)}>Delete</button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="table-card">
+        <h3 style={{ padding: '12px 16px', margin: 0 }}>Bonus transactions</h3>
+        <div className="data-table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr><th>Date</th><th>Manager</th><th>Sale</th><th>Amount</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              {transactions.length === 0 ? (
+                <tr><td colSpan="5" style={{ textAlign: 'center' }}>No transactions yet</td></tr>
+              ) : transactions.map((t) => (
+                <tr key={t.id}>
+                  <td>{new Date(t.created_at).toLocaleString()}</td>
+                  <td>{t.username || t.user}</td>
+                  <td>#{t.sale}</td>
+                  <td>{parseFloat(t.amount).toLocaleString()}</td>
+                  <td>{t.notes || '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default BonusRules;
