@@ -27,7 +27,7 @@ export function usePermissions() {
       canAccessRoute: (path) => canAccessRoute(user, path),
       menuItems: filterMenuItems(user),
     }),
-    [user]
+    [user, refreshUser]
   );
 }
 

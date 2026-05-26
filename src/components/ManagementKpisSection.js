@@ -136,8 +136,8 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
   }, [load, show, active]);
 
   const managerSeries = data?.manager_margin_monthly;
-  const managerKeys = managerSeries?.months || [];
   const managerChartData = useMemo(() => {
+    const managerKeys = managerSeries?.months || [];
     if (!managerSeries?.series?.length || !managerKeys.length) return [];
     return managerKeys.map((ml, idx) => {
       const row = { monthLabel: ml };
@@ -146,7 +146,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
       });
       return row;
     });
-  }, [managerSeries, managerKeys]);
+  }, [managerSeries]);
 
   const managerNames = managerSeries?.series?.map((s) => s.manager) || [];
 
