@@ -77,7 +77,7 @@ const tooltipStyle = {
 };
 
 export default function ManagementKpisSection({ roleCode, availableYears, active }) {
-  const show = roleCode === 'admin' || roleCode === 'ceo';
+  const show = roleCode === 'admin' || roleCode === 'ceo' || roleCode === 'investor';
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [turnoverLoading, setTurnoverLoading] = useState(false);

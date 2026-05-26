@@ -654,14 +654,18 @@ const Dispatchers = () => {
                   <td>{btsLoadCount != null ? btsLoadCount : '—'}</td>
                   <td>—</td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={handleRestoreBtsPartner}
-                      style={{ fontSize: '0.9em' }}
-                    >
-                      Restore BTS
-                    </button>
+                    {canManagePartners ? (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={handleRestoreBtsPartner}
+                        style={{ fontSize: '0.9em' }}
+                      >
+                        Restore BTS
+                      </button>
+                    ) : (
+                      '—'
+                    )}
                   </td>
                 </tr>
               )}

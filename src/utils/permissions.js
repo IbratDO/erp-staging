@@ -45,6 +45,7 @@ export const ROLE_VISIBLE_MENU_PATHS = {
 export const ROLE_HIDDEN_MENU_PATHS = {
   ceo: ['/users', '/audit-logs', '/workers', '/customers', '/bonus-rules'],
   admin: ['/bonus-rules'],
+  investor: ['/users', '/workers', '/audit-logs', '/bonus-rules'],
 };
 
 /** Sidebar menu definitions with required permission codes */
@@ -117,6 +118,15 @@ export function isSeniorSalesManager(user) {
   return getRoleCode(user) === 'senior_sales_manager';
 }
 
+export function isInvestor(user) {
+  return getRoleCode(user) === 'investor';
+}
+
+/** Investor and future observer roles — hide mutation controls in the UI. */
+export function isReadOnly(user) {
+  return isInvestor(user);
+}
+
 /** Admin, CEO, or Senior Sales Manager — full operational visibility (all sales/orders). */
 export function isOperationalSenior(user) {
   const role = getRoleCode(user);
@@ -124,7 +134,7 @@ export function isOperationalSenior(user) {
 }
 
 function pathAllowedForRole(user, path) {
-  if (path === '/users' && isCEO(user)) return false;
+  if (path === '/users' && (isCEO(user) || isInvestor(user))) return false;
   const role = getRoleCode(user);
   const hidden = ROLE_HIDDEN_MENU_PATHS[role];
   if (hidden && hidden.includes(path)) return false;

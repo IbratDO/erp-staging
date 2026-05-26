@@ -22,6 +22,7 @@ import {
   toggleCrossFilter,
 } from '../utils/dashboardAnalytics';
 import ManagementKpisSection from '../components/ManagementKpisSection';
+import { usePermissions } from '../hooks/usePermissions';
 import './Dashboard.css';
 
 const MONTH_OPTIONS = [
@@ -128,6 +129,7 @@ const DASH_TAB_SALES = 'sales';
 const DASH_TAB_MANAGEMENT = 'management';
 
 const Dashboard = () => {
+  const { hasPermission } = usePermissions();
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -205,8 +207,8 @@ const Dashboard = () => {
 
   const kpis = analytics?.kpis;
   const filterHint = crossFilterSummary(crossFilter);
-  const isExecutive =
-    analytics?.role_code === 'admin' || analytics?.role_code === 'ceo';
+  const canToggleDashboardTabs = hasPermission('dashboard.ceo');
+  const isExecutiveView = canToggleDashboardTabs || Boolean(analytics?.company_wide);
 
   if (loading) {
     return <div className="page-container">Loading dashboard…</div>;
@@ -221,7 +223,7 @@ const Dashboard = () => {
         <div>
           <h1>Dashboard</h1>
           <p className="dash-subtitle">
-            {isExecutive
+            {isExecutiveView
               ? 'Executive overview'
               : analytics?.company_wide
                 ? 'Company-wide insights'
@@ -231,7 +233,7 @@ const Dashboard = () => {
         </div>
       </header>
 
-      {isExecutive ? (
+      {canToggleDashboardTabs ? (
         <div className="dash-tab-bar" role="tablist" aria-label="Dashboard views">
           <button
             type="button"
@@ -256,7 +258,7 @@ const Dashboard = () => {
         </div>
       ) : null}
 
-      {isExecutive && activeTab === DASH_TAB_MANAGEMENT ? (
+      {canToggleDashboardTabs && activeTab === DASH_TAB_MANAGEMENT ? (
         <ManagementKpisSection
           roleCode={analytics?.role_code}
           availableYears={analytics?.available_years}
@@ -264,7 +266,7 @@ const Dashboard = () => {
         />
       ) : null}
 
-      {(!isExecutive || activeTab === DASH_TAB_SALES) && (
+      {(!canToggleDashboardTabs || activeTab === DASH_TAB_SALES) && (
         <>
       <header className="dash-header">
         <div>

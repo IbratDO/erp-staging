@@ -310,6 +310,7 @@ const EMPTY_PKG_LINES = () => [{ key: `${Date.now()}`, package_type: '', quantit
 
 const Sales = () => {
   const { hasPermission, hasAnyPermission } = usePermissions();
+  const canBatchCreate = hasPermission('sales.batch_create');
   const canCompletePay = hasPermission('sales.complete_pay');
   const canCompleteFromOrder = hasPermission('sales.complete_from_order');
   const canCompleteWithoutPay = hasPermission('sales.complete') && !canCompletePay;
@@ -1559,40 +1560,42 @@ const Sales = () => {
 
       <div className="page-header">
         <h1>Sales</h1>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => {
-            if (showBatchForm) {
-              setShowBatchForm(false);
-              setBatchFormCategory('');
-              setBatchLines([]);
-            } else {
-              setShowBatchForm(true);
-              setBatchFormCategory('');
-              setBatchCustomer('');
-              setBatchDefaults({
-                sale_type: 'bought_from_shop',
-                sale_currency: 'USD',
-              });
-              setBatchLines([
-                {
-                  key: `${Date.now()}-0`,
-                  layer: '',
-                  product: '',
-                  inventory_batch_id: '',
-                  quantity: '1',
-                  list_price: '',
-                  selling_price: '',
-                  discount_price: '',
-                  packageLines: EMPTY_PKG_LINES(),
-                },
-              ]);
-            }
-          }}
-        >
-          {showBatchForm ? 'Cancel' : '+ New sale'}
-        </button>
+        {canBatchCreate && (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              if (showBatchForm) {
+                setShowBatchForm(false);
+                setBatchFormCategory('');
+                setBatchLines([]);
+              } else {
+                setShowBatchForm(true);
+                setBatchFormCategory('');
+                setBatchCustomer('');
+                setBatchDefaults({
+                  sale_type: 'bought_from_shop',
+                  sale_currency: 'USD',
+                });
+                setBatchLines([
+                  {
+                    key: `${Date.now()}-0`,
+                    layer: '',
+                    product: '',
+                    inventory_batch_id: '',
+                    quantity: '1',
+                    list_price: '',
+                    selling_price: '',
+                    discount_price: '',
+                    packageLines: EMPTY_PKG_LINES(),
+                  },
+                ]);
+              }
+            }}
+          >
+            {showBatchForm ? 'Cancel' : '+ New sale'}
+          </button>
+        )}
       </div>
 
       {showDispatchForm && (
@@ -2007,7 +2010,7 @@ const Sales = () => {
       )}
 
 
-      {showBatchForm && (
+      {showBatchForm && canBatchCreate && (
         <div className="form-card" style={{ marginBottom: 20 }}>
           <h2>Multi-item sale (one customer)</h2>
           <p style={{ color: '#555', fontSize: '0.9em', marginTop: 0, marginBottom: 16 }}>

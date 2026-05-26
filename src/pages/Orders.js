@@ -286,6 +286,7 @@ const ORDER_SORT_ACCESSORS = {
 };
 const Orders = () => {
   const { user, refreshUser, hasPermission, hasAnyPermission } = usePermissions();
+  const canCreateOrder = hasPermission('orders.create');
   const canPayOrder = hasPermission('orders.pay_order');
   const canPayCargo = hasPermission('orders.pay_cargo');
   const canMoveInventory = hasPermission('orders.move_to_inventory');
@@ -1245,9 +1246,11 @@ const Orders = () => {
     <div className="page-container">
       <div className="page-header">
         <h1>Orders</h1>
-        <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : '+ New Order'}
-        </button>
+        {canCreateOrder && (
+          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Cancel' : '+ New Order'}
+          </button>
+        )}
       </div>
 
       {/* Notification */}
@@ -1495,7 +1498,7 @@ const Orders = () => {
         </div>
       )}
 
-      {showForm && (
+      {showForm && canCreateOrder && (
         <div className="form-card">
           <h2>New Order</h2>
           <form onSubmit={handleSubmit}>
