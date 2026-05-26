@@ -32,10 +32,34 @@ import {
   saleDiscountTotalAmount,
 } from '../utils/saleGroupDisplay';
 
+const PRODUCT_CATEGORY_TYPES = [
+  { value: 'sports', label: 'Sports' },
+  { value: 'casual', label: 'Casual' },
+];
+
+const categoryTypeLabel = (value) =>
+  PRODUCT_CATEGORY_TYPES.find((t) => t.value === value)?.label ?? '';
+
+function formatBatchCreateError(data) {
+  if (!data) return 'Error creating batch sales';
+  if (data.item_errors?.length) {
+    const row = data.item_errors[0];
+    if (row.error) return row.error;
+    if (row.errors && typeof row.errors === 'object') {
+      const key = Object.keys(row.errors)[0];
+      const val = row.errors[key];
+      const msg = Array.isArray(val) ? val[0] : val;
+      return `${key.replace(/_/g, ' ')}: ${msg}`;
+    }
+  }
+  return data.error || data.detail || 'Error creating batch sales';
+}
+
 /** Column accessors — match main sales grid header `columnId`s. Actions column excluded. */
 const SALE_SORT_ACCESSORS = {
   id: (s) => Number(s.id) || 0,
   status: (s) => String(s.status ?? '').toLowerCase(),
+  category_type: (s) => String(s.product_detail?.category_type ?? '').toLowerCase(),
   category: (s) => String(s.product_detail?.category ?? '').toLowerCase(),
   product: (s) =>
     s.product_detail
@@ -287,8 +311,9 @@ const EMPTY_PKG_LINES = () => [{ key: `${Date.now()}`, package_type: '', quantit
 const Sales = () => {
   const { hasPermission, hasAnyPermission } = usePermissions();
   const canCompletePay = hasPermission('sales.complete_pay');
-  const canCompleteSale = hasPermission('sales.complete_from_order') || hasPermission('sales.complete');
-  const canCompleteWithoutPay = canCompleteSale && !canCompletePay;
+  const canCompleteFromOrder = hasPermission('sales.complete_from_order');
+  const canCompleteWithoutPay = hasPermission('sales.complete') && !canCompletePay;
+  const canCompleteSale = canCompleteFromOrder || canCompleteWithoutPay || canCompletePay;
   const canDispatch = hasPermission('sales.update_status');
   const canSellReserved = hasPermission('sales.sell_reserved');
   const canCancelReserved = hasPermission('sales.cancel_reserved');
@@ -313,6 +338,7 @@ const Sales = () => {
   });
   const [batchLines, setBatchLines] = useState([]);
   const [filters, setFilters] = useState({
+    category_type: '',
     category: '',
     brand: '',
     model: '',
@@ -374,11 +400,16 @@ const Sales = () => {
   }, []);
   
   const fetchPackages = async () => {
+    if (!hasPermission('packages.view')) {
+      setPackages([]);
+      return;
+    }
     try {
       const response = await api.get('/packages/');
       setPackages(response.data.results || response.data);
     } catch (error) {
       console.error('Error fetching packages:', error);
+      setPackages([]);
     }
   };
   
@@ -460,6 +491,11 @@ const Sales = () => {
   const applyFilters = (salesList) => {
     let filtered = salesList;
     
+    if (filters.category_type) {
+      filtered = filtered.filter(
+        (sale) => sale.product_detail?.category_type === filters.category_type,
+      );
+    }
     if (filters.category) {
       filtered = filtered.filter(sale =>
         sale.product_detail?.category === filters.category
@@ -740,6 +776,17 @@ const Sales = () => {
       showNotification('Please select a customer before creating sales.', 'error');
       return;
     }
+    let freshInventory = inventory;
+    try {
+      const invRes = await api.get('/inventory/layers/');
+      freshInventory = invRes.data.results || invRes.data;
+      setInventory(freshInventory);
+    } catch (err) {
+      console.error('Error refreshing inventory layers:', err);
+    }
+    if (hasPermission('packages.view')) {
+      await fetchPackages();
+    }
     const withProduct = batchLines.filter((l) => l.layer && l.product);
     if (withProduct.length === 0) {
       showNotification('Add at least one line with a product selected.', 'error');
@@ -756,10 +803,16 @@ const Sales = () => {
     const items = withProduct.map((l) => {
       const itemQty = parseInt(String(l.quantity), 10) || 1;
       const activeLines = (l.packageLines || []).filter((pl) => pl.package_type && pl.quantity > 0);
+      const sellingForApi = parsePriceNum(l.selling_price);
       const row = {
         product: parseInt(l.product, 10),
         quantity: itemQty,
-        selling_price: l.list_price || l.selling_price,
+        selling_price:
+          sellingForApi != null
+            ? batchDefaults.sale_currency === 'UZS'
+              ? String(Math.round(sellingForApi))
+              : sellingForApi.toFixed(2)
+            : String(l.selling_price || '').trim(),
         package_type: null,
         package_quantity: null,
       };
@@ -781,7 +834,7 @@ const Sales = () => {
     for (const l of withProduct) {
       const batchId = parseInt(l.inventory_batch_id, 10);
       const need = parseInt(l.quantity, 10) || 0;
-      const layer = findInventoryLayer(inventory, batchId);
+      const layer = findInventoryLayer(freshInventory, batchId);
       const available = layer ? Number(layer.quantity) || 0 : 0;
       if (!layer || available < need) {
         const pid = parseInt(l.product, 10);
@@ -799,7 +852,7 @@ const Sales = () => {
       needByProduct.set(pid, (needByProduct.get(pid) || 0) + q);
     }
     for (const [pid, need] of needByProduct) {
-      const available = inventory
+      const available = freshInventory
         .filter((x) => Number(x.product) === pid)
         .reduce((s, it) => s + (Number(it.quantity) || 0), 0);
       if (available < need) {
@@ -845,17 +898,9 @@ const Sales = () => {
     } catch (error) {
       console.error('Error batch-creating sales:', error);
       const d = error.response?.data;
+      showNotification(formatBatchCreateError(d), 'error');
       if (d?.item_errors) {
-        showNotification(
-          d.error || 'One or more lines failed validation.',
-          'error'
-        );
         console.warn('batch_create item_errors', d.item_errors);
-      } else {
-        showNotification(
-          d?.error || d?.detail || 'Error creating batch sales',
-          'error'
-        );
       }
     }
   };
@@ -1354,7 +1399,7 @@ const Sales = () => {
             Complete & Pay
           </button>
         )}
-        {sale.status === 'pending' && sale.sale_type === 'from_order' && canCompleteSale && (
+        {sale.status === 'pending' && sale.sale_type === 'from_order' && canCompleteFromOrder && (
           <button
             type="button"
             className="btn-status"
@@ -1420,6 +1465,11 @@ const Sales = () => {
       <>
         <td className={detailClass}>
           <span className={`status-badge ${sale.status}`}>{sale.status}</span>
+        </td>
+        <td className={detailClass}>
+          {categoryTypeLabel(sale.product_detail?.category_type) || (
+            <span style={{ color: '#999' }}>—</span>
+          )}
         </td>
         <td className={detailClass}>{sale.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
         <td className={detailClass}>{sale.product_detail?.brand || '-'}</td>
@@ -2223,13 +2273,32 @@ const Sales = () => {
           <h3 className="filter-card__title">Filters</h3>
         <div className="filter-toolbar">
           <div className="filter-field">
+            <label>Category type</label>
+            <select
+              value={filters.category_type}
+              onChange={(e) => setFilters({ ...filters, category_type: e.target.value })}
+            >
+              <option value="">All types</option>
+              {PRODUCT_CATEGORY_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-field">
             <label>Category</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             >
               <option value="">All Categories</option>
-              {[...new Set(sales.map(s => s.product_detail?.category).filter(Boolean))].sort().map(cat => (
+              {[...new Set(
+                sales
+                  .filter((s) => !filters.category_type || s.product_detail?.category_type === filters.category_type)
+                  .map((s) => s.product_detail?.category)
+                  .filter(Boolean),
+              )].sort().map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
@@ -2376,6 +2445,7 @@ const Sales = () => {
               className="btn-edit"
               onClick={() =>
                 setFilters({
+                  category_type: '',
                   category: '',
                   brand: '',
                   model: '',
@@ -2405,6 +2475,7 @@ const Sales = () => {
               <SortableTh columnId="sale_date" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Date</SortableTh>
               <th>Actions</th>
               <SortableTh columnId="status" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Status</SortableTh>
+              <SortableTh columnId="category_type" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Category type</SortableTh>
               <SortableTh columnId="category" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Category</SortableTh>
               <SortableTh columnId="brand" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Brand</SortableTh>
               <SortableTh columnId="model" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>Model</SortableTh>
@@ -2427,7 +2498,7 @@ const Sales = () => {
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan="21" style={{ textAlign: 'center' }}>
+                <td colSpan="22" style={{ textAlign: 'center' }}>
                   No sales found
                 </td>
               </tr>

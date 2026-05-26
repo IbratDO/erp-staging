@@ -46,6 +46,7 @@ function dispatchCostSortApprox(row) {
 
 const PARTNER_DISPATCHER_SORT_ACCESSORS = {
   name: (d) => String(d.name ?? '').toLowerCase(),
+  login: (d) => String(d.login_username ?? '').toLowerCase(),
   telephone: (d) => String(d.telephone ?? '').toLowerCase(),
   loads: (d) => Number(d.dispatch_count) || 0,
   active: (d) => (d.is_active !== false ? 1 : 0),
@@ -97,15 +98,22 @@ const formatCost = (d) => {
   return parts.length ? parts.join(' · ') : '—';
 };
 
+const DISPATCH_OPEN_STATUSES = new Set(['preparing', 'dispatched', 'in_transit']);
+
 const Dispatchers = () => {
-  const { hasPermission, hasAnyPermission } = usePermissions();
+  const { hasPermission, hasAnyPermission, roleCode } = usePermissions();
+  const isDispatcherRole = roleCode === 'dispatcher';
+  const canManagePartners = hasPermission('dispatchers.manage');
   const canCompletePay = hasPermission('sales.complete_pay');
+  const canDeliveryReceive = hasPermission('sales.delivery_customer_paid');
   const canDeliverySettle = hasAnyPermission([
     'sales.delivery_customer_paid',
     'sales.delivery_shop_received',
     'sales.delivery_pay_dispatch_fee',
   ]);
-  const canShowCompleteActions = canCompletePay || canDeliverySettle;
+  const canShowCompleteActions = isDispatcherRole
+    ? canDeliveryReceive
+    : canCompletePay || canDeliverySettle;
 
   const [loading, setLoading] = useState(true);
   const [dispatchers, setDispatchers] = useState([]);
@@ -149,6 +157,7 @@ const Dispatchers = () => {
   }, [dispatches]);
 
   const fetchDispatchers = useCallback(async () => {
+    if (isDispatcherRole) return;
     try {
       const res = await api.get('/dispatchers/');
       const list = res.data.results || res.data;
@@ -156,9 +165,10 @@ const Dispatchers = () => {
     } catch (e) {
       console.error('Error fetching dispatchers:', e);
     }
-  }, []);
+  }, [isDispatcherRole]);
 
   const fetchActiveDispatchers = useCallback(async () => {
+    if (isDispatcherRole) return;
     try {
       const res = await api.get('/dispatchers/', { params: { is_active: true } });
       const list = res.data.results || res.data;
@@ -166,7 +176,7 @@ const Dispatchers = () => {
     } catch (e) {
       console.error('Error fetching active dispatchers:', e);
     }
-  }, []);
+  }, [isDispatcherRole]);
 
   const fetchDispatches = useCallback(async () => {
     try {
@@ -315,11 +325,8 @@ const Dispatchers = () => {
         notes: String(formData.notes || '').trim(),
         is_active: formData.is_active,
       };
-      if (formData.id) {
-        await api.put(`/dispatchers/${formData.id}/`, payload);
-      } else {
-        await api.post('/dispatchers/', payload);
-      }
+      if (!formData.id) return;
+      await api.put(`/dispatchers/${formData.id}/`, payload);
       setShowForm(false);
       setFormData({ name: '', telephone: '+998', notes: '', is_active: true });
       fetchDispatchers();
@@ -426,10 +433,21 @@ const Dispatchers = () => {
   );
 
   const allDeliveriesSort = useClientTableSort(ALL_DELIVERIES_SORT_ACCESSORS);
-  const sortedAllDeliveriesRows = useMemo(
-    () => allDeliveriesSort.sortRows(dispatches || []),
-    [dispatches, allDeliveriesSort],
-  );
+  const sortedAllDeliveriesRows = useMemo(() => {
+    const base = [...(dispatches || [])];
+    if (!allDeliveriesSort.sortCol) {
+      base.sort((a, b) => {
+        const oa = DISPATCH_OPEN_STATUSES.has(a.status) ? 0 : 1;
+        const ob = DISPATCH_OPEN_STATUSES.has(b.status) ? 0 : 1;
+        if (oa !== ob) return oa - ob;
+        const ua = new Date(a.updated_at || a.dispatch_date).getTime() || 0;
+        const ub = new Date(b.updated_at || b.dispatch_date).getTime() || 0;
+        return ub - ua;
+      });
+      return base;
+    }
+    return allDeliveriesSort.sortRows(base);
+  }, [dispatches, allDeliveriesSort]);
 
   const statusTimelineSort = useClientTableSort(STATUS_TIMELINE_SORT_ACCESSORS);
   const sortedStatusChangeLogs = useMemo(
@@ -488,24 +506,18 @@ const Dispatchers = () => {
       )}
 
       <div className="page-header">
-        <h1>Dispatchers</h1>
-        <button
-          className="btn-primary"
-          type="button"
-          onClick={() => {
-            setShowForm(!showForm);
-            if (!showForm) {
-              setFormData({ name: '', telephone: '+998', notes: '', is_active: true });
-            }
-          }}
-        >
-          {showForm ? 'Cancel' : '+ New dispatcher'}
-        </button>
+        <h1>{isDispatcherRole ? 'My deliveries' : 'Dispatchers'}</h1>
       </div>
 
-      {showForm && (
+      {!isDispatcherRole && (
+        <p style={{ color: '#666', marginBottom: 16, fontSize: '0.95em' }}>
+          Delivery partners are managed in the Users tab (Dispatcher role). BTS row can still be edited here.
+        </p>
+      )}
+
+      {showForm && canManagePartners && formData.id && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>{formData.id ? 'Edit dispatcher' : 'Add dispatcher'}</h2>
+          <h2>Edit dispatcher</h2>
           <form onSubmit={handleDispatcherSubmit}>
             <div className="form-grid">
               <div className="form-group">
@@ -558,12 +570,15 @@ const Dispatchers = () => {
       )}
 
       <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start' }}>
+        {!isDispatcherRole && (
+        <>
         <div className="table-card" style={{ flex: selectedDispatcher ? '0 0 42%' : '1', minWidth: 0 }}>
           <h2>Delivery partners</h2>
           <table className="data-table">
             <thead>
               <tr>
                 <SortableTh columnId="name" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Name</SortableTh>
+                <SortableTh columnId="login" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Login</SortableTh>
                 <SortableTh columnId="telephone" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Phone</SortableTh>
                 <SortableTh columnId="loads" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Loads</SortableTh>
                 <SortableTh columnId="active" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Active</SortableTh>
@@ -599,6 +614,7 @@ const Dispatchers = () => {
                     <strong>{btsFromApi.name || 'BTS'}</strong>{' '}
                     <span style={{ fontSize: '0.85em', color: '#666', fontWeight: 400 }}>(company delivery)</span>
                   </td>
+                  <td>—</td>
                   <td>{btsFromApi.telephone || '—'}</td>
                   <td>{btsLoadCount != null ? btsLoadCount : '—'}</td>
                   <td>{btsFromApi.is_active ? 'Yes' : 'No'}</td>
@@ -634,6 +650,7 @@ const Dispatchers = () => {
                     <span style={{ fontSize: '0.85em', color: '#666', fontWeight: 400 }}>(company — row removed)</span>
                   </td>
                   <td>—</td>
+                  <td>—</td>
                   <td>{btsLoadCount != null ? btsLoadCount : '—'}</td>
                   <td>—</td>
                   <td onClick={(e) => e.stopPropagation()}>
@@ -650,9 +667,9 @@ const Dispatchers = () => {
               )}
               {partnersWithoutBts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center' }}>
+                  <td colSpan={6} style={{ textAlign: 'center' }}>
                     {btsFromApi
-                      ? 'No named (Dostavshik) partners yet — add one with + New dispatcher.'
+                      ? 'No named (Dostavshik) partners yet — add a Dispatcher login in Users.'
                       : 'No named (Dostavshik) partners yet — or restore the BTS row with the button above.'}
                   </td>
                 </tr>
@@ -680,16 +697,23 @@ const Dispatchers = () => {
                     <td>
                       <strong>{d.name}</strong>
                     </td>
+                    <td>{d.login_username || '—'}</td>
                     <td>{d.telephone || '—'}</td>
                     <td>{d.dispatch_count != null ? d.dispatch_count : '—'}</td>
                     <td>{d.is_active ? 'Yes' : 'No'}</td>
                     <td onClick={(e) => e.stopPropagation()}>
-                      <button type="button" className="btn-edit" onClick={() => handleEditDispatcher(d)}>
-                        Edit
-                      </button>{' '}
-                      <button type="button" className="btn-delete" onClick={() => handleDeleteDispatcher(d.id)}>
-                        Delete
-                      </button>
+                      {d.user ? (
+                        <span style={{ color: '#888', fontSize: '0.9em' }}>Users tab</span>
+                      ) : (
+                        <>
+                          <button type="button" className="btn-edit" onClick={() => handleEditDispatcher(d)}>
+                            Edit
+                          </button>{' '}
+                          <button type="button" className="btn-delete" onClick={() => handleDeleteDispatcher(d.id)}>
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -779,10 +803,10 @@ const Dispatchers = () => {
                         <SortableTh columnId="dispatch_type_key" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Type</SortableTh>
                         <SortableTh columnId="delivery_cost_key" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Delivery cost</SortableTh>
                         <SortableTh columnId="is_paid" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Paid</SortableTh>
-                        <SortableTh columnId="status" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Dispatch status</SortableTh>
                         <SortableTh columnId="delivered_at" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Delivered</SortableTh>
                         <SortableTh columnId="tracking_number" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Tracking</SortableTh>
                         <SortableTh columnId="logistics_notes" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Notes</SortableTh>
+                        <SortableTh columnId="status" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Dispatch status</SortableTh>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -810,6 +834,17 @@ const Dispatchers = () => {
                               <td>{row.dispatch_type === 'bts' ? 'BTS' : 'Dostavshik'}</td>
                               <td style={{ whiteSpace: 'nowrap', fontSize: '0.9rem' }}>{formatCost(row)}</td>
                               <td>{row.is_paid ? 'Yes' : 'No'}</td>
+                              <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
+                                {row.delivered_at ? new Date(row.delivered_at).toLocaleString() : '—'}
+                              </td>
+                              <td>{row.tracking_number || '—'}</td>
+                              <td>
+                                <LogisticsNotesCell
+                                  dispatchId={row.id}
+                                  initial={row.logistics_notes || ''}
+                                  onSave={(notes) => patchDispatch(row.id, { logistics_notes: notes })}
+                                />
+                              </td>
                               <td>
                                 <select
                                   value={row.status}
@@ -821,17 +856,6 @@ const Dispatchers = () => {
                                     </option>
                                   ))}
                                 </select>
-                              </td>
-                              <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
-                                {row.delivered_at ? new Date(row.delivered_at).toLocaleString() : '—'}
-                              </td>
-                              <td>{row.tracking_number || '—'}</td>
-                              <td>
-                                <LogisticsNotesCell
-                                  dispatchId={row.id}
-                                  initial={row.logistics_notes || ''}
-                                  onSave={(notes) => patchDispatch(row.id, { logistics_notes: notes })}
-                                />
                               </td>
                               <td onClick={(e) => e.stopPropagation()}>
                                 {saleReadyToComplete(sale) && canShowCompleteActions &&
@@ -919,10 +943,12 @@ const Dispatchers = () => {
             )}
           </div>
         )}
+        </>
+        )}
       </div>
 
-      <div className="table-card" style={{ marginTop: '24px' }}>
-        <h2>All deliveries (workspace)</h2>
+      <div className="table-card" style={{ marginTop: isDispatcherRole ? 0 : '24px' }}>
+        <h2>{isDispatcherRole ? 'Assigned deliveries' : 'All deliveries (workspace)'}</h2>
         <div className="filter-toolbar filter-toolbar--tight filter-toolbar--bleed">
           <div className="filter-field">
             <label>Status</label>
@@ -948,6 +974,7 @@ const Dispatchers = () => {
               <option value="dostavshik">Dostavshik</option>
             </select>
           </div>
+          {!isDispatcherRole && (
           <div className="filter-field">
             <label>Dispatcher</label>
             <select
@@ -962,6 +989,7 @@ const Dispatchers = () => {
               ))}
             </select>
           </div>
+          )}
         </div>
 
         <div style={{ overflowX: 'auto' }}>
@@ -975,9 +1003,9 @@ const Dispatchers = () => {
                 <SortableTh columnId="dispatch_type_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Type</SortableTh>
                 <SortableTh columnId="delivery_cost_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Cost</SortableTh>
                 <SortableTh columnId="dispatcher_name" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Dispatcher</SortableTh>
-                <SortableTh columnId="status" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Status</SortableTh>
                 <SortableTh columnId="delivered_at" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Delivered</SortableTh>
                 <SortableTh columnId="logistics_notes" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Logistics notes</SortableTh>
+                <SortableTh columnId="status" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Status</SortableTh>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -1000,6 +1028,7 @@ const Dispatchers = () => {
                       <td>{row.dispatch_type === 'bts' ? 'BTS' : 'Dostavshik'}</td>
                       <td style={{ whiteSpace: 'nowrap', fontSize: '0.9rem' }}>{formatCost(row)}</td>
                       <td>
+                        {canManagePartners ? (
                         <select
                           value={row.dispatcher || ''}
                           onChange={(e) => {
@@ -1014,6 +1043,19 @@ const Dispatchers = () => {
                             </option>
                           ))}
                         </select>
+                        ) : (
+                          row.dispatcher_detail?.name || '—'
+                        )}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.9em' }}>
+                        {row.delivered_at ? new Date(row.delivered_at).toLocaleString() : '—'}
+                      </td>
+                      <td>
+                        <LogisticsNotesCell
+                          dispatchId={row.id}
+                          initial={row.logistics_notes || ''}
+                          onSave={(notes) => patchDispatch(row.id, { logistics_notes: notes })}
+                        />
                       </td>
                       <td>
                         <select
@@ -1027,21 +1069,12 @@ const Dispatchers = () => {
                           ))}
                         </select>
                       </td>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.9em' }}>
-                        {row.delivered_at ? new Date(row.delivered_at).toLocaleString() : '—'}
-                      </td>
-                      <td>
-                        <LogisticsNotesCell
-                          dispatchId={row.id}
-                          initial={row.logistics_notes || ''}
-                          onSave={(notes) => patchDispatch(row.id, { logistics_notes: notes })}
-                        />
-                      </td>
                       <td>
                         {saleReadyToComplete(sale) && canShowCompleteActions &&
                           (shopDeliverySettlementRequired(sale) ? (
                             <ShopDeliverySettlementButtons sale={sale} onOpenSettlement={openCompleteAndPay} />
                           ) : (
+                            !isDispatcherRole && (
                             <button
                               type="button"
                               className="btn-status"
@@ -1049,6 +1082,7 @@ const Dispatchers = () => {
                             >
                               Complete & Pay
                             </button>
+                            )
                           ))}
                       </td>
                     </tr>

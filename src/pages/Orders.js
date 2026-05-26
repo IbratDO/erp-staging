@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount, cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
+import { isOperationalSenior } from '../utils/permissions';
 import { uniqueSupplierCountriesFromOrdersAndProducts } from '../utils/supplierCountries';
 import { uniqueSupplierCargosFromOrders } from '../utils/supplierCargo';
 import { prefillPayOrderSimpleTotals } from '../utils/orderPayPrefill';
@@ -284,15 +285,24 @@ const ORDER_SORT_ACCESSORS = {
   order_date: (o) => new Date(o.order_date || o.created_at).getTime() || 0,
 };
 const Orders = () => {
-  const { hasPermission } = usePermissions();
+  const { user, refreshUser, hasPermission, hasAnyPermission } = usePermissions();
   const canPayOrder = hasPermission('orders.pay_order');
   const canPayCargo = hasPermission('orders.pay_cargo');
   const canMoveInventory = hasPermission('orders.move_to_inventory');
   const canSellProduct = hasPermission('orders.sell_product');
   const canUpdateStatus = hasPermission('orders.update_status');
+  const canPostOrderStatus = hasAnyPermission(['orders.update_status', 'orders.move_to_inventory']);
+  const canManageStockOrders = canUpdateStatus || isOperationalSenior(user);
+
+  useEffect(() => {
+    if (user && (!Array.isArray(user.permissions) || user.permissions.length === 0)) {
+      refreshUser();
+    }
+  }, [user, refreshUser]);
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
   const [balances, setBalances] = useState([]);
+  const [balancesLoaded, setBalancesLoaded] = useState(false);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -310,7 +320,7 @@ const Orders = () => {
     month: '',
   });
   const [formData, setFormData] = useState({
-    order_type: 'stock',
+    order_type: canManageStockOrders ? 'stock' : 'on_demand',
     product: '',
     supplier_country: '',
     supplier_cargo: '',
@@ -410,11 +420,16 @@ const Orders = () => {
     { value: 'tashkent_city', label: 'Tashkent city' },
   ];
 
+  const canViewCash = hasPermission('cash.view');
+  const needsLedgerForPayments = canPayOrder || canPayCargo || canPostOrderStatus;
+
   useEffect(() => {
     fetchOrders();
     fetchProducts();
     fetchCustomers();
-    fetchBalances();
+    if (canViewCash || needsLedgerForPayments) {
+      fetchBalances();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -432,12 +447,21 @@ const Orders = () => {
     try {
       const response = await api.get('/cash-balance/');
       setBalances(response.data.results || response.data);
+      setBalancesLoaded(true);
     } catch (error) {
       console.error('Error fetching balances:', error);
+      setBalancesLoaded(false);
     }
   };
 
   const getAvailableBalance = (currency) => cashBalanceTotalByCurrency(balances, currency);
+
+  /** Skip client-side ledger check when balances could not be loaded (e.g. no cash.view). */
+  const ledgerHasFunds = (currency, required) => {
+    if (!required || required <= 0) return true;
+    if (!balancesLoaded) return true;
+    return getAvailableBalance(currency) >= required;
+  };
 
   const fetchCustomers = async () => {
     try {
@@ -503,6 +527,10 @@ const Orders = () => {
 
   const applyFilters = (ordersList) => {
     let filtered = ordersList;
+
+    if (!canManageStockOrders) {
+      filtered = filtered.filter((order) => order.order_type !== 'stock');
+    }
     
     if (filters.category_type) {
       filtered = filtered.filter(
@@ -745,10 +773,9 @@ const Orders = () => {
           return;
         }
         const required = usdSup * qty;
-        const available = getAvailableBalance('USD');
-        if (available < required) {
+        if (!ledgerHasFunds('USD', required)) {
           showNotification(
-            formatInsufficientLedgerMessage('USD', available, required, {
+            formatInsufficientLedgerMessage('USD', getAvailableBalance('USD'), required, {
               context: 'order_paid_on_create',
             }),
             'error',
@@ -857,6 +884,10 @@ const Orders = () => {
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
+      if (!canPostOrderStatus) {
+        showNotification('You do not have permission to update order status.', 'error');
+        return;
+      }
       await api.post(`/orders/${orderId}/update_status/`, {
         status: newStatus,
         notes: '',
@@ -914,19 +945,14 @@ const Orders = () => {
           showNotification('Please enter at least one payment amount.', 'error');
           return;
         }
-        if (uzs > 0) {
-          const available = getAvailableBalance('UZS');
-          if (available < uzs) {
-            showNotification(formatInsufficientLedgerMessage('UZS', available, uzs), 'error');
-            return;
-          }
+        await fetchBalances();
+        if (uzs > 0 && !ledgerHasFunds('UZS', uzs)) {
+          showNotification(formatInsufficientLedgerMessage('UZS', getAvailableBalance('UZS'), uzs), 'error');
+          return;
         }
-        if (usd > 0) {
-          const available = getAvailableBalance('USD');
-          if (available < usd) {
-            showNotification(formatInsufficientLedgerMessage('USD', available, usd), 'error');
-            return;
-          }
+        if (usd > 0 && !ledgerHasFunds('USD', usd)) {
+          showNotification(formatInsufficientLedgerMessage('USD', getAvailableBalance('USD'), usd), 'error');
+          return;
         }
         if (orderForPay) {
           const confirmed = isClientPay
@@ -976,19 +1002,14 @@ const Orders = () => {
           showNotification('Please enter at least one payment amount.', 'error');
           return;
         }
-        if (uzs > 0) {
-          const available = getAvailableBalance('UZS');
-          if (available < uzs) {
-            showNotification(formatInsufficientLedgerMessage('UZS', available, uzs), 'error');
-            return;
-          }
+        await fetchBalances();
+        if (uzs > 0 && !ledgerHasFunds('UZS', uzs)) {
+          showNotification(formatInsufficientLedgerMessage('UZS', getAvailableBalance('UZS'), uzs), 'error');
+          return;
         }
-        if (usd > 0) {
-          const available = getAvailableBalance('USD');
-          if (available < usd) {
-            showNotification(formatInsufficientLedgerMessage('USD', available, usd), 'error');
-            return;
-          }
+        if (usd > 0 && !ledgerHasFunds('USD', usd)) {
+          showNotification(formatInsufficientLedgerMessage('USD', getAvailableBalance('USD'), usd), 'error');
+          return;
         }
       }
 
@@ -1026,25 +1047,20 @@ const Orders = () => {
       const uzs = parseFloat(cargoFormData.uzs) || 0;
       const usd = parseFloat(cargoFormData.usd) || 0;
 
-      if (uzs > 0) {
-        const available = getAvailableBalance('UZS');
-        if (available < uzs) {
-          showNotification(
-            formatInsufficientLedgerMessage('UZS', available, uzs, { topUpSuffix: true }),
-            'error',
-          );
-          return;
-        }
+      await fetchBalances();
+      if (uzs > 0 && !ledgerHasFunds('UZS', uzs)) {
+        showNotification(
+          formatInsufficientLedgerMessage('UZS', getAvailableBalance('UZS'), uzs, { topUpSuffix: true }),
+          'error',
+        );
+        return;
       }
-      if (usd > 0) {
-        const available = getAvailableBalance('USD');
-        if (available < usd) {
-          showNotification(
-            formatInsufficientLedgerMessage('USD', available, usd, { topUpSuffix: true }),
-            'error',
-          );
-          return;
-        }
+      if (usd > 0 && !ledgerHasFunds('USD', usd)) {
+        showNotification(
+          formatInsufficientLedgerMessage('USD', getAvailableBalance('USD'), usd, { topUpSuffix: true }),
+          'error',
+        );
+        return;
       }
 
       const cargoOrder = orders.find((o) => o.id === cargoFormData.orderId);
@@ -1196,9 +1212,8 @@ const Orders = () => {
         showNotification(`Return amount cannot exceed the recorded advance (${booked}).`, 'error');
         return;
       }
-      const available = getAvailableBalance(ccy);
-      if (amt > available) {
-        showNotification(formatInsufficientLedgerMessage(ccy, available, amt), 'error');
+      if (!ledgerHasFunds(ccy, amt)) {
+        showNotification(formatInsufficientLedgerMessage(ccy, getAvailableBalance(ccy), amt), 'error');
         return;
       }
       const bookedAdvLabel = formatDisplayAmount(
@@ -1486,6 +1501,7 @@ const Orders = () => {
           <form onSubmit={handleSubmit}>
             <div className="orders-new-order-form">
               <div className="orders-new-order-row orders-new-order-row--6">
+              {canManageStockOrders && (
               <div className="form-group">
                 <label>Order Type</label>
                 <select
@@ -1497,6 +1513,7 @@ const Orders = () => {
                   <option value="on_demand">On-Demand</option>
                 </select>
               </div>
+              )}
               <div className="form-group">
                 <label>Category type <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
                 <select
@@ -1927,6 +1944,7 @@ const Orders = () => {
                 </div>
               )}
 
+              {canPayOrder && (
               <div className="orders-new-order-row orders-new-order-row--payment-flags">
               <div className="form-group orders-new-order-checkbox-row">
                 <label
@@ -1960,6 +1978,7 @@ const Orders = () => {
                 </div>
               )}
               </div>
+              )}
 
               {formData.order_type === 'on_demand' && (
               <div className="orders-new-order-row orders-new-order-row--on-demand">
@@ -2215,6 +2234,7 @@ const Orders = () => {
               ))}
             </select>
           </div>
+          {canManageStockOrders && (
           <div className="filter-field">
             <label>Order Type</label>
             <select
@@ -2226,6 +2246,7 @@ const Orders = () => {
               <option value="on_demand">On-Demand</option>
             </select>
           </div>
+          )}
           <div className="filter-field">
             <label>Status</label>
             <select
@@ -2336,7 +2357,9 @@ const Orders = () => {
               <SortableTh columnId="supplier_country" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Supplier Country</SortableTh>
               <SortableTh columnId="supplier_cargo" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Supplier Cargo</SortableTh>
               <SortableTh columnId="eshop" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>eShop</SortableTh>
+              {canManageStockOrders && (
               <SortableTh columnId="order_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Order Type</SortableTh>
+              )}
               <SortableTh columnId="customer" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Customer</SortableTh>
               <SortableTh columnId="qty" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Qty</SortableTh>
               <SortableTh columnId="selling_price_unit" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Selling price/unit</SortableTh>
@@ -2452,11 +2475,13 @@ const Orders = () => {
                       <span style={{ color: '#bbb' }}>—</span>
                     )}
                   </td>
+                  {canManageStockOrders && (
                   <td>
                     <span className={`status-badge ${order.order_type === 'stock' ? 'confirmed' : 'pending'}`}>
                       {order.order_type === 'stock' ? 'Stock' : 'On-Demand'}
                     </span>
                   </td>
+                  )}
                   <td>
                     {order.order_type === 'on_demand' ? (
                       order.customer_detail ? (

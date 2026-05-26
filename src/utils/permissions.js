@@ -22,8 +22,29 @@ export const ROUTE_PERMISSIONS = {
   '/bonus-rules': 'bonus.manage',
   '/users': 'users.view',
   '/customers': 'customers.view',
-  '/dispatchers': 'dispatchers.view',
+  '/dispatchers': 'dispatch.view',
   '/workers': 'workers.view',
+};
+
+/** Paths each role may see in the sidebar (null = permission-based only). */
+export const ROLE_VISIBLE_MENU_PATHS = {
+  senior_sales_manager: [
+    '/dashboard',
+    '/products',
+    '/inventory/products',
+    '/inventory/packages',
+    '/orders',
+    '/sales',
+    '/returns',
+    '/dispatchers',
+  ],
+  dispatcher: ['/dispatchers'],
+};
+
+/** Paths hidden for a role even when a permission would allow them. */
+export const ROLE_HIDDEN_MENU_PATHS = {
+  ceo: ['/users', '/audit-logs', '/workers', '/customers', '/bonus-rules'],
+  admin: ['/bonus-rules'],
 };
 
 /** Sidebar menu definitions with required permission codes */
@@ -51,7 +72,7 @@ export const MENU_ITEMS = [
   { path: '/balance-sheet', label: 'Balance Sheet', icon: '📊', permission: 'finance.balance_sheet' },
   { path: '/money-balance', label: 'Money Balance', icon: '💳', permission: 'cash.view' },
   { path: '/customers', label: 'Customers', icon: '👥', permission: 'customers.view' },
-  { path: '/dispatchers', label: 'Dispatchers', icon: '🚚', permission: 'dispatchers.view' },
+  { path: '/dispatchers', label: 'Dispatchers', icon: '🚚', permission: 'dispatch.view' },
   { path: '/workers', label: 'Workers', icon: '👷', permission: 'workers.view' },
   { path: '/audit-logs', label: 'Audit Logs', icon: '📝', permission: 'audit_logs.view' },
   { path: '/bonus-rules', label: 'Bonus Rules', icon: '🎁', permission: 'bonus.manage' },
@@ -80,36 +101,74 @@ export function hasAllPermissions(user, codes = []) {
   return codes.every((c) => hasPermission(user, c));
 }
 
-export function canAccessRoute(user, path) {
-  const permission = ROUTE_PERMISSIONS[path];
-  if (!permission) return true;
-  return hasPermission(user, permission);
-}
-
-export function filterMenuItems(user, items = MENU_ITEMS) {
-  return items
-    .map((item) => {
-      if (item.isDropdown) {
-        const subItems = (item.subItems || []).filter(
-          (sub) => !sub.permission || hasPermission(user, sub.permission)
-        );
-        if (!subItems.length) return null;
-        const parentOk = item.permissionAny
-          ? hasAnyPermission(user, item.permissionAny)
-          : true;
-        if (!parentOk && !subItems.length) return null;
-        return { ...item, subItems };
-      }
-      if (item.permission && !hasPermission(user, item.permission)) return null;
-      return item;
-    })
-    .filter(Boolean);
-}
-
 export function getRoleCode(user) {
   return user?.role_code || user?.role?.code || user?.role || 'sales_manager';
 }
 
 export function isCEO(user) {
   return getRoleCode(user) === 'ceo';
+}
+
+export function isAdmin(user) {
+  return getRoleCode(user) === 'admin';
+}
+
+export function isSeniorSalesManager(user) {
+  return getRoleCode(user) === 'senior_sales_manager';
+}
+
+/** Admin, CEO, or Senior Sales Manager — full operational visibility (all sales/orders). */
+export function isOperationalSenior(user) {
+  const role = getRoleCode(user);
+  return role === 'admin' || role === 'ceo' || role === 'senior_sales_manager';
+}
+
+function pathAllowedForRole(user, path) {
+  if (path === '/users' && isCEO(user)) return false;
+  const role = getRoleCode(user);
+  const hidden = ROLE_HIDDEN_MENU_PATHS[role];
+  if (hidden && hidden.includes(path)) return false;
+  const visible = ROLE_VISIBLE_MENU_PATHS[role];
+  if (visible) {
+    return visible.includes(path);
+  }
+  return true;
+}
+
+export function canAccessRoute(user, path) {
+  if (!pathAllowedForRole(user, path)) return false;
+  const permission = ROUTE_PERMISSIONS[path];
+  if (!permission) return true;
+  return hasPermission(user, permission);
+}
+
+function itemPathAllowed(user, item) {
+  if (item.isDropdown) {
+    const subItems = (item.subItems || []).filter(
+      (sub) => sub.path && pathAllowedForRole(user, sub.path) && (!sub.permission || hasPermission(user, sub.permission)),
+    );
+    return subItems.length > 0;
+  }
+  if (item.path && !pathAllowedForRole(user, item.path)) return false;
+  if (item.permission && !hasPermission(user, item.permission)) return false;
+  if (item.permissionAny && !hasAnyPermission(user, item.permissionAny)) return false;
+  return true;
+}
+
+export function filterMenuItems(user, items = MENU_ITEMS) {
+  return items
+    .map((item) => {
+      if (!itemPathAllowed(user, item)) return null;
+      if (item.isDropdown) {
+        const subItems = (item.subItems || []).filter(
+          (sub) =>
+            (!sub.path || pathAllowedForRole(user, sub.path)) &&
+            (!sub.permission || hasPermission(user, sub.permission)),
+        );
+        if (!subItems.length) return null;
+        return { ...item, subItems };
+      }
+      return item;
+    })
+    .filter(Boolean);
 }

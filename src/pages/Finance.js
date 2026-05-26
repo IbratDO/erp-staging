@@ -100,19 +100,41 @@ function FinanceLegTotal({ value, leg }) {
 
 const Finance = () => {
   const { hasPermission } = useAuth();
-  const isAdmin = hasPermission('finance.create_manual');
+  const canCreateManual = hasPermission('finance.create_manual');
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showIncomeForm, setShowIncomeForm] = useState(false);
   const [expenseFormData, setExpenseFormData] = useState({
     expense_type: 'lunch',
+    target: '',
+    smm: '',
     currency: 'USD',
     amount: '',
     recipient: '',
     notes: '',
     pay_immediately: true,
   });
+
+  const EXPENSE_TARGET_OPTIONS = [
+    { value: 'shop', label: 'Shop' },
+    { value: 'warehouse', label: 'Warehouse' },
+    { value: 'office', label: 'Office' },
+    { value: 'marketing', label: 'Marketing' },
+    { value: 'logistics', label: 'Logistics' },
+    { value: 'operations', label: 'Operations' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  const EXPENSE_SMM_OPTIONS = [
+    { value: 'instagram', label: 'Instagram' },
+    { value: 'telegram', label: 'Telegram' },
+    { value: 'facebook', label: 'Facebook' },
+    { value: 'tiktok', label: 'TikTok' },
+    { value: 'youtube', label: 'YouTube' },
+    { value: 'other', label: 'Other' },
+    { value: 'none', label: 'Not applicable' },
+  ];
   const [incomeFormData, setIncomeFormData] = useState({
     currency: 'USD',
     amount: '',
@@ -210,6 +232,8 @@ const Finance = () => {
       const payload = {
         record_type: 'expense',
         expense_type: expenseFormData.expense_type,
+        target: expenseFormData.target || null,
+        smm: expenseFormData.smm || null,
         amount: expenseFormData.amount || 0,
         currency: expenseFormData.currency,
         payment_type: 'cash',
@@ -222,6 +246,8 @@ const Finance = () => {
       setShowExpenseForm(false);
       setExpenseFormData({
         expense_type: 'lunch',
+        target: '',
+        smm: '',
         currency: 'USD',
         amount: '',
         recipient: '',
@@ -308,7 +334,7 @@ const Finance = () => {
     <div className="page-container">
       <div className="page-header">
         <h1>Other Financial Records</h1>
-        {isAdmin && (
+        {canCreateManual && (
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-primary" onClick={() => { setShowIncomeForm(!showIncomeForm); setShowExpenseForm(false); }}>
               {showIncomeForm ? 'Cancel' : '+ Add Income'}
@@ -325,7 +351,7 @@ const Finance = () => {
         Use <strong>Pay later</strong> to create a payable/receivable first; then settle here or from Receivables / Payables.
       </p>
 
-      {showExpenseForm && isAdmin && (
+      {showExpenseForm && canCreateManual && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>Add New Expense</h2>
           <form onSubmit={handleExpenseSubmit}>
@@ -346,6 +372,34 @@ const Finance = () => {
                   <option value="delivery">Delivery</option>
                   <option value="cargo">Cargo</option>
                   <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Target</label>
+                <select
+                  value={expenseFormData.target}
+                  onChange={(e) => setExpenseFormData({ ...expenseFormData, target: e.target.value })}
+                >
+                  <option value="">— Select —</option>
+                  {EXPENSE_TARGET_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>SMM</label>
+                <select
+                  value={expenseFormData.smm}
+                  onChange={(e) => setExpenseFormData({ ...expenseFormData, smm: e.target.value })}
+                >
+                  <option value="">— Select —</option>
+                  {EXPENSE_SMM_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">
@@ -425,7 +479,7 @@ const Finance = () => {
         </div>
       )}
 
-      {showIncomeForm && isAdmin && (
+      {showIncomeForm && canCreateManual && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>Add Other Income</h2>
           <form onSubmit={handleIncomeSubmit}>
@@ -644,7 +698,7 @@ const Finance = () => {
                 <SortableTh columnId="recipient_key" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Recipient</SortableTh>
                 <SortableTh columnId="notes" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Notes</SortableTh>
                 <SortableTh columnId="transaction_date" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Date</SortableTh>
-                {isAdmin && <th>Action</th>}
+                {canCreateManual && <th>Action</th>}
               </tr>
             </thead>
             <tbody>
@@ -707,7 +761,7 @@ const Finance = () => {
                       })()}
                     </td>
                     <td>{new Date(record.transaction_date).toLocaleString()}</td>
-                    {isAdmin && (
+                    {canCreateManual && (
                       <td>
                         {record.status === 'pending' ? (
                           <button type="button" className="btn-edit" onClick={() => handleSettleRecord(record)}>

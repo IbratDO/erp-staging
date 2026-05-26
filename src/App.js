@@ -189,7 +189,7 @@ function App() {
             <Route
               path="dispatchers"
               element={
-                <ProtectedRoute permission="dispatchers.view">
+                <ProtectedRoute permission="dispatch.view">
                   <Dispatchers />
                 </ProtectedRoute>
               }

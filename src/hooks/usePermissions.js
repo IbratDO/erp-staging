@@ -8,16 +8,19 @@ import {
   hasAnyPermission,
   hasPermission,
   isCEO,
+  isAdmin,
 } from '../utils/permissions';
 
 export function usePermissions() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
 
   return useMemo(
     () => ({
       user,
+      refreshUser,
       roleCode: getRoleCode(user),
       isCEO: isCEO(user),
+      isAdmin: isAdmin(user),
       hasPermission: (code) => hasPermission(user, code),
       hasAnyPermission: (codes) => hasAnyPermission(user, codes),
       hasAllPermissions: (codes) => hasAllPermissions(user, codes),

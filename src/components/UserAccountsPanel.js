@@ -4,7 +4,7 @@ import { usePermissions } from '../hooks/usePermissions';
 
 const emptyUser = () => ({
   username: '',
-  email: '',
+  phone: '+998',
   first_name: '',
   last_name: '',
   role: '',
@@ -13,10 +13,9 @@ const emptyUser = () => ({
 });
 
 /**
- * Manage ERP login accounts: username, password, role (CEO / Senior / Sales Manager / Dispatcher).
- * Used on /users and as a tab under Workers for admins.
+ * Manage ERP login accounts. Dispatcher / sales roles sync to Dispatchers & Workers tabs.
  */
-const UserAccountsPanel = ({ embedded = false }) => {
+const UserAccountsPanel = () => {
   const { hasPermission } = usePermissions();
   const canManage = hasPermission('users.manage');
   const [users, setUsers] = useState([]);
@@ -54,12 +53,13 @@ const UserAccountsPanel = ({ embedded = false }) => {
 
   const openEdit = (user) => {
     setEditingId(user.id);
+    const roleId = user.role ?? user.role_id ?? '';
     setFormData({
       username: user.username,
-      email: user.email || '',
+      phone: user.phone || '+998',
       first_name: user.first_name || '',
       last_name: user.last_name || '',
-      role: user.role || '',
+      role: roleId ? String(roleId) : '',
       password: '',
       is_active: user.is_active !== false,
     });
@@ -68,13 +68,24 @@ const UserAccountsPanel = ({ embedded = false }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const phone = String(formData.phone || '').trim();
+    if (!phone || phone === '+998') {
+      alert('Please enter a phone number.');
+      return;
+    }
+    const username = String(formData.username || '').trim();
+    if (!username) {
+      alert('Please enter a login (username).');
+      return;
+    }
     const payload = {
-      username: formData.username,
-      email: formData.email,
-      first_name: formData.first_name,
-      last_name: formData.last_name,
+      username,
+      phone,
+      first_name: String(formData.first_name || '').trim(),
+      last_name: String(formData.last_name || '').trim(),
       role: formData.role ? Number(formData.role) : null,
       is_active: formData.is_active,
+      email: '',
     };
     if (formData.password) payload.password = formData.password;
     try {
@@ -95,7 +106,7 @@ const UserAccountsPanel = ({ embedded = false }) => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this login account?')) return;
+    if (!window.confirm('Delete this login account? Linked dispatcher/worker rows will be deactivated.')) return;
     try {
       await api.delete(`/users/${id}/`);
       loadData();
@@ -105,50 +116,59 @@ const UserAccountsPanel = ({ embedded = false }) => {
   };
 
   if (loading) {
-    return embedded
-      ? <div>Loading accounts…</div>
-      : <div className="page-container">Loading...</div>;
+    return <div className="page-container">Loading...</div>;
   }
 
   return (
-    <div className={embedded ? '' : 'page-container'}>
-      {!embedded && (
-        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h1>Users &amp; Roles</h1>
-          {canManage && (
-            <button type="button" className="btn-primary" onClick={openCreate}>+ New login account</button>
-          )}
-        </div>
-      )}
+    <div className="page-container">
+      <div className="page-header">
+        <h1>Users &amp; Roles</h1>
+        {canManage && (
+          <button type="button" className="btn-primary" onClick={openCreate}>
+            + New login account
+          </button>
+        )}
+      </div>
 
-      {embedded && canManage && (
-        <>
-          <p style={{ color: '#666', marginBottom: 12, fontSize: '0.95em' }}>
-            Create ERP login accounts and assign roles: CEO, Senior Sales Manager, Sales Manager, or Dispatcher.
-          </p>
-          <div style={{ marginBottom: 16 }}>
-            <button type="button" className="btn-primary" onClick={openCreate}>+ New login account</button>
-          </div>
-        </>
-      )}
+      <p style={{ color: '#666', marginBottom: 16, fontSize: '0.95em' }}>
+        Create login accounts here. Accounts with Dispatcher role appear in Dispatchers; Sales Manager and
+        Senior Sales Manager appear in Workers.
+      </p>
 
       {showForm && canManage && (
-        <div className="form-card" style={{ display: 'block', marginBottom: 16 }}>
+        <div className="form-card">
           <h2>{editingId ? 'Edit login account' : 'New login account'}</h2>
           <form onSubmit={handleSubmit}>
-            <div className="form-grid" style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
-              <label>
-                Login (username) *
+            <div className="form-grid">
+              <div className="form-group">
+                <label>First name</label>
                 <input
+                  type="text"
+                  value={formData.first_name}
+                  onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                  placeholder="Shown in Workers / Dispatchers"
+                />
+              </div>
+              <div className="form-group">
+                <label>Last name</label>
+                <input
+                  type="text"
+                  value={formData.last_name}
+                  onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Login (username) *</label>
+                <input
+                  type="text"
                   required
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  disabled={!!editingId}
                   autoComplete="off"
                 />
-              </label>
-              <label>
-                Password {editingId ? '(leave blank to keep)' : '*'}
+              </div>
+              <div className="form-group">
+                <label>Password {editingId ? '(leave blank to keep)' : '*'}</label>
                 <input
                   type="password"
                   required={!editingId}
@@ -156,9 +176,9 @@ const UserAccountsPanel = ({ embedded = false }) => {
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   autoComplete="new-password"
                 />
-              </label>
-              <label>
-                Role *
+              </div>
+              <div className="form-group">
+                <label>Role *</label>
                 <select
                   required
                   value={formData.role}
@@ -169,45 +189,47 @@ const UserAccountsPanel = ({ embedded = false }) => {
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
-              </label>
-              <label>
-                Email
-                <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
-              </label>
-              <label>
-                First name
-                <input value={formData.first_name} onChange={(e) => setFormData({ ...formData, first_name: e.target.value })} />
-              </label>
-              <label>
-                Last name
-                <input value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} />
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              </div>
+              <div className="form-group">
+                <label>Phone number *</label>
                 <input
-                  type="checkbox"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  type="text"
+                  required
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="+998901234567"
                 />
-                Active (can log in)
-              </label>
+              </div>
+              <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.is_active}
+                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  />
+                  Active (can log in)
+                </label>
+              </div>
             </div>
-            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <div className="form-actions">
               <button type="submit" className="btn-primary">Save</button>
-              <button type="button" className="btn-edit" onClick={() => setShowForm(false)}>Cancel</button>
+              <button type="button" className="btn-edit" onClick={() => setShowForm(false)}>
+                Cancel
+              </button>
             </div>
           </form>
         </div>
       )}
 
-      <div className="table-card" style={{ display: 'block' }}>
-        <div className="data-table-scroll" style={{ display: 'block' }}>
+      <div className="table-card">
+        <div className="data-table-scroll">
           <table className="data-table">
             <thead>
               <tr>
                 <th>Login</th>
                 <th>Role</th>
                 <th>Name</th>
-                <th>Email</th>
+                <th>Phone</th>
                 <th>Active</th>
                 {canManage && <th>Actions</th>}
               </tr>
@@ -225,7 +247,7 @@ const UserAccountsPanel = ({ embedded = false }) => {
                     <td><strong>{u.username}</strong></td>
                     <td>{u.role_name || u.role_code || '—'}</td>
                     <td>{[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'}</td>
-                    <td>{u.email || '—'}</td>
+                    <td>{u.phone || '—'}</td>
                     <td>{u.is_active !== false ? 'Yes' : 'No'}</td>
                     {canManage && (
                       <td>

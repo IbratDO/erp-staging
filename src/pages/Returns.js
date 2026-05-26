@@ -14,6 +14,14 @@ import {
 } from '../utils/returnRefundHelpers';
 import './TablePage.css';
 
+const PRODUCT_CATEGORY_TYPES = [
+  { value: 'sports', label: 'Sports' },
+  { value: 'casual', label: 'Casual' },
+];
+
+const categoryTypeLabel = (value) =>
+  PRODUCT_CATEGORY_TYPES.find((t) => t.value === value)?.label ?? '';
+
 function returnProductPickerLabel(p) {
   if (!p) return '';
   return `${p.brand} ${p.model} - Size ${p.size} (${p.color})`;
@@ -135,6 +143,7 @@ function compareNotRefundedFirst(a, b) {
 
 const RETURNS_SORT_ACCESSORS = {
   id: (r) => Number(r.id) || 0,
+  category_type: (r) => String(r.product_detail?.category_type ?? '').toLowerCase(),
   category: (r) => String(r.product_detail?.category ?? '').toLowerCase(),
   product: (r) =>
     r.product_detail
@@ -178,6 +187,7 @@ const Returns = () => {
   const [showForm, setShowForm] = useState(false);
   const [formCategory, setFormCategory] = useState('');
   const [filters, setFilters] = useState({
+    category_type: '',
     category: '',
     brand: '',
     model: '',
@@ -300,6 +310,11 @@ const Returns = () => {
   const applyFilters = (returnsList) => {
     let filtered = returnsList;
     
+    if (filters.category_type) {
+      filtered = filtered.filter(
+        (returnItem) => returnItem.product_detail?.category_type === filters.category_type,
+      );
+    }
     if (filters.category) {
       filtered = filtered.filter(returnItem =>
         returnItem.product_detail?.category === filters.category
@@ -1371,13 +1386,32 @@ const Returns = () => {
           <h3 className="filter-card__title">Filters</h3>
         <div className="filter-toolbar">
           <div className="filter-field">
+            <label>Category type</label>
+            <select
+              value={filters.category_type}
+              onChange={(e) => setFilters({ ...filters, category_type: e.target.value })}
+            >
+              <option value="">All types</option>
+              {PRODUCT_CATEGORY_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="filter-field">
             <label>Category</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             >
               <option value="">All Categories</option>
-              {[...new Set(returns.map(r => r.product_detail?.category).filter(Boolean))].sort().map(cat => (
+              {[...new Set(
+                returns
+                  .filter((r) => !filters.category_type || r.product_detail?.category_type === filters.category_type)
+                  .map((r) => r.product_detail?.category)
+                  .filter(Boolean),
+              )].sort().map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
@@ -1494,7 +1528,19 @@ const Returns = () => {
             <button
               type="button"
               className="btn-edit"
-              onClick={() => setFilters({ category: '', brand: '', model: '', size: '', color: '', reason: '', year: '', month: '' })}
+              onClick={() =>
+                setFilters({
+                  category_type: '',
+                  category: '',
+                  brand: '',
+                  model: '',
+                  size: '',
+                  color: '',
+                  reason: '',
+                  year: '',
+                  month: '',
+                })
+              }
             >
               Clear all
             </button>
@@ -1512,6 +1558,12 @@ const Returns = () => {
                 ID
               </SortableTh>
               <th>Actions</th>
+              <SortableTh columnId="refund_status" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Refund Status
+              </SortableTh>
+              <SortableTh columnId="category_type" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
+                Category type
+              </SortableTh>
               <SortableTh columnId="category" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
                 Category
               </SortableTh>
@@ -1548,9 +1600,6 @@ const Returns = () => {
               <SortableTh columnId="refund_usd" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
                 Refund USD
               </SortableTh>
-              <SortableTh columnId="refund_status" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Refund Status
-              </SortableTh>
               <SortableTh columnId="notes" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
                 Notes
               </SortableTh>
@@ -1565,7 +1614,7 @@ const Returns = () => {
           <tbody>
             {filteredReturns.length === 0 ? (
               <tr>
-                <td colSpan="18" style={{ textAlign: 'center' }}>
+                <td colSpan="19" style={{ textAlign: 'center' }}>
                   No returns found
                 </td>
               </tr>
@@ -1581,6 +1630,16 @@ const Returns = () => {
                       >
                         Mark as Refunded
                       </button>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`status-badge ${returnItem.refund_status === 'refunded' ? 'completed' : 'pending'}`}>
+                      {returnItem.refund_status === 'refunded' ? 'Refunded' : 'Pending'}
+                    </span>
+                  </td>
+                  <td>
+                    {categoryTypeLabel(returnItem.product_detail?.category_type) || (
+                      <span style={{ color: '#999' }}>—</span>
                     )}
                   </td>
                   <td>{returnItem.product_detail?.category || <span style={{ color: '#999' }}>—</span>}</td>
@@ -1600,11 +1659,6 @@ const Returns = () => {
                   </td>
                   <td>
                     {(() => { const v = (parseFloat(returnItem.refund_usd_cash) || 0) + (parseFloat(returnItem.refund_usd_card) || 0); return v > 0 ? <span style={{ color: '#4caf50' }}>${v.toFixed(2)}</span> : <span style={{ color: '#bbb' }}>—</span>; })()}
-                  </td>
-                  <td>
-                    <span className={`status-badge ${returnItem.refund_status === 'refunded' ? 'completed' : 'pending'}`}>
-                      {returnItem.refund_status === 'refunded' ? 'Refunded' : 'Pending'}
-                    </span>
                   </td>
                   <td>{returnItem.notes || <span style={{ color: '#bbb' }}>—</span>}</td>
                   <td>{returnItem.processed_by_detail?.username || '-'}</td>

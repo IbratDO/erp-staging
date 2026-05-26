@@ -3,13 +3,12 @@ import api from '../utils/api';
 import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
-import { usePermissions } from '../hooks/usePermissions';
-import UserAccountsPanel from '../components/UserAccountsPanel';
 import './TablePage.css';
 
 const WORKERS_SORT = {
   id: (w) => Number(w.id) || 0,
   name: (w) => String(w.name ?? '').toLowerCase(),
+  login: (w) => String(w.login_username ?? '').toLowerCase(),
   telephone: (w) => String(w.telephone ?? '').toLowerCase(),
   notes: (w) => String(w.notes ?? '').toLowerCase(),
 };
@@ -37,10 +36,6 @@ const WORKER_TX_SORT = {
 };
 
 const Workers = () => {
-  const { hasPermission } = usePermissions();
-  const canManage = hasPermission('workers.manage');
-  const canViewUsers = hasPermission('users.view');
-  const [mainTab, setMainTab] = useState('workers');
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedWorker, setSelectedWorker] = useState(null);
@@ -48,12 +43,6 @@ const Workers = () => {
   const [workerTransactions, setWorkerTransactions] = useState(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    telephone: '+998',
-    notes: '',
-  });
 
   useEffect(() => {
     fetchWorkers();
@@ -70,13 +59,6 @@ const Workers = () => {
     }
   };
   
-  // Refetch workers after creating/updating
-  useEffect(() => {
-    if (!showForm) {
-      fetchWorkers();
-    }
-  }, [showForm]);
-
   const handleViewPerformance = async (worker) => {
     try {
       const response = await api.get(`/workers/${worker.id}/performance/`, {
@@ -103,53 +85,6 @@ const Workers = () => {
     }
   };
 
-  const handleEdit = (worker) => {
-    setFormData({
-      id: worker.id,
-      name: worker.name || '',
-      telephone: worker.telephone || '+998',
-      notes: worker.notes || '',
-    });
-    setShowForm(true);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!String(formData.notes || '').trim()) {
-      alert('Please enter notes.');
-      return;
-    }
-    try {
-      if (formData.id) {
-        await api.put(`/workers/${formData.id}/`, formData);
-      } else {
-        await api.post('/workers/', formData);
-      }
-      setShowForm(false);
-      setFormData({ name: '', telephone: '+998', notes: '' });
-      fetchWorkers();
-    } catch (error) {
-      console.error('Error saving worker:', error);
-      alert(error.response?.data?.error || error.response?.data?.detail || 'Error saving worker');
-    }
-  };
-
-  const handleDelete = async (workerId) => {
-    if (window.confirm('Are you sure you want to delete this worker?')) {
-      try {
-        await api.delete(`/workers/${workerId}/`);
-        fetchWorkers();
-        if (selectedWorker?.id === workerId) {
-          setSelectedWorker(null);
-          setWorkerTransactions(null);
-        }
-      } catch (error) {
-        console.error('Error deleting worker:', error);
-        alert(error.response?.data?.error || 'Error deleting worker');
-      }
-    }
-  };
-
   const workerSort = useClientTableSort(WORKERS_SORT);
   const perfSaleSort = useClientTableSort(WORKER_PERF_SALES_SORT);
   const workerTxSort = useClientTableSort(WORKER_TX_SORT);
@@ -167,7 +102,7 @@ const Workers = () => {
     [workerTransactions?.finance_records, workerTxSort]
   );
 
-  if (loading && mainTab === 'workers') {
+  if (loading) {
     return <div className="page-container">Loading...</div>;
   }
 
@@ -175,108 +110,11 @@ const Workers = () => {
     <div className="page-container">
       <div className="page-header">
         <h1>Workers</h1>
-        {mainTab === 'workers' && canManage && (
-        <button className="btn-primary" onClick={() => {
-          setShowForm(!showForm);
-          if (!showForm) {
-            setFormData({ name: '', telephone: '+998', notes: '' });
-          }
-        }}>
-          {showForm ? 'Cancel' : '+ New Worker'}
-        </button>
-        )}
       </div>
 
-      {canViewUsers && (
-        <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid #e0e0e0' }}>
-          <button
-            type="button"
-            onClick={() => setMainTab('workers')}
-            style={{
-              padding: '10px 20px',
-              border: 'none',
-              background: mainTab === 'workers' ? '#007bff' : 'transparent',
-              color: mainTab === 'workers' ? 'white' : '#666',
-              cursor: 'pointer',
-              borderBottom: mainTab === 'workers' ? '3px solid #007bff' : '3px solid transparent',
-              fontWeight: mainTab === 'workers' ? '600' : '400',
-            }}
-          >
-            Field workers
-          </button>
-          <button
-            type="button"
-            onClick={() => setMainTab('accounts')}
-            style={{
-              padding: '10px 20px',
-              border: 'none',
-              background: mainTab === 'accounts' ? '#007bff' : 'transparent',
-              color: mainTab === 'accounts' ? 'white' : '#666',
-              cursor: 'pointer',
-              borderBottom: mainTab === 'accounts' ? '3px solid #007bff' : '3px solid transparent',
-              fontWeight: mainTab === 'accounts' ? '600' : '400',
-            }}
-          >
-            Login accounts
-          </button>
-        </div>
-      )}
-
-      {mainTab === 'accounts' && canViewUsers ? (
-        <UserAccountsPanel embedded />
-      ) : (
-        <>
-
-      {showForm && canManage && (
-        <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>{formData.id ? 'Edit Worker' : 'Add New Worker'}</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="form-grid">
-              <div className="form-group">
-                <label>Name *</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Telephone</label>
-                <input
-                  type="text"
-                  value={formData.telephone}
-                  onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
-                />
-              </div>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes *</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows="3"
-                  required
-                />
-              </div>
-            </div>
-            <div className="form-actions">
-              <button type="submit" className="btn-primary">
-                {formData.id ? 'Update Worker' : 'Add Worker'}
-              </button>
-              <button
-                type="button"
-                className="btn-edit"
-                onClick={() => {
-                  setShowForm(false);
-                  setFormData({ name: '', telephone: '+998', notes: '' });
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      <p style={{ color: '#666', marginBottom: 16, fontSize: '0.95em' }}>
+        Sales team members are managed in the Users tab (Sales Manager or Senior Sales Manager role).
+      </p>
 
       {/* Workers List */}
       <div className="table-card">
@@ -290,6 +128,9 @@ const Workers = () => {
               <SortableTh columnId="name" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
                 Name
               </SortableTh>
+              <SortableTh columnId="login" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
+                Login
+              </SortableTh>
               <SortableTh columnId="telephone" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
                 Telephone
               </SortableTh>
@@ -302,7 +143,7 @@ const Workers = () => {
           <tbody>
             {workers.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: 'center' }}>
+                <td colSpan="6" style={{ textAlign: 'center' }}>
                   No workers found
                 </td>
               </tr>
@@ -311,18 +152,10 @@ const Workers = () => {
                 <tr key={worker.id}>
                   <td>#{worker.id}</td>
                   <td>{worker.name}</td>
+                  <td>{worker.login_username || '—'}</td>
                   <td>{worker.telephone || '-'}</td>
                   <td>{worker.notes ? (worker.notes.length > 50 ? worker.notes.substring(0, 50) + '...' : worker.notes) : '-'}</td>
                   <td>
-                    {canManage && (
-                    <button
-                      className="btn-edit"
-                      onClick={() => handleEdit(worker)}
-                      style={{ marginRight: '10px' }}
-                    >
-                      Edit
-                    </button>
-                    )}
                     <button
                       className="btn-edit"
                       onClick={() => handleViewPerformance(worker)}
@@ -333,19 +166,9 @@ const Workers = () => {
                     <button
                       className="btn-primary"
                       onClick={() => handleViewTransactions(worker)}
-                      style={{ marginRight: '10px' }}
                     >
                       View Transactions
                     </button>
-                    {canManage && (
-                    <button
-                      className="btn-edit"
-                      onClick={() => handleDelete(worker.id)}
-                      style={{ backgroundColor: '#e74c3c', color: 'white' }}
-                    >
-                      Delete
-                    </button>
-                    )}
                   </td>
                 </tr>
               ))
@@ -353,7 +176,7 @@ const Workers = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="3" style={{ textAlign: 'right' }}>
+              <td colSpan="4" style={{ textAlign: 'right' }}>
                 Total
               </td>
               <td colSpan="2" style={{ textAlign: 'right' }}>
@@ -633,8 +456,6 @@ const Workers = () => {
             </tbody>
           </table>
         </div>
-      )}
-        </>
       )}
     </div>
   );
