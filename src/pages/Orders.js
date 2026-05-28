@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount, cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import { isOperationalSenior } from '../utils/permissions';
@@ -54,11 +54,25 @@ function orderReadyForInventoryActions(order) {
   );
 }
 
-/** Active orders first; finished in-inventory rows sink to the bottom. */
-function compareNonInventoryFirst(a, b) {
-  const aDone = a.status === 'in_inventory' ? 1 : 0;
-  const bDone = b.status === 'in_inventory' ? 1 : 0;
-  return aDone - bDone;
+/** Open pipeline first; finished rows (inventory / sold / cancelled) sink to the bottom. */
+const ORDER_TERMINAL_STATUSES = new Set(['in_inventory', 'sold', 'cancelled']);
+
+const ORDER_OPEN_STATUS_RANK = {
+  ordered: 0,
+  order_paid: 1,
+  received: 2,
+};
+
+function compareActiveOrdersFirst(a, b) {
+  const aDone = ORDER_TERMINAL_STATUSES.has(a.status) ? 1 : 0;
+  const bDone = ORDER_TERMINAL_STATUSES.has(b.status) ? 1 : 0;
+  if (aDone !== bDone) return aDone - bDone;
+  if (!aDone) {
+    const ra = ORDER_OPEN_STATUS_RANK[a.status] ?? 99;
+    const rb = ORDER_OPEN_STATUS_RANK[b.status] ?? 99;
+    if (ra !== rb) return ra - rb;
+  }
+  return 0;
 }
 
 function payTotalsMatchPlanned(expUzs, expUsd, uzsCash, uzsCard, usdCash, usdCard) {
@@ -294,6 +308,31 @@ const Orders = () => {
   const canUpdateStatus = hasPermission('orders.update_status');
   const canPostOrderStatus = hasAnyPermission(['orders.update_status', 'orders.move_to_inventory']);
   const canManageStockOrders = canUpdateStatus || isOperationalSenior(user);
+  /** Ledger totals for pay flows and move-to-inventory advance refunds (not bare status updates). */
+  const needsLedgerForPayments = canPayOrder || canPayCargo || canMoveInventory;
+
+  const newOrderFormDefaults = useCallback(
+    () => ({
+      order_type: canManageStockOrders ? 'stock' : 'on_demand',
+      product: '',
+      supplier_country: '',
+      supplier_cargo: '',
+      eshop: '',
+      client_eshop_notes: '',
+      ordered_quantity: '',
+      selling_usd_per_unit: '',
+      cost_usd_per_unit: '',
+      order_is_paid: false,
+      order_payment_currency: 'USD',
+      order_payment_type: 'card',
+      customer: '',
+      advance_payment_amount: '',
+      advance_payment_currency: 'USD',
+      advance_payment_type: 'cash',
+      status: 'ordered',
+    }),
+    [canManageStockOrders],
+  );
 
   useEffect(() => {
     if (user && (!Array.isArray(user.permissions) || user.permissions.length === 0)) {
@@ -320,25 +359,7 @@ const Orders = () => {
     year: '',
     month: '',
   });
-  const [formData, setFormData] = useState({
-    order_type: canManageStockOrders ? 'stock' : 'on_demand',
-    product: '',
-    supplier_country: '',
-    supplier_cargo: '',
-    eshop: '',
-    client_eshop_notes: '',
-    ordered_quantity: '',
-    selling_usd_per_unit: '',
-    cost_usd_per_unit: '',
-    order_is_paid: false,
-    order_payment_currency: 'USD',
-    order_payment_type: 'card',
-    customer: '',
-    advance_payment_amount: '',
-    advance_payment_currency: 'USD',
-    advance_payment_type: 'cash',
-    status: 'ordered',
-  });
+  const [formData, setFormData] = useState(newOrderFormDefaults);
 
   const [paymentFormData, setPaymentFormData] = useState({
     orderId: null,
@@ -422,7 +443,6 @@ const Orders = () => {
   ];
 
   const canViewCash = hasPermission('cash.view');
-  const needsLedgerForPayments = canPayOrder || canPayCargo || canPostOrderStatus;
 
   useEffect(() => {
     fetchOrders();
@@ -613,14 +633,14 @@ const Orders = () => {
       const get = ORDER_SORT_ACCESSORS[orderSort.sortCol];
       const sign = orderSort.sortDir === 'desc' ? -1 : 1;
       return [...rows].sort((a, b) => {
-        const inv = compareNonInventoryFirst(a, b);
-        if (inv !== 0) return inv;
+        const active = compareActiveOrdersFirst(a, b);
+        if (active !== 0) return active;
         return compareForSort(get(a), get(b)) * sign;
       });
     }
     return [...rows].sort((a, b) => {
-      const inv = compareNonInventoryFirst(a, b);
-      if (inv !== 0) return inv;
+      const active = compareActiveOrdersFirst(a, b);
+      if (active !== 0) return active;
       const ta = new Date(a.order_date || a.created_at).getTime() || 0;
       const tb = new Date(b.order_date || b.created_at).getTime() || 0;
       return tb - ta;
@@ -833,9 +853,9 @@ const Orders = () => {
         supplier_cost_uzs_card: 0,
         supplier_cost_usd_cash: toNum(formData.cost_usd_per_unit) * qty,
         supplier_cost_usd_card: 0,
-        order_is_paid: formData.order_is_paid,
-        order_payment_currency: formData.order_payment_currency,
-        order_payment_type: formData.order_payment_type,
+        order_is_paid: Boolean(formData.order_is_paid),
+        order_payment_currency: formData.order_payment_currency || 'USD',
+        order_payment_type: formData.order_payment_type || 'cash',
         customer,
         advance_payment_amount: advanceAmt,
         advance_payment_currency: advanceCcy,
@@ -852,23 +872,7 @@ const Orders = () => {
       setFormCategory('');
       setProductSearch('');
       setProductDropdownOpen(false);
-      setFormData({
-        order_type: 'stock',
-        product: '',
-        supplier_country: '',
-        supplier_cargo: '',
-        eshop: '',
-        client_eshop_notes: '',
-        ordered_quantity: '',
-        selling_usd_per_unit: '',
-        cost_usd_per_unit: '',
-        order_is_paid: false,
-        order_payment_currency: 'USD',
-        customer: '',
-        advance_payment_amount: '',
-        advance_payment_currency: 'USD',
-        status: 'ordered',
-      });
+      setFormData(newOrderFormDefaults());
       fetchOrders();
       showNotification('Order created successfully!', 'success');
     } catch (error) {
@@ -2051,23 +2055,7 @@ const Orders = () => {
       setFormCategory('');
                   setProductSearch('');
                   setProductDropdownOpen(false);
-                  setFormData({
-                    order_type: 'stock',
-                    product: '',
-                    supplier_country: '',
-                    supplier_cargo: '',
-                    eshop: '',
-                    client_eshop_notes: '',
-                    ordered_quantity: '',
-                    selling_usd_per_unit: '',
-                    cost_usd_per_unit: '',
-                    order_is_paid: false,
-                    order_payment_currency: 'USD',
-                    customer: '',
-                    advance_payment_amount: '',
-                    advance_payment_currency: 'USD',
-                    status: 'ordered',
-                  });
+                  setFormData(newOrderFormDefaults());
                 }}
               >
                 Cancel

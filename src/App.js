@@ -25,6 +25,7 @@ import Users from './pages/Users';
 import Customers from './pages/Customers';
 import Dispatchers from './pages/Dispatchers';
 import Workers from './pages/Workers';
+import Jarimalar from './pages/Jarimalar';
 import './App.css';
 
 function App() {
@@ -199,6 +200,14 @@ function App() {
               element={
                 <ProtectedRoute permission="workers.view">
                   <Workers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="jarimalar"
+              element={
+                <ProtectedRoute permission="penalties.manage">
+                  <Jarimalar />
                 </ProtectedRoute>
               }
             />

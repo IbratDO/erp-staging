@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
+import { usePermissions } from '../hooks/usePermissions';
 import useCbuExchangeRate from '../hooks/useCbuExchangeRate';
 import { formatDisplayAmount } from '../utils/currencyFormat';
 import {
@@ -66,6 +67,11 @@ export default function SaleDeliverySettlementForm({
   onAfterStepRecorded,
   showNotification,
 }) {
+  const { hasAnyPermission } = usePermissions();
+  const canPayDispatchFee = hasAnyPermission([
+    'sales.delivery_pay_dispatch_fee',
+    'sales.complete_pay',
+  ]);
   const [sale, setSale] = useState(null);
   const [step1, setStep1] = useState(() => emptyPaymentFormState());
   const [step2, setStep2] = useState(() => emptyPaymentFormState());
@@ -453,7 +459,17 @@ export default function SaleDeliverySettlementForm({
         </div>
       ) : null}
 
-      {activeStep === 3 ? (
+      {activeStep === 3 && !canPayDispatchFee ? (
+        <div className="form-card" style={{ marginBottom: 20 }}>
+          <h2>Settlement — Sale #{sale.id}</h2>
+          <p style={{ color: '#666', margin: 0, fontSize: '0.9em', lineHeight: 1.45 }}>
+            Courier steps are recorded. Shop staff must pay the dispatch fee (if any) and complete the sale — you
+            cannot pay from company balances as a dispatcher.
+          </p>
+        </div>
+      ) : null}
+
+      {activeStep === 3 && canPayDispatchFee ? (
         <div className="form-card" style={{ marginBottom: 20 }}>
           <h2>
             {needsDispatchFeePayment

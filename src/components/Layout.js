@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
+import { getRoleDisplayName } from '../utils/permissions';
 import './Layout.css';
 
 const Layout = () => {
   const { user, logout } = useAuth();
-  const { menuItems, roleCode } = usePermissions();
+  const { menuItems } = usePermissions();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [inventoryOpen, setInventoryOpen] = useState(false);
@@ -20,9 +21,7 @@ const Layout = () => {
   const isActive = (path) => location.pathname === path;
   const isInventoryActive = () => location.pathname.startsWith('/inventory');
 
-  const displayRole =
-    user?.role_name ||
-    (roleCode ? roleCode.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : '');
+  const displayRole = getRoleDisplayName(user);
 
   return (
     <div className="layout">

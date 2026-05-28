@@ -108,7 +108,6 @@ const Finance = () => {
   const [expenseFormData, setExpenseFormData] = useState({
     expense_type: 'lunch',
     target: '',
-    smm: '',
     currency: 'USD',
     amount: '',
     recipient: '',
@@ -126,15 +125,6 @@ const Finance = () => {
     { value: 'other', label: 'Other' },
   ];
 
-  const EXPENSE_SMM_OPTIONS = [
-    { value: 'instagram', label: 'Instagram' },
-    { value: 'telegram', label: 'Telegram' },
-    { value: 'facebook', label: 'Facebook' },
-    { value: 'tiktok', label: 'TikTok' },
-    { value: 'youtube', label: 'YouTube' },
-    { value: 'other', label: 'Other' },
-    { value: 'none', label: 'Not applicable' },
-  ];
   const [incomeFormData, setIncomeFormData] = useState({
     currency: 'USD',
     amount: '',
@@ -152,10 +142,12 @@ const Finance = () => {
   });
 
   useEffect(() => {
-    fetchWorkers();
+    if (canCreateManual) {
+      fetchWorkers();
+    }
     fetchRecords();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  }, [filter, canCreateManual]);
 
   const fetchWorkers = async () => {
     try {
@@ -233,7 +225,6 @@ const Finance = () => {
         record_type: 'expense',
         expense_type: expenseFormData.expense_type,
         target: expenseFormData.target || null,
-        smm: expenseFormData.smm || null,
         amount: expenseFormData.amount || 0,
         currency: expenseFormData.currency,
         payment_type: 'cash',
@@ -247,7 +238,6 @@ const Finance = () => {
       setExpenseFormData({
         expense_type: 'lunch',
         target: '',
-        smm: '',
         currency: 'USD',
         amount: '',
         recipient: '',
@@ -255,7 +245,9 @@ const Finance = () => {
         pay_immediately: true,
       });
       fetchRecords();
-      fetchWorkers();
+      if (canCreateManual) {
+        fetchWorkers();
+      }
     } catch (error) {
       console.error('Error creating expense:', error);
       // Handle validation errors from DRF
@@ -371,6 +363,7 @@ const Finance = () => {
                   <option value="rent">Rent</option>
                   <option value="delivery">Delivery</option>
                   <option value="cargo">Cargo</option>
+                  <option value="smm">SMM</option>
                   <option value="other">Other</option>
                 </select>
               </div>
@@ -382,20 +375,6 @@ const Finance = () => {
                 >
                   <option value="">— Select —</option>
                   {EXPENSE_TARGET_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>SMM</label>
-                <select
-                  value={expenseFormData.smm}
-                  onChange={(e) => setExpenseFormData({ ...expenseFormData, smm: e.target.value })}
-                >
-                  <option value="">— Select —</option>
-                  {EXPENSE_SMM_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>
@@ -613,6 +592,7 @@ const Finance = () => {
                     <option value="office_supplies">Office Supplies</option>
                     <option value="utilities">Utilities</option>
                     <option value="rent">Rent</option>
+                    <option value="smm">SMM</option>
                     <option value="other">Other</option>
                   </select>
                 </div>

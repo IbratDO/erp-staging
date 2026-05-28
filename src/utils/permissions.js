@@ -24,6 +24,7 @@ export const ROUTE_PERMISSIONS = {
   '/customers': 'customers.view',
   '/dispatchers': 'dispatch.view',
   '/workers': 'workers.view',
+  '/jarimalar': 'penalties.manage',
 };
 
 /** Paths each role may see in the sidebar (null = permission-based only). */
@@ -36,6 +37,7 @@ export const ROLE_VISIBLE_MENU_PATHS = {
     '/orders',
     '/sales',
     '/returns',
+    '/customers',
     '/dispatchers',
   ],
   dispatcher: ['/dispatchers'],
@@ -43,9 +45,10 @@ export const ROLE_VISIBLE_MENU_PATHS = {
 
 /** Paths hidden for a role even when a permission would allow them. */
 export const ROLE_HIDDEN_MENU_PATHS = {
-  ceo: ['/users', '/audit-logs', '/workers', '/customers', '/bonus-rules'],
+  ceo: ['/users', '/audit-logs', '/workers', '/customers', '/bonus-rules', '/equity', '/fixed-assets'],
   admin: ['/bonus-rules'],
   investor: ['/users', '/workers', '/audit-logs', '/bonus-rules'],
+  sales_manager: ['/customers', '/inventory/packages'],
 };
 
 /** Sidebar menu definitions with required permission codes */
@@ -65,6 +68,7 @@ export const MENU_ITEMS = [
   { path: '/orders', label: 'Orders', icon: '🛒', permission: 'orders.view' },
   { path: '/sales', label: 'Sales', icon: '💰', permission: 'sales.view' },
   { path: '/returns', label: 'Returns', icon: '↩️', permission: 'returns.view' },
+  { path: '/dispatchers', label: 'Dispatchers', icon: '🚚', permission: 'dispatch.view' },
   { path: '/receivables-payables', label: 'Receivables / Payables', icon: '📑', permission: 'receivables.view' },
   { path: '/finance', label: 'Other Financial Records', icon: '💵', permission: 'finance.view' },
   { path: '/equity', label: 'Equity', icon: '🏛️', permission: 'equity.view' },
@@ -73,7 +77,7 @@ export const MENU_ITEMS = [
   { path: '/balance-sheet', label: 'Balance Sheet', icon: '📊', permission: 'finance.balance_sheet' },
   { path: '/money-balance', label: 'Money Balance', icon: '💳', permission: 'cash.view' },
   { path: '/customers', label: 'Customers', icon: '👥', permission: 'customers.view' },
-  { path: '/dispatchers', label: 'Dispatchers', icon: '🚚', permission: 'dispatch.view' },
+  { path: '/jarimalar', label: 'Jarimalar', icon: '⚠️', permission: 'penalties.manage' },
   { path: '/workers', label: 'Workers', icon: '👷', permission: 'workers.view' },
   { path: '/audit-logs', label: 'Audit Logs', icon: '📝', permission: 'audit_logs.view' },
   { path: '/bonus-rules', label: 'Bonus Rules', icon: '🎁', permission: 'bonus.manage' },
@@ -86,10 +90,17 @@ export function normalizePermissions(user) {
   return [];
 }
 
+function viewAllCodeForView(code) {
+  if (!code?.endsWith('.view') || code.endsWith('.view_all')) return null;
+  return `${code.slice(0, -5)}.view_all`;
+}
+
 export function hasPermission(user, code) {
   if (!user || !code) return false;
   const perms = normalizePermissions(user);
-  return perms.includes(code);
+  if (perms.includes(code)) return true;
+  const viewAll = viewAllCodeForView(code);
+  return viewAll != null && perms.includes(viewAll);
 }
 
 export function hasAnyPermission(user, codes = []) {
@@ -112,6 +123,15 @@ export function isCEO(user) {
 
 export function isAdmin(user) {
   return getRoleCode(user) === 'admin';
+}
+
+/** Display label for role (Founder instead of Admin). */
+export function getRoleDisplayName(user) {
+  if (!user) return '';
+  const code = getRoleCode(user);
+  if (code === 'admin') return 'Founder';
+  if (user.role_name) return user.role_name;
+  return code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 export function isSeniorSalesManager(user) {

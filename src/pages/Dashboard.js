@@ -22,6 +22,7 @@ import {
   toggleCrossFilter,
 } from '../utils/dashboardAnalytics';
 import ManagementKpisSection from '../components/ManagementKpisSection';
+import PenaltyDashboardCard from '../components/PenaltyDashboardCard';
 import { usePermissions } from '../hooks/usePermissions';
 import './Dashboard.css';
 
@@ -268,6 +269,7 @@ const Dashboard = () => {
 
       {(!canToggleDashboardTabs || activeTab === DASH_TAB_SALES) && (
         <>
+      <PenaltyDashboardCard />
       <header className="dash-header">
         <div>
           <p className="dash-subtitle dash-subtitle-section">

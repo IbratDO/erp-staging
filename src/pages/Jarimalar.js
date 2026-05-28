@@ -1,0 +1,441 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import api from '../utils/api';
+import { usePermissions } from '../hooks/usePermissions';
+import './TablePage.css';
+
+const EMPTY_FILTERS = {
+  employee: '',
+  currency: '',
+  year: '',
+  month: '',
+  created_by: '',
+};
+
+function managerDisplayName(detail, fallbackId = '') {
+  if (!detail) return fallbackId ? String(fallbackId) : '—';
+  return (
+    [detail.username, detail.first_name, detail.last_name].filter(Boolean).join(' ') ||
+    detail.username ||
+    '—'
+  );
+}
+
+function managerOptionLabel(m) {
+  return (
+    [m.username, m.first_name, m.last_name].filter(Boolean).join(' ') ||
+    m.username ||
+    `User #${m.id}`
+  );
+}
+
+const Jarimalar = () => {
+  const { hasPermission } = usePermissions();
+  const canManage = hasPermission('penalties.manage');
+  const [rows, setRows] = useState([]);
+  const [managers, setManagers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({
+    employee: '',
+    points: '',
+    amount: '',
+    currency: 'USD',
+    reason: '',
+    penalty_date: new Date().toISOString().slice(0, 10),
+  });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [penRes, mgrRes] = await Promise.all([
+        api.get('/penalties/'),
+        api.get('/penalties/managers/'),
+      ]);
+      setRows(penRes.data.results || penRes.data || []);
+      setManagers(mgrRes.data || []);
+    } catch (e) {
+      console.error(e);
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (canManage) load();
+  }, [canManage, load]);
+
+  const assignerOptions = useMemo(() => {
+    const map = new Map();
+    for (const p of rows) {
+      const d = p.created_by_detail;
+      if (d?.id != null) {
+        map.set(d.id, managerDisplayName(d, d.id));
+      }
+    }
+    return [...map.entries()]
+      .map(([id, label]) => ({ id: String(id), label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    return rows.filter((p) => {
+      if (filters.employee && String(p.employee) !== filters.employee) return false;
+      if (filters.currency && (p.currency || 'USD') !== filters.currency) return false;
+      if (filters.created_by && String(p.created_by) !== filters.created_by) return false;
+      if (filters.year || filters.month) {
+        const d = p.penalty_date ? new Date(p.penalty_date) : null;
+        if (!d || Number.isNaN(d.getTime())) return false;
+        if (filters.year && d.getFullYear().toString() !== filters.year) return false;
+        if (filters.month && (d.getMonth() + 1).toString() !== filters.month) return false;
+      }
+      return true;
+    });
+  }, [rows, filters]);
+
+  const columnTotals = useMemo(() => {
+    let points = 0;
+    let usd = 0;
+    let uzs = 0;
+    for (const p of filteredRows) {
+      points += parseFloat(p.points) || 0;
+      const amt = parseFloat(p.amount) || 0;
+      if ((p.currency || 'USD') === 'UZS') uzs += amt;
+      else usd += amt;
+    }
+    return { count: filteredRows.length, points, usd, uzs };
+  }, [filteredRows]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({
+      employee: '',
+      points: '',
+      amount: '',
+      currency: 'USD',
+      reason: '',
+      penalty_date: new Date().toISOString().slice(0, 10),
+    });
+    setShowForm(true);
+  };
+
+  const openEdit = (row) => {
+    setEditing(row);
+    setForm({
+      employee: String(row.employee),
+      points: String(row.points),
+      amount: String(row.amount),
+      currency: row.currency || 'USD',
+      reason: row.reason || '',
+      penalty_date: row.penalty_date,
+    });
+    setShowForm(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const payload = {
+      employee: parseInt(form.employee, 10),
+      points: parseFloat(form.points) || 0,
+      amount: parseFloat(form.amount) || 0,
+      currency: form.currency,
+      reason: form.reason.trim(),
+      penalty_date: form.penalty_date,
+    };
+    try {
+      if (editing) {
+        await api.patch(`/penalties/${editing.id}/`, payload);
+      } else {
+        await api.post('/penalties/', payload);
+      }
+      setShowForm(false);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.detail || err.response?.data?.error || 'Could not save penalty');
+    }
+  };
+
+  const handleDelete = async (row) => {
+    if (!window.confirm('Delete this penalty record?')) return;
+    try {
+      await api.delete(`/penalties/${row.id}/`);
+      load();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Could not delete');
+    }
+  };
+
+  if (!canManage) {
+    return <div className="page-container">You do not have access to Jarimalar.</div>;
+  }
+
+  if (loading) return <div className="page-container">Loading…</div>;
+
+  return (
+    <div className="page-container">
+      <div className="page-header">
+        <h1>Jarimalar</h1>
+        <button type="button" className="btn-primary" onClick={openCreate}>
+          + Add penalty
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="form-card" style={{ marginBottom: 20 }}>
+          <h2>{editing ? 'Edit penalty' : 'New penalty'}</h2>
+          <form onSubmit={handleSubmit}>
+            <div className="form-grid">
+              <div className="form-group">
+                <label>Manager</label>
+                <select
+                  value={form.employee}
+                  onChange={(e) => setForm({ ...form, employee: e.target.value })}
+                  required
+                >
+                  <option value="">Select manager</option>
+                  {managers.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {managerOptionLabel(m)} ({m.role_name || m.role_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Date</label>
+                <input
+                  type="date"
+                  value={form.penalty_date}
+                  onChange={(e) => setForm({ ...form, penalty_date: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Points</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.points}
+                  onChange={(e) => setForm({ ...form, points: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Currency</label>
+                <select
+                  value={form.currency}
+                  onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                >
+                  <option value="USD">USD</option>
+                  <option value="UZS">UZS</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>Reason</label>
+                <textarea
+                  rows={3}
+                  value={form.reason}
+                  onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+              <button type="submit" className="btn-primary">
+                Save
+              </button>
+              <button type="button" className="btn-edit" onClick={() => setShowForm(false)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {!showForm && (
+        <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
+          <h3 className="filter-card__title">Filters</h3>
+          <div className="filter-toolbar">
+            <div className="filter-field">
+              <label>Manager</label>
+              <select
+                value={filters.employee}
+                onChange={(e) => setFilters({ ...filters, employee: e.target.value })}
+              >
+                <option value="">All managers</option>
+                {managers.map((m) => (
+                  <option key={m.id} value={String(m.id)}>
+                    {managerOptionLabel(m)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-field">
+              <label>Currency</label>
+              <select
+                value={filters.currency}
+                onChange={(e) => setFilters({ ...filters, currency: e.target.value })}
+              >
+                <option value="">All currencies</option>
+                <option value="USD">USD</option>
+                <option value="UZS">UZS</option>
+              </select>
+            </div>
+            <div className="filter-field">
+              <label>Assigned by</label>
+              <select
+                value={filters.created_by}
+                onChange={(e) => setFilters({ ...filters, created_by: e.target.value })}
+              >
+                <option value="">All assigners</option>
+                {assignerOptions.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-field">
+              <label>Year</label>
+              <select
+                value={filters.year}
+                onChange={(e) => setFilters({ ...filters, year: e.target.value })}
+              >
+                <option value="">All years</option>
+                {Array.from({ length: 10 }, (_, i) => {
+                  const year = new Date().getFullYear() - i;
+                  return (
+                    <option key={year} value={year.toString()}>
+                      {year}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div className="filter-field">
+              <label>Month</label>
+              <select
+                value={filters.month}
+                onChange={(e) => setFilters({ ...filters, month: e.target.value })}
+              >
+                <option value="">All months</option>
+                <option value="1">January</option>
+                <option value="2">February</option>
+                <option value="3">March</option>
+                <option value="4">April</option>
+                <option value="5">May</option>
+                <option value="6">June</option>
+                <option value="7">July</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+            </div>
+            <div className="filter-toolbar__actions">
+              <button type="button" className="btn-edit" onClick={() => setFilters(EMPTY_FILTERS)}>
+                Clear all
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="table-card">
+        <div className="data-table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Manager</th>
+                <th>Points</th>
+                <th>Amount</th>
+                <th>Reason</th>
+                <th>Assigned by</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center' }}>
+                    {rows.length === 0 ? 'No penalties yet' : 'No penalties match these filters'}
+                  </td>
+                </tr>
+              ) : (
+                filteredRows.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.penalty_date}</td>
+                    <td>{managerDisplayName(p.employee_detail, p.employee)}</td>
+                    <td>{p.points}</td>
+                    <td>
+                      {p.amount} {p.currency}
+                    </td>
+                    <td style={{ maxWidth: 240 }}>{p.reason}</td>
+                    <td>{managerDisplayName(p.created_by_detail)}</td>
+                    <td>
+                      <button type="button" className="btn-edit" onClick={() => openEdit(p)}>
+                        Edit
+                      </button>{' '}
+                      <button type="button" className="btn-delete" onClick={() => handleDelete(p)}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={2} style={{ textAlign: 'right', fontWeight: 600 }}>
+                  Total ({columnTotals.count.toLocaleString()})
+                </td>
+                <td style={{ fontWeight: 600 }}>
+                  {columnTotals.points.toLocaleString(undefined, {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2,
+                  })}
+                </td>
+                <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                  {[
+                    columnTotals.usd > 0
+                      ? `$${columnTotals.usd.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}`
+                      : null,
+                    columnTotals.uzs > 0
+                      ? `${columnTotals.uzs.toLocaleString(undefined, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        })} UZS`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || '—'}
+                </td>
+                <td colSpan={3}>—</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Jarimalar;

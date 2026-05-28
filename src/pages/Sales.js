@@ -99,7 +99,7 @@ const SALE_SORT_ACCESSORS = {
     if (d.dispatch_type === 'bts' && !d.dispatcher_name) return 'bts';
     return String(d.dispatcher_name ?? '').toLowerCase();
   },
-  sale_date: (s) => new Date(s.sale_date).getTime() || 0,
+  sale_date: (s) => new Date(s.display_date || s.sale_date).getTime() || 0,
 };
 
 const SALE_DISPLAY_SORT_ACCESSORS = Object.fromEntries(
@@ -2512,7 +2512,7 @@ const Sales = () => {
                   return (
                     <tr key={row.key} style={{ backgroundColor: saleRowBackground(sale) }}>
                       <td>#{sale.id}</td>
-                      <td>{new Date(sale.sale_date).toLocaleString()}</td>
+                      <td>{new Date(sale.display_date || sale.sale_date).toLocaleString()}</td>
                       <td>{renderSaleActionsCell(sale)}</td>
                       {renderSaleProductCells(sale)}
                     </tr>

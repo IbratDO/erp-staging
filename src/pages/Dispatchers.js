@@ -109,7 +109,6 @@ const Dispatchers = () => {
   const canDeliverySettle = hasAnyPermission([
     'sales.delivery_customer_paid',
     'sales.delivery_shop_received',
-    'sales.delivery_pay_dispatch_fee',
   ]);
   const canShowCompleteActions = isDispatcherRole
     ? canDeliveryReceive
