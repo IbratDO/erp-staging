@@ -3,6 +3,7 @@ import api from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import CurrencyConversionForm from '../components/CurrencyConversionForm';
 import './TablePage.css';
 
 /** Table columns: one per currency (legacy *_cash and *_card ledger buckets roll up here). */
@@ -154,6 +155,7 @@ const MoneyBalance = () => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdjustForm, setShowAdjustForm] = useState(false);
+  const [showConversionForm, setShowConversionForm] = useState(false);
   const [adjustFormData, setAdjustFormData] = useState({
     balance_type: 'usd_cash',
     amount: '',
@@ -294,9 +296,29 @@ const MoneyBalance = () => {
       <div className="page-header">
         <h1>Money Balance</h1>
         {isAdmin && (
-          <button className="btn-primary" onClick={() => setShowAdjustForm(!showAdjustForm)}>
-            {showAdjustForm ? 'Cancel' : '+ Adjust Balance'}
-          </button>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                setShowConversionForm(false);
+                setShowAdjustForm(!showAdjustForm);
+              }}
+            >
+              {showAdjustForm ? 'Cancel' : '+ Adjust Balance'}
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ background: '#0d6efd' }}
+              onClick={() => {
+                setShowAdjustForm(false);
+                setShowConversionForm(!showConversionForm);
+              }}
+            >
+              {showConversionForm ? 'Cancel' : 'Currency Conversion'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -325,6 +347,16 @@ const MoneyBalance = () => {
           </div>
         ))}
       </div>
+
+      {showConversionForm && isAdmin && (
+        <CurrencyConversionForm
+          onSuccess={async () => {
+            setShowConversionForm(false);
+            await Promise.all([fetchBalances(), fetchTransactions()]);
+          }}
+          onCancel={() => setShowConversionForm(false)}
+        />
+      )}
 
       {showAdjustForm && isAdmin && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
@@ -433,6 +465,7 @@ const MoneyBalance = () => {
               <option value="delivery_expense">Delivery Expense</option>
               <option value="other_expense">Other Expense</option>
               <option value="other_income">Other Income</option>
+              <option value="currency_conversion">Currency Conversion</option>
             </select>
           </div>
           <div className="filter-field">
@@ -564,7 +597,11 @@ const MoneyBalance = () => {
                 displayTransactions.map((transaction) => (
                   <tr key={transaction.id}>
                     <td>{new Date(transaction.timestamp).toLocaleString()}</td>
-                    <td>{transaction.transaction_type.replace(/_/g, ' ')}</td>
+                    <td>
+                      {transaction.transaction_type === 'currency_conversion'
+                        ? 'Currency conversion'
+                        : transaction.transaction_type.replace(/_/g, ' ')}
+                    </td>
                     <td style={{ fontSize: '0.85em', color: '#555' }}>
                       {transaction.balance_detail?.balance_type?.replace(/_/g, ' ') || '—'}
                     </td>
@@ -586,7 +623,19 @@ const MoneyBalance = () => {
                     <td>{transaction.related_sale ? `Sale #${transaction.related_sale}` : '—'}</td>
                     <td>{transaction.related_order ? `Order #${transaction.related_order}` : '—'}</td>
                     <td>{transaction.created_by_detail?.username || '—'}</td>
-                    <td>{transaction.notes || '—'}</td>
+                    <td style={{ maxWidth: 320, fontSize: '0.85em' }}>
+                      {transaction.conversion_detail ? (
+                        <span title={transaction.notes || ''}>
+                          {transaction.conversion_detail.direction_label}
+                          {transaction.conversion_detail.pl_effect_usd &&
+                          Math.abs(parseFloat(transaction.conversion_detail.pl_effect_usd)) > 0.005
+                            ? ` · P&L $${parseFloat(transaction.conversion_detail.pl_effect_usd).toFixed(2)}`
+                            : ''}
+                        </span>
+                      ) : (
+                        transaction.notes || '—'
+                      )}
+                    </td>
                   </tr>
                 ))
               )}

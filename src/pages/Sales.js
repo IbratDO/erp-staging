@@ -16,6 +16,8 @@ import { layerSalePickerLabel, resolveLayerListPrice } from '../utils/productCos
 import {
   computeAdvanceRemainingDue,
   saleHasOrderAdvance,
+  computeReservedPaymentMeta,
+  buildSplitCurrencyConfirmMessage,
 } from '../utils/saleCompletePayHelpers';
 import { runSalePaymentSubmitFlow } from '../utils/salePaymentFlowHelpers';
 import useCbuExchangeRate from '../hooks/useCbuExchangeRate';
@@ -213,24 +215,6 @@ function applyListDiscountFinal(listNum, discNum, finalNum, saleCur) {
     selling_price: formatSalePriceForCurrency(final, saleCur),
     discount_price: formatDiscountForCurrency(discount, saleCur),
   };
-}
-
-/** Same shortfall rules as Complete & Pay — reserved balance uses total_amount − deposit. */
-function computeReservedCompletionShortfall(sale, uzsStr, usdStr) {
-  if (!sale) return { needsDiscountChoice: false, mixed: false };
-  const deposit = sale.deposit_received ? parseFloat(sale.deposit_amount || 0) : 0;
-  const due = parseFloat(sale.total_amount || 0) - deposit;
-  const uzsT = parseFloat(uzsStr) || 0;
-  const usdT = parseFloat(usdStr) || 0;
-  const sc = sale.sale_currency || 'USD';
-  if (uzsT > 0 && usdT > 0) {
-    return { needsDiscountChoice: false, mixed: true, due, sc };
-  }
-  const paid = sc === 'USD' ? usdT : uzsT;
-  const short = due - paid;
-  const needsDiscountChoice =
-    short > 0.005 && ((sc === 'USD' && uzsT === 0) || (sc === 'UZS' && usdT === 0));
-  return { needsDiscountChoice, mixed: false, due, short, sc, paid };
 }
 
 // ----- PackageLinesSelector: compact multi-package row editor -----
@@ -935,6 +919,8 @@ const Sales = () => {
   const [showCompleteFromOrderForm, setShowCompleteFromOrderForm] = useState(false);
   const { exchangeRate: cfoExchangeRate, exchangeRateError: cfoExchangeRateError } =
     useCbuExchangeRate(showCompleteFromOrderForm);
+  const { exchangeRate: sellReservedExchangeRate, exchangeRateError: sellReservedExchangeRateError } =
+    useCbuExchangeRate(showSellReservedForm);
   const [completeFromOrderPackageLines, setCompleteFromOrderPackageLines] = useState(EMPTY_PKG_LINES());
   const [completeFromOrderData, setCompleteFromOrderData] = useState({
     saleId: null,
@@ -1313,17 +1299,43 @@ const Sales = () => {
     e.preventDefault();
     try {
       const sale = sales.find((s) => s.id === sellReservedData.saleId);
-      const meta = computeReservedCompletionShortfall(
+      const cbuRate = sellReservedExchangeRate?.rate ?? null;
+      const meta = computeReservedPaymentMeta(
         sale,
         sellReservedData.uzs,
-        sellReservedData.usd
+        sellReservedData.usd,
+        cbuRate,
       );
-      if (meta.mixed) {
+      const uzsT = parseFloat(sellReservedData.uzs) || 0;
+      const usdT = parseFloat(sellReservedData.usd) || 0;
+      if (uzsT + usdT === 0) {
+        showNotification('Please enter at least one payment amount.', 'error');
+        return;
+      }
+      if (meta.needsRate) {
         showNotification(
-          'Pay in one currency only (UZS or USD) when the amount is less than the total, matching the sale list price currency.',
-          'error'
+          sellReservedExchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
+          'error',
         );
         return;
+      }
+      if (meta.splitCurrency) {
+        if (
+          !window.confirm(
+            buildSplitCurrencyConfirmMessage({
+              sale,
+              uzsAmount: uzsT,
+              usdAmount: usdT,
+              due: meta.due,
+              sc: meta.sc,
+              cbuRate,
+              paidInSaleCurrency: meta.paid,
+              exchangeRate: sellReservedExchangeRate,
+            }),
+          )
+        ) {
+          return;
+        }
       }
       if (meta.needsDiscountChoice && sellReservedData.balance_shortfall_type !== 'discount') {
         showNotification(
@@ -1333,9 +1345,12 @@ const Sales = () => {
         return;
       }
       const payload = {
-        uzs: parseFloat(sellReservedData.uzs) || 0,
-        usd: parseFloat(sellReservedData.usd) || 0,
+        uzs: uzsT,
+        usd: usdT,
       };
+      if (sellReservedExchangeRate?.rate && (meta.splitCurrency || meta.crossCurrency)) {
+        payload.exchange_rate = sellReservedExchangeRate.rate;
+      }
       if (meta.needsDiscountChoice) {
         payload.balance_shortfall_type = 'discount';
       }
@@ -1353,10 +1368,11 @@ const Sales = () => {
   const sellReservedSaleForForm = showSellReservedForm
     ? sales.find((s) => s.id === sellReservedData.saleId)
     : null;
-  const sellReservedPayMeta = computeReservedCompletionShortfall(
+  const sellReservedPayMeta = computeReservedPaymentMeta(
     sellReservedSaleForForm,
     sellReservedData.uzs,
-    sellReservedData.usd
+    sellReservedData.usd,
+    sellReservedExchangeRate?.rate ?? null,
   );
 
   const renderSaleActionsCell = (sale, groupSales = null) => {
@@ -1967,12 +1983,42 @@ const Sales = () => {
                   value={sellReservedData.usd ?? ''}
                   onChange={(e) => setSellReservedData({ ...sellReservedData, usd: e.target.value })} />
               </div>
+              {sellReservedPayMeta.needsRate && (
+                <p style={{ gridColumn: '1 / -1', margin: 0, fontSize: '0.9em', color: '#c05621' }}>
+                  {sellReservedExchangeRateError || 'Loading CBU exchange rate for split payment…'}
+                </p>
+              )}
+              {sellReservedSaleForForm && !sellReservedPayMeta.needsRate && (
+                <p style={{ gridColumn: '1 / -1', margin: 0, fontSize: '0.9em', color: '#444' }}>
+                  <strong>Balance due:</strong>{' '}
+                  {formatDisplayAmount(
+                    (sellReservedSaleForForm.deposit_received
+                      ? parseFloat(sellReservedSaleForForm.total_amount || 0) -
+                        parseFloat(sellReservedSaleForForm.deposit_amount || 0)
+                      : parseFloat(sellReservedSaleForForm.total_amount || 0)),
+                    sellReservedPayMeta.sc,
+                  )}
+                  {sellReservedPayMeta.paid != null &&
+                  (parseFloat(sellReservedData.uzs) || parseFloat(sellReservedData.usd)) ? (
+                    <>
+                      {' '}
+                      ·{' '}
+                      <strong>
+                        {sellReservedPayMeta.splitCurrency || sellReservedPayMeta.crossCurrency
+                          ? `Total at CBU rate (${sellReservedPayMeta.sc}):`
+                          : `Entered (${sellReservedPayMeta.sc}):`}
+                      </strong>{' '}
+                      {formatDisplayAmount(sellReservedPayMeta.paid, sellReservedPayMeta.sc)}
+                    </>
+                  ) : null}
+                </p>
+              )}
               {sellReservedPayMeta.needsDiscountChoice && (
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <p style={{ margin: '0 0 10px 0', fontSize: '0.9em', color: '#555', lineHeight: 1.45 }}>
                     Payment is below the balance due. Select <strong>Discount</strong> to record the remainder (
                     {sellReservedPayMeta.short != null
-                      ? `${sellReservedPayMeta.short.toFixed(2)} ${sellReservedPayMeta.sc}`
+                      ? `${Number(sellReservedPayMeta.short).toFixed(2)} ${sellReservedPayMeta.sc}`
                       : sellReservedPayMeta.sc}
                     ), or collect more.
                   </p>

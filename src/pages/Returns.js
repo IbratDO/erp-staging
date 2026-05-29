@@ -1335,7 +1335,11 @@ const Returns = () => {
               </div>
               {refundMeta.paid != null && (parseFloat(refundFormData.uzs) || parseFloat(refundFormData.usd)) ? (
                 <div style={{ marginTop: 6 }}>
-                  <strong>Entered (in {refundMeta.sc}):</strong>{' '}
+                  <strong>
+                    {refundMeta.splitCurrency || refundMeta.crossCurrency
+                      ? `Total at CBU rate (in ${refundMeta.sc}):`
+                      : `Entered (in ${refundMeta.sc}):`}
+                  </strong>{' '}
                   {formatDisplayAmount(refundMeta.paid, refundMeta.sc)}
                   {refundMeta.needs && (
                     <span style={{ color: '#c62828', marginLeft: 8 }}>

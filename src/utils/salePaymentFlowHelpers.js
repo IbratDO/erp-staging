@@ -8,7 +8,7 @@ import {
   buildCrossCurrencyAdvanceConfirmMessage,
   buildSplitCurrencyConfirmMessage,
   buildCompleteSaleRequest,
-  paymentTotalInSaleCurrency,
+  paymentAmountInSaleCurrency,
 } from './saleCompletePayHelpers';
 import { formatDisplayAmount } from './currencyFormat';
 
@@ -76,7 +76,7 @@ export async function runSalePaymentSubmitFlow({
     if (!window.confirm(buildCrossCurrencyAdvanceConfirmMessage(advanceCheck, exchangeRate))) {
       return { ok: false };
     }
-  } else if (meta.splitCurrency && uzsT > 0 && usdT > 0) {
+  } else if ((meta.splitCurrency || meta.crossCurrency) && (uzsT > 0 || usdT > 0)) {
     if (
       !window.confirm(
         buildSplitCurrencyConfirmMessage({
@@ -131,15 +131,7 @@ export async function runSalePaymentSubmitFlow({
   return { ok: true, requestData, meta };
 }
 
-/** Total in sale list currency from UZS/USD legs (for step 1 courier collection display/API). */
+/** Total in sale list currency from UZS/USD legs (for delivery settlement display/API). */
 export function combinedPaymentInSaleCurrency(sale, uzsStr, usdStr, cbuRate) {
-  const sc = (sale?.sale_currency || 'USD').toUpperCase();
-  const uzsT = parseFloat(uzsStr) || 0;
-  const usdT = parseFloat(usdStr) || 0;
-  if (uzsT <= 0 && usdT <= 0) return null;
-  if ((uzsT > 0 && usdT > 0) || (sc === 'USD' && uzsT > 0 && usdT === 0) || (sc === 'UZS' && usdT > 0 && uzsT === 0)) {
-    if (!cbuRate) return null;
-    return paymentTotalInSaleCurrency(uzsT, usdT, sc, cbuRate);
-  }
-  return sc === 'USD' ? usdT : uzsT;
+  return paymentAmountInSaleCurrency(uzsStr, usdStr, sale?.sale_currency, cbuRate);
 }

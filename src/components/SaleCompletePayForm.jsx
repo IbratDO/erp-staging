@@ -117,7 +117,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         }
       } else if (advanceCheck.needsCrossCurrencyConfirm) {
         if (!window.confirm(buildCrossCurrencyAdvanceConfirmMessage(advanceCheck, exchangeRate))) return;
-      } else if (meta.splitCurrency && uzsT > 0 && usdT > 0) {
+      } else if ((meta.splitCurrency || meta.crossCurrency) && (uzsT > 0 || usdT > 0)) {
         if (
           !window.confirm(
             buildSplitCurrencyConfirmMessage({
@@ -311,21 +311,21 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                     {shortfallMeta.sc === 'USD' ? 'UZS' : 'USD'} or split across both (CBU rate)
                   </>
                 )}
-                {shortfallMeta.splitCurrency && shortfallMeta.paid != null && (
+                {shortfallMeta.paid != null && (parseFloat(paymentFormData.uzs) || parseFloat(paymentFormData.usd)) ? (
                   <>
                     {' '}
-                    · <strong>Total at CBU rate (in {shortfallMeta.sc}):</strong>{' '}
+                    ·{' '}
+                    <strong>
+                      {shortfallMeta.splitCurrency || shortfallMeta.crossCurrency
+                        ? `Total at CBU rate (in ${shortfallMeta.sc}):`
+                        : `Entered (in ${shortfallMeta.sc}):`}
+                    </strong>{' '}
                     {shortfallMeta.sc === 'UZS'
                       ? shortfallMeta.paid.toLocaleString(undefined, { maximumFractionDigits: 0 })
-                      : shortfallMeta.paid.toFixed(2)}
+                      : shortfallMeta.paid.toFixed(2)}{' '}
+                    {shortfallMeta.sc === 'UZS' ? 'UZS' : 'USD'}
                   </>
-                )}
-                {!shortfallMeta.splitCurrency && shortfallMeta.paid != null && (
-                  <>
-                    {' '}
-                    · <strong>Entered in {shortfallMeta.sc} fields:</strong> {shortfallMeta.paid.toFixed(2)}
-                  </>
-                )}
+                ) : null}
               </p>
             </div>
           )}

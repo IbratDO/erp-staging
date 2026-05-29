@@ -11,7 +11,8 @@ import {
  * from the row after they are recorded (sale data advances to the next timestamp).
  */
 export default function ShopDeliverySettlementButtons({ sale, onOpenSettlement, classNameButton = 'btn-status' }) {
-  const { hasAnyPermission } = usePermissions();
+  const { hasAnyPermission, hasPermission } = usePermissions();
+  const canShopRemittance = hasPermission('sales.delivery_shop_received');
   const canPayDispatchFee = hasAnyPermission([
     'sales.delivery_pay_dispatch_fee',
     'sales.complete_pay',
@@ -50,6 +51,13 @@ export default function ShopDeliverySettlementButtons({ sale, onOpenSettlement, 
     return <button {...btnProps}>Payment received by dispatch</button>;
   }
   if (step === 2) {
+    if (!canShopRemittance) {
+      return (
+        <span style={{ fontSize: '0.82rem', color: '#64748b', lineHeight: 1.3 }}>
+          Awaiting shop: payment remittance
+        </span>
+      );
+    }
     return <button {...btnProps}>Payment received by shop</button>;
   }
   return <button {...btnProps}>{shopDeliverySettlementStep3Label(sale)}</button>;

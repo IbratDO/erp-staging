@@ -9,6 +9,7 @@ import {
   computeAdvanceRemainingDue,
   computePaymentShortfallMeta,
   emptyPaymentFormState,
+  paymentNeedsCbuConversion,
 } from '../utils/saleCompletePayHelpers';
 import {
   runSalePaymentSubmitFlow,
@@ -45,7 +46,13 @@ function DeliveryPaymentAmountFields({ form, setForm, meta }) {
             {meta.paid != null ? (
               <>
                 {' '}
-                · <strong>Entered ({meta.sc}):</strong> {formatDisplayAmount(meta.paid, meta.sc)}
+                ·{' '}
+                <strong>
+                  {meta.splitCurrency || meta.crossCurrency
+                    ? `Total at CBU rate (${meta.sc}):`
+                    : `Entered (${meta.sc}):`}
+                </strong>{' '}
+                {formatDisplayAmount(meta.paid, meta.sc)}
               </>
             ) : meta.mixed ? (
               <span style={{ color: '#b45309' }}> — loading CBU rate…</span>
@@ -67,7 +74,8 @@ export default function SaleDeliverySettlementForm({
   onAfterStepRecorded,
   showNotification,
 }) {
-  const { hasAnyPermission } = usePermissions();
+  const { hasAnyPermission, hasPermission } = usePermissions();
+  const canShopRemittance = hasPermission('sales.delivery_shop_received');
   const canPayDispatchFee = hasAnyPermission([
     'sales.delivery_pay_dispatch_fee',
     'sales.complete_pay',
@@ -332,7 +340,12 @@ export default function SaleDeliverySettlementForm({
           return;
         }
         const tol = dispatchFeeCurrency === 'UZS' ? 1 : 0.02;
-        if (Math.abs(paidTotal - dispatchFeeDue) > tol) {
+        const isCrossCurrencyOnly =
+          (dispatchFeeCurrency === 'UZS' && usdT > 0 && uzsT === 0) ||
+          (dispatchFeeCurrency === 'USD' && uzsT > 0 && usdT === 0);
+        const amountMismatch = Math.abs(paidTotal - dispatchFeeDue) > tol;
+        let confirmDispatchFee = false;
+        if (amountMismatch) {
           const ok = window.confirm(
             [
               'Confirm “Pay for dispatch & complete sale”?',
@@ -346,10 +359,31 @@ export default function SaleDeliverySettlementForm({
             ].join('\n'),
           );
           if (!ok) return;
+          confirmDispatchFee = true;
+        } else if (isCrossCurrencyOnly) {
+          const ok = window.confirm(
+            [
+              'Confirm dispatch fee payment?',
+              '',
+              `Fee on record: ${formatDisplayAmount(dispatchFeeDue, dispatchFeeCurrency)}`,
+              `Payment at CBU rate (in ${dispatchFeeCurrency}): ${formatDisplayAmount(paidTotal, dispatchFeeCurrency)}`,
+              `UZS: ${uzsT.toFixed(2)} · USD: ${usdT.toFixed(2)}`,
+              exchangeRate?.label ? `\n${exchangeRate.label}` : '',
+              '',
+              'Continue?',
+            ]
+              .filter(Boolean)
+              .join('\n'),
+          );
+          if (!ok) return;
+          confirmDispatchFee = true;
         }
         body.uzs = uzsT;
         body.usd = usdT;
         if (exchangeRate?.rate) body.exchange_rate = exchangeRate.rate;
+        if (confirmDispatchFee) {
+          body.confirm_dispatch_fee_payment = true;
+        }
       }
       await api.post(`/sales/${sale.id}/delivery_pay_dispatch_fee/`, body);
       showNotification?.(
@@ -401,7 +435,17 @@ export default function SaleDeliverySettlementForm({
         </div>
       ) : null}
 
-      {activeStep === 2 ? (
+      {activeStep === 2 && !canShopRemittance ? (
+        <div className="form-card" style={{ marginBottom: 20 }}>
+          <h2>Settlement — Sale #{sale.id}</h2>
+          <p style={{ color: '#666', margin: 0, fontSize: '0.9em', lineHeight: 1.45 }}>
+            Courier collection is recorded. Shop staff must record payment received by shop — dispatchers cannot
+            book shop remittance or sale income.
+          </p>
+        </div>
+      ) : null}
+
+      {activeStep === 2 && canShopRemittance ? (
         <div className="form-card" style={{ marginBottom: 20 }}>
           <h2>Payment received by shop — Sale #{sale.id}</h2>
           <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
@@ -496,9 +540,20 @@ export default function SaleDeliverySettlementForm({
                     {step3CombinedTotal != null ? (
                       <>
                         {' '}
-                        · <strong>Entered:</strong>{' '}
+                        ·{' '}
+                        <strong>
+                          {paymentNeedsCbuConversion(
+                            step3Pay.uzs,
+                            step3Pay.usd,
+                            dispatchFeeCurrency,
+                          )
+                            ? `Total at CBU rate (${dispatchFeeCurrency}):`
+                            : 'Entered:'}
+                        </strong>{' '}
                         {formatDisplayAmount(step3CombinedTotal, dispatchFeeCurrency)}
                       </>
+                    ) : step3Pay.uzs || step3Pay.usd ? (
+                      <span style={{ color: '#b45309' }}> — loading CBU rate…</span>
                     ) : null}
                   </p>
                 </div>

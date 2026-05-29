@@ -373,6 +373,43 @@
   grid-column: span 1;
 }
 
+.mgmt-top-products-wide {
+  grid-column: 1 / -1;
+}
+
+.mgmt-top-products-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 20px;
+  margin-top: 8px;
+}
+
+.mgmt-top-products-month h5 {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mgmt-product-list-compact li {
+  padding: 4px 0;
+  font-size: 0.72rem;
+  gap: 6px;
+}
+
+.mgmt-rank-compact {
+  width: 18px;
+  height: 18px;
+  font-size: 0.62rem;
+}
+
+.mgmt-empty-compact {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+}
+
 .mgmt-product-list {
   list-style: none;
   margin: 12px 0 0;

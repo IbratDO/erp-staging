@@ -2,7 +2,8 @@
 
 import {
   PAYMENT_SHORTFALL_TOLERANCE,
-  paymentTotalInSaleCurrency,
+  paymentAmountInSaleCurrency,
+  paymentNeedsCbuConversion,
   paymentHasShortfall,
   uzsToUsd,
   usdToUzs,
@@ -48,24 +49,15 @@ export function computeRefundPaidInDueCurrency(uzsT, usdT, dueCurrency, cbuRate)
   const uzs = parseFloat(uzsT) || 0;
   const usd = parseFloat(usdT) || 0;
   if (uzs <= 0 && usd <= 0) {
-    return { ok: true, paid: 0, needsRate: false, splitCurrency: false };
+    return { ok: true, paid: 0, needsRate: false, splitCurrency: false, crossCurrency: false };
   }
   const splitCurrency = uzs > 0 && usd > 0;
-  const crossSingle =
-    (sc === 'USD' && uzs > 0 && usd === 0) || (sc === 'UZS' && usd > 0 && uzs === 0);
-  if (splitCurrency || crossSingle) {
-    if (!cbuRate) {
-      return { ok: false, paid: null, needsRate: true, splitCurrency };
-    }
-    return {
-      ok: true,
-      paid: paymentTotalInSaleCurrency(uzs, usd, sc, cbuRate),
-      needsRate: false,
-      splitCurrency,
-    };
+  const crossCurrency = paymentNeedsCbuConversion(uzs, usd, sc) && !splitCurrency;
+  const paid = paymentAmountInSaleCurrency(uzsT, usdT, sc, cbuRate);
+  if (paymentNeedsCbuConversion(uzs, usd, sc) && paid === null) {
+    return { ok: false, paid: null, needsRate: true, splitCurrency, crossCurrency };
   }
-  const paid = sc === 'USD' ? usd : uzs;
-  return { ok: true, paid, needsRate: false, splitCurrency: false };
+  return { ok: true, paid, needsRate: false, splitCurrency, crossCurrency };
 }
 
 /**
@@ -115,6 +107,7 @@ export function computeReturnRefundMeta(returnItem, refundFormData, cbuRate) {
   return {
     mixed: false,
     splitCurrency: paidResult.splitCurrency,
+    crossCurrency: paidResult.crossCurrency,
     needs: paymentHasShortfall(due, paid, sc),
     short,
     due,

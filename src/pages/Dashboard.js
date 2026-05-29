@@ -269,7 +269,6 @@ const Dashboard = () => {
 
       {(!canToggleDashboardTabs || activeTab === DASH_TAB_SALES) && (
         <>
-      <PenaltyDashboardCard />
       <header className="dash-header">
         <div>
           <p className="dash-subtitle dash-subtitle-section">
@@ -408,6 +407,7 @@ const Dashboard = () => {
           />
         </div>
       </section>
+      <PenaltyDashboardCard />
         </>
       )}
 

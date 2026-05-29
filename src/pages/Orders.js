@@ -387,6 +387,8 @@ const Orders = () => {
   const [productSearch, setProductSearch] = useState('');
   const [productDropdownOpen, setProductDropdownOpen] = useState(false);
   const productDropdownRef = useRef(null);
+  const orderCreateInFlight = useRef(false);
+  const [orderCreating, setOrderCreating] = useState(false);
   const paymentFormRef = useRef(null);
   const cargoFormRef = useRef(null);
   const moveToInventoryFormRef = useRef(null);
@@ -736,6 +738,7 @@ const Orders = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (orderCreateInFlight.current) return;
     if (!e.target.reportValidity()) return;
     try {
       const qty = parseInt(formData.ordered_quantity, 10) || 0;
@@ -863,6 +866,10 @@ const Orders = () => {
         status: formData.status,
       };
 
+      if (orderCreateInFlight.current) return;
+      orderCreateInFlight.current = true;
+      setOrderCreating(true);
+
       await api.post('/orders/', orderData);
       setShowForm(false);
       setIsNewEshop(false);
@@ -884,6 +891,9 @@ const Orders = () => {
         advMsg || d?.error || d?.detail || (typeof d === 'string' ? d : null) || 'Error creating order',
         'error'
       );
+    } finally {
+      orderCreateInFlight.current = false;
+      setOrderCreating(false);
     }
   };
 
@@ -2040,12 +2050,13 @@ const Orders = () => {
               )}
             </div>
             <div className="form-actions">
-              <button type="submit" className="btn-primary">
-                Create Order
+              <button type="submit" className="btn-primary" disabled={orderCreating}>
+                {orderCreating ? 'Creating…' : 'Create Order'}
               </button>
               <button
                 type="button"
                 className="btn-edit"
+                disabled={orderCreating}
                 onClick={() => {
                   setShowForm(false);
                   setIsNewEshop(false);

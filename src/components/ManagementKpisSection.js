@@ -76,6 +76,10 @@ const tooltipStyle = {
   fontSize: 13,
 };
 
+function productLabel(p) {
+  return [p.category_type, p.brand, p.model, p.color].filter(Boolean).join(' · ');
+}
+
 export default function ManagementKpisSection({ roleCode, availableYears, active }) {
   const show = roleCode === 'admin' || roleCode === 'ceo' || roleCode === 'investor';
   const [data, setData] = useState(null);
@@ -487,22 +491,31 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
           </ResponsiveContainer>
         </MgmtChart>
 
-        <div className="mgmt-chart-card mgmt-top-products">
+        <div className="mgmt-chart-card mgmt-top-products mgmt-top-products-wide">
           <h4>Top 5 products (selected period)</h4>
-          {!data?.top_products?.length ? (
+          {!(data?.top_products_by_month?.length) ? (
             <p className="mgmt-empty">No sales in period</p>
           ) : (
-            <ol className="mgmt-product-list">
-              {data.top_products.map((p, i) => (
-                <li key={`${p.brand}-${p.model}-${i}`}>
-                  <span className="mgmt-rank">{i + 1}</span>
-                  <span className="mgmt-product-detail">
-                    {[p.category_type, p.brand, p.model, p.color].filter(Boolean).join(' · ')}
-                  </span>
-                  <span className="mgmt-product-units">{p.units} units</span>
-                </li>
+            <div className="mgmt-top-products-grid">
+              {data.top_products_by_month.map((block) => (
+                <div key={`${block.year}-${block.month}`} className="mgmt-top-products-month">
+                  <h5>{block.month_label}</h5>
+                  {!block.products?.length ? (
+                    <p className="mgmt-empty mgmt-empty-compact">No sales</p>
+                  ) : (
+                    <ol className="mgmt-product-list mgmt-product-list-compact">
+                      {block.products.map((p, i) => (
+                        <li key={`${block.month}-${p.brand}-${p.model}-${i}`}>
+                          <span className="mgmt-rank mgmt-rank-compact">{i + 1}</span>
+                          <span className="mgmt-product-detail">{productLabel(p)}</span>
+                          <span className="mgmt-product-units">{p.units}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
               ))}
-            </ol>
+            </div>
           )}
         </div>
       </div>

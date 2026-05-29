@@ -48,6 +48,34 @@ export function paymentTotalInSaleCurrency(uzsAmount, usdAmount, saleCurrency, r
   return usdToUzs(usd, rate) + uzs;
 }
 
+/** True when UZS/USD legs must be converted via CBU to compare to list currency. */
+export function paymentNeedsCbuConversion(uzsAmount, usdAmount, saleCurrency) {
+  const sc = (saleCurrency || 'USD').toUpperCase();
+  const uzs = parseFloat(uzsAmount) || 0;
+  const usd = parseFloat(usdAmount) || 0;
+  return (
+    (uzs > 0 && usd > 0) ||
+    (sc === 'USD' && uzs > 0 && usd === 0) ||
+    (sc === 'UZS' && usd > 0 && uzs === 0)
+  );
+}
+
+/**
+ * Payment total in list currency; null when CBU is required but rate is not loaded yet.
+ * Matches backend payment_total_in_sale_currency / _payment_amount_in_sale_currency.
+ */
+export function paymentAmountInSaleCurrency(uzsStr, usdStr, saleCurrency, cbuRate) {
+  const uzsT = parseFloat(uzsStr) || 0;
+  const usdT = parseFloat(usdStr) || 0;
+  if (uzsT <= 0 && usdT <= 0) return null;
+  if (paymentNeedsCbuConversion(uzsT, usdT, saleCurrency)) {
+    if (!cbuRate) return null;
+    return paymentTotalInSaleCurrency(uzsT, usdT, saleCurrency, cbuRate);
+  }
+  const sc = (saleCurrency || 'USD').toUpperCase();
+  return sc === 'USD' ? usdT : uzsT;
+}
+
 function formatAmountForCurrency(amount, currency) {
   const sc = (currency || 'USD').toUpperCase();
   if (sc === 'UZS') {
@@ -323,6 +351,7 @@ export function computePaymentShortfallMeta(sale, paymentFormData, cbuRate) {
       needs: false,
       mixed: false,
       splitCurrency: false,
+      crossCurrency: false,
       short: 0,
       due: null,
       paid: null,
@@ -334,73 +363,48 @@ export function computePaymentShortfallMeta(sale, paymentFormData, cbuRate) {
   const due = computeAdvanceRemainingDue(sale);
   const uzsT = parseFloat(paymentFormData.uzs) || 0;
   const usdT = parseFloat(paymentFormData.usd) || 0;
-  const sc = sale.sale_currency || 'USD';
+  const sc = (sale.sale_currency || 'USD').toUpperCase();
   const hasAdvance = saleHasOrderAdvance(sale);
   const splitCurrency = uzsT > 0 && usdT > 0;
-  const sameSaleCurrencyBuckets =
-    (sc === 'USD' && uzsT === 0) || (sc === 'UZS' && usdT === 0);
+  const needsCbu = paymentNeedsCbuConversion(uzsT, usdT, sc);
+  const crossCurrency = needsCbu && !splitCurrency;
 
-  if (splitCurrency) {
-    if (!cbuRate) {
-      return {
-        needs: false,
-        mixed: true,
-        splitCurrency: true,
-        short: due,
-        sc,
-        due,
-        paid: null,
-        hasOverpayment: false,
-        overpaymentAmount: null,
-        hasAdvance,
-        exceedsRemainingDue: false,
-      };
-    }
-    const paid = paymentTotalInSaleCurrency(uzsT, usdT, sc, cbuRate);
-    const short = due - paid;
-    const exceedsRemainingDue = hasAdvance && paid > due + PAYMENT_SHORTFALL_TOLERANCE;
-    const overpaymentAmount =
-      !hasAdvance && paid > due + PAYMENT_SHORTFALL_TOLERANCE ? paid - due : null;
-    const hasOverpayment =
-      !hasAdvance && !!overpaymentAmount && overpaymentAmount > PAYMENT_SHORTFALL_TOLERANCE;
+  if (needsCbu && !cbuRate && (uzsT > 0 || usdT > 0)) {
     return {
-      needs: paymentHasShortfall(due, paid, sc),
-      mixed: false,
-      splitCurrency: true,
-      short,
+      needs: false,
+      mixed: true,
+      splitCurrency,
+      crossCurrency,
+      short: due,
       sc,
       due,
-      paid,
-      hasOverpayment,
-      overpaymentAmount,
+      paid: null,
+      hasOverpayment: false,
+      overpaymentAmount: null,
       hasAdvance,
-      exceedsRemainingDue,
+      exceedsRemainingDue: false,
     };
   }
 
-  const paid = sc === 'USD' ? usdT : uzsT;
-  const short = due - paid;
+  const paid = paymentAmountInSaleCurrency(paymentFormData.uzs, paymentFormData.usd, sc, cbuRate);
+  const short = paid != null ? due - paid : due;
   const payingOtherCurrency =
     hasAdvance &&
     ((sc === 'USD' && uzsT > 0 && usdT === 0) || (sc === 'UZS' && usdT > 0 && uzsT === 0));
-  const needs =
-    !payingOtherCurrency &&
-    paymentHasShortfall(due, paid, sc) &&
-    ((sc === 'USD' && uzsT === 0) || (sc === 'UZS' && usdT === 0));
   const exceedsRemainingDue =
-    hasAdvance &&
-    sameSaleCurrencyBuckets &&
-    paid > due + PAYMENT_SHORTFALL_TOLERANCE;
+    hasAdvance && paid != null && paid > due + PAYMENT_SHORTFALL_TOLERANCE;
   const overpaymentAmount =
-    !hasAdvance && sameSaleCurrencyBuckets && paid > due + PAYMENT_SHORTFALL_TOLERANCE
-      ? paid - due
-      : null;
+    !hasAdvance && paid != null && paid > due + PAYMENT_SHORTFALL_TOLERANCE ? paid - due : null;
   const hasOverpayment =
     !hasAdvance && !!overpaymentAmount && overpaymentAmount > PAYMENT_SHORTFALL_TOLERANCE;
+  const needs =
+    paid != null && !payingOtherCurrency && paymentHasShortfall(due, paid, sc);
+
   return {
     needs,
     mixed: false,
-    splitCurrency: false,
+    splitCurrency,
+    crossCurrency,
     short,
     sc,
     due,
@@ -409,6 +413,60 @@ export function computePaymentShortfallMeta(sale, paymentFormData, cbuRate) {
     overpaymentAmount,
     hasAdvance,
     exceedsRemainingDue,
+  };
+}
+
+/** Reserved sale: total_amount − deposit; supports combined UZS+USD at CBU rate. */
+export function computeReservedPaymentMeta(sale, uzsStr, usdStr, cbuRate) {
+  if (!sale) {
+    return {
+      needsDiscountChoice: false,
+      needsRate: false,
+      splitCurrency: false,
+      crossCurrency: false,
+    };
+  }
+  const deposit = sale.deposit_received ? parseFloat(sale.deposit_amount || 0) : 0;
+  const due = parseFloat(sale.total_amount || 0) - deposit;
+  const sc = (sale.sale_currency || 'USD').toUpperCase();
+  const uzsT = parseFloat(uzsStr) || 0;
+  const usdT = parseFloat(usdStr) || 0;
+  const splitCurrency = uzsT > 0 && usdT > 0;
+  const crossCurrency =
+    !splitCurrency &&
+    ((sc === 'USD' && uzsT > 0 && usdT === 0) || (sc === 'UZS' && usdT > 0 && uzsT === 0));
+
+  if (uzsT === 0 && usdT === 0) {
+    return { needsDiscountChoice: false, needsRate: false, splitCurrency, crossCurrency, due, sc };
+  }
+
+  if ((splitCurrency || crossCurrency) && !cbuRate) {
+    return {
+      needsDiscountChoice: false,
+      needsRate: true,
+      splitCurrency,
+      crossCurrency,
+      due,
+      sc,
+      uzsT,
+      usdT,
+    };
+  }
+
+  const paid = paymentAmountInSaleCurrency(uzsStr, usdStr, sc, cbuRate);
+  const short = paid != null ? due - paid : due;
+  const needsDiscountChoice = paymentHasShortfall(due, paid, sc);
+  return {
+    needsDiscountChoice,
+    needsRate: false,
+    splitCurrency,
+    crossCurrency,
+    due,
+    paid,
+    short,
+    sc,
+    uzsT,
+    usdT,
   };
 }
 
@@ -424,7 +482,12 @@ export function buildCompleteSaleRequest(paymentFormData, meta, exchangeRate) {
   }
   const uzsT = requestData.uzs;
   const usdT = requestData.usd;
-  if (exchangeRate?.rate && uzsT > 0 && usdT > 0) {
+  const needsCbu =
+    exchangeRate?.rate &&
+    ((uzsT > 0 && usdT > 0) ||
+      meta?.splitCurrency ||
+      (meta?.crossCurrency && (uzsT > 0 || usdT > 0)));
+  if (needsCbu) {
     requestData.exchange_rate = exchangeRate.rate;
   }
   if (paymentFormData.dispatch_payment_needed) {
