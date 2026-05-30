@@ -1,0 +1,73 @@
+{
+  "title": "Workers",
+  "intro": "Sales team members are managed in the Users tab (Sales Manager or Senior Sales Manager role).",
+  "salesTeam": "Sales Team",
+  "table": {
+    "id": "ID",
+    "name": "Name",
+    "login": "Login",
+    "telephone": "Telephone",
+    "notes": "Notes",
+    "actions": "Actions",
+    "noRows": "No workers found",
+    "total": "Total",
+    "workerCount_one": "{{count}} worker",
+    "workerCount_other": "{{count}} workers"
+  },
+  "actions": {
+    "viewPerformance": "View Performance",
+    "viewTransactions": "View Transactions"
+  },
+  "performance": {
+    "title": "Performance: {{name}}",
+    "year": "Year",
+    "month": "Month",
+    "period": "Period",
+    "totalSales": "Total Sales",
+    "completedSales": "Completed Sales",
+    "reservedSales": "Reserved Sales",
+    "pendingSales": "Pending Sales",
+    "totalAmountCompleted": "Total Amount (Completed)",
+    "reservedAmount": "Reserved Amount",
+    "depositsReceived": "Deposits Received",
+    "mixedCurrencyHint": "May mix UZS and USD",
+    "salesDetails": "Sales Details",
+    "noSales": "No sales found for this period",
+    "noSalesman": "No salesman found matching this worker name. Performance statistics are only available for salesmen.",
+    "productFallback": "Product #{{id}}",
+    "productSize": "{{brand}} {{model}} - Size {{size}} ({{color}})"
+  },
+  "saleTypes": {
+    "bought_from_shop": "Shop",
+    "from_order": "From Order",
+    "delivery": "Delivery"
+  },
+  "transactions": {
+    "title": "Transactions: {{name}}",
+    "totalSalary": "Total Salary",
+    "totalLunch": "Total Lunch Expenses",
+    "totalPrepayments": "Total Prepayments",
+    "totalTransactions": "Total Transactions",
+    "history": "Transaction History",
+    "noRows": "No transactions found",
+    "salary": "Salary",
+    "lunch": "Lunch"
+  },
+  "tableCols": {
+    "date": "Date",
+    "product": "Product",
+    "quantity": "Quantity",
+    "price": "Price",
+    "total": "Total",
+    "type": "Type",
+    "status": "Status",
+    "customer": "Customer",
+    "amount": "Amount",
+    "currency": "Currency",
+    "notes": "Notes"
+  },
+  "notifications": {
+    "performanceFailed": "Error fetching worker performance",
+    "transactionsFailed": "Error fetching worker transactions"
+  }
+}

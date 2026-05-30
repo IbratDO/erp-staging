@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallba
 import { createPortal } from 'react-dom';
 import { productSalePickerLabel } from '../utils/productCost';
 import { productMatchesSearch } from '../utils/productSearch';
+import useAppTranslation from '../hooks/useAppTranslation';
 
 /**
  * Dropdown product picker with a search field inside the open panel (not a native select).
@@ -12,7 +13,7 @@ export default function ProductSearchableSelect({
   pickerItems = null,
   value,
   onChange,
-  placeholder = 'Select a product…',
+  placeholder,
   disabled = false,
   className = '',
   triggerClassName = '',
@@ -20,6 +21,10 @@ export default function ProductSearchableSelect({
   emptyHint = null,
   inventoryRows = null,
 }) {
+  const { t } = useAppTranslation('products');
+  const resolvedPlaceholder = placeholder ?? t('picker.selectProduct');
+  const resolvedAriaLabel = ariaLabel ?? t('picker.productsList');
+
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [panelPos, setPanelPos] = useState(null);
@@ -78,9 +83,9 @@ export default function ProductSearchableSelect({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e) => {
-      const t = triggerRef.current;
+      const tEl = triggerRef.current;
       const p = panelRef.current;
-      if (t?.contains(e.target) || p?.contains(e.target)) return;
+      if (tEl?.contains(e.target) || p?.contains(e.target)) return;
       setOpen(false);
       setQuery('');
     };
@@ -117,7 +122,7 @@ export default function ProductSearchableSelect({
           <div
             ref={panelRef}
             role="listbox"
-            aria-label={ariaLabel || 'Products'}
+            aria-label={resolvedAriaLabel}
             style={{
               position: 'fixed',
               top: panelPos.top,
@@ -139,9 +144,9 @@ export default function ProductSearchableSelect({
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search products…"
+                placeholder={t('picker.searchProducts')}
                 autoComplete="off"
-                aria-label="Search products"
+                aria-label={t('picker.searchAria')}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     e.stopPropagation();
@@ -172,7 +177,7 @@ export default function ProductSearchableSelect({
               }}
             >
               {filtered.length === 0 ? (
-                <li style={{ padding: '12px 10px', color: '#666', fontSize: 14 }}>No matches</li>
+                <li style={{ padding: '12px 10px', color: '#666', fontSize: 14 }}>{t('picker.noMatches')}</li>
               ) : (
                 filtered.map((entry) => {
                   const entryValue = useItems ? entry.value : entry.id;
@@ -240,11 +245,11 @@ export default function ProductSearchableSelect({
         onClick={handleToggle}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-label={ariaLabel}
+        aria-label={resolvedAriaLabel}
         className={triggerClassName || undefined}
         style={triggerStyle}
       >
-        {noOptions ? 'No products in stock' : display || placeholder}
+        {noOptions ? t('picker.noProductsInStock') : display || resolvedPlaceholder}
       </button>
       {panel}
       {emptyHint && noOptions ? (

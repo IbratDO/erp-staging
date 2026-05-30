@@ -1,0 +1,66 @@
+{
+  "title": "Foyda va zarar",
+  "filters": {
+    "title": "Filtrlar",
+    "year": "Yil",
+    "allYears": "Barcha yillar",
+    "month": "Oy",
+    "allMonths": "Barcha oylar"
+  },
+  "intro": "Barcha summalar USDda ko‘rsatiladi. UZS yozuvlari har tranzaksiya sanasidagi MB kursi bo‘yicha konvertatsiya qilinadi.",
+  "metrics": {
+    "netRevenue": "Sof daromad",
+    "netCogs": "Sof tannarx (COGS)",
+    "operatingExpenses": "Operatsion xarajatlar",
+    "otherIncome": "Boshqa daromad",
+    "netProfitLoss": "Sof foyda / zarar"
+  },
+  "sales": {
+    "title": "Sotuvlar (USD, UZS tranzaksiya sanasi kursida)",
+    "hint": "Sotuv bo‘yicha sof foyda qanday hisoblanganini ko‘rish uchun qatorni bosing.",
+    "saleId": "Sotuv ID",
+    "product": "Mahsulot",
+    "qty": "Miqdor",
+    "completed": "Yakunlangan",
+    "incomeUsd": "Daromad (USD)",
+    "cogsUsd": "COGS (USD)",
+    "profitUsd": "Foyda (USD)",
+    "noRows": "Bu davrda yakunlangan sotuvlar yo‘q",
+    "returned": "({{count}} qaytarilgan)",
+    "rowTitle": "Foyda hisobini ko‘rsatish uchun bosing",
+    "breakdownTitle": "Sof foyda tafsiloti (USD)",
+    "grossRevenue": "Yalpi sotuv daromadi",
+    "refundsPaid": "− To‘langan qaytarishlar (haqiqiy)",
+    "netRevenue": "Sof daromad",
+    "cogsRestored": "+ Qaytarishda tiklangan COGS",
+    "otherProfit": "Boshqa foyda (qaytarish < hisoblangan)",
+    "otherLoss": "Boshqa zarar (qaytarish > hisoblangan)",
+    "purchaseCogs": "− Xarid COGS (yetkazuvchi + kargo)",
+    "supplier": "Yetkazuvchi",
+    "allocatedCargo": "Ajratilgan kargo",
+    "packageCogs": "− Qadoq COGS",
+    "deliveryCogs": "− Yetkazib berish COGS",
+    "netProfitSale": "= Sof foyda (ushbu sotuv)",
+    "opexNote": "Operatsion xarajatlar sotuv bo‘yicha ajratilmaydi; umumiy kartochkalar va operatsion xarajatlar jadvaliga qarang.",
+    "totals": "Jami"
+  },
+  "operating": {
+    "title": "Operatsion xarajatlar",
+    "type": "Turi",
+    "amountUsd": "Summa (USD)",
+    "date": "Sana",
+    "noRows": "Bu davrda operatsion xarajatlar yo‘q",
+    "totalOperating": "Jami operatsion"
+  },
+  "otherIncome": {
+    "title": "Boshqa daromad",
+    "hint": "Sotuvdan tashqari daromad (masalan, asosiy vosita sotishdan foyda). Naqd tushum Pul balansida; bu yerda faqat foyda qismi ko‘rsatiladi.",
+    "type": "Turi",
+    "description": "Tavsif",
+    "amountUsd": "Summa (USD)",
+    "date": "Sana",
+    "noRows": "Bu davrda boshqa daromad yo‘q",
+    "total": "Jami boshqa daromad"
+  },
+  "noData": "Ma’lumot mavjud emas"
+}

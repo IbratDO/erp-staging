@@ -1,0 +1,86 @@
+{
+  "title": "Qadoqlar",
+  "newOrder": "+ Qadoq zaxirasini buyurtma qilish",
+  "intro": "Har xil birlik narxidagi xarid alohida FIFO qatlami. Odatiy jarayon: buyurtma → to‘lash (kreditor) → omborga qabul. Kreditorlar Debitor / kreditor bo‘limida. Qadoq zaxirasi balansda; sotuvda COGS avval eski qatlamlardan.",
+  "form": {
+    "orderTitle": "Qadoq zaxirasini buyurtma qilish",
+    "addStockTitle": "Zaxira qo‘shish — Qadoq {{type}}",
+    "packageType": "Qadoq turi",
+    "addNewType": "+ Yangi qadoq turi",
+    "typePlaceholder": "Qadoq turi nomi (masalan, M, L, kichik quti)",
+    "quantityOrder": "Buyurtma miqdori",
+    "quantityPlaceholder": "Ushbu xariddagi donalar",
+    "payImmediately": "Darhol to‘lash va qabul qilish (kreditorni o‘tkazib, naqd puldan yechish)",
+    "costUzs": "Birlik narxi (UZS)",
+    "costUsd": "Birlik narxi (USD)",
+    "submitPayReceive": "To‘lash, qabul qilish va zaxiraga qo‘shish",
+    "submitCreateOrder": "Xarid buyurtmasi yaratish",
+    "optionCost": "{{type}} (UZS {{uzs}} · ${{usd}})"
+  },
+  "paymentForm": {
+    "payTitle": "Qadoq xaridini to‘lash #{{id}}",
+    "receiveTitle": "Zaxirani qabul qilish — xarid #{{id}}",
+    "payReceiveTitle": "To‘lash va qabul qilish — xarid #{{id}}",
+    "quantityReceived": "Qabul qilingan miqdor",
+    "ordered": "Buyurtma qilingan: {{qty}}",
+    "uzsPayment": "UZS to‘lov",
+    "usdPayment": "USD to‘lov",
+    "recordPayment": "To‘lovni qayd etish",
+    "receiveInventory": "Omborga qabul qilish",
+    "payAndReceive": "To‘lash va qabul qilish"
+  },
+  "inventory": {
+    "title": "Qadoq ombori (partiya bo‘yicha qo‘lda)",
+    "subtitle": "Faqat joriy zaxira — har xarid narxi qatlami uchun bir qator. Xaridlar va to‘lovlar quyidagi tarix jadvalida.",
+    "packageType": "Qadoq turi",
+    "batchRef": "Partiya / xarid №",
+    "qtyOnHand": "Qo‘ldagi miqdor",
+    "costUzsUnit": "Narx / dona (UZS)",
+    "costUsdUnit": "Narx / dona (USD)",
+    "totalUzs": "Jami (UZS)",
+    "totalUsd": "Jami (USD)",
+    "received": "Qabul qilingan",
+    "noStock": "Qo‘lda qadoq zaxirasi yo‘q",
+    "packageLabel": "Qadoq {{type}}",
+    "layer": "Qatlam {{id}}",
+    "onHandTotal": "Qo‘lda jami"
+  },
+  "history": {
+    "title": "Qadoq zaxirasi tarixi",
+    "quantityAdded": "Qo‘shilgan miqdor",
+    "costPerUnit": "Narx / dona",
+    "totalCost": "Jami xarajat",
+    "status": "Holat",
+    "uzsPaid": "To‘langan UZS",
+    "usdPaid": "To‘langan USD",
+    "addedBy": "Qo‘shgan",
+    "date": "Sana",
+    "noHistory": "Qadoq tarixi topilmadi",
+    "orderedQty": "buyurtma: {{qty}}",
+    "total": "Jami",
+    "packageLabel": "Qadoq {{type}}"
+  },
+  "status": {
+    "in_stock": "OMBORDA",
+    "order_paid": "TO‘LANGAN · QABUL KUTILMOQDA",
+    "ordered": "BUYURTMA BERILGAN",
+    "received": "OMBORDA",
+    "paid": "OMBORDA"
+  },
+  "statusTitle": {
+    "ordered": "To‘lov va qabul kutilmoqda",
+    "order_paid": "To‘langan; zaxira kelganda qabul qiling",
+    "paid": "To‘langan va omborda",
+    "default": "Omborda"
+  },
+  "actions": {
+    "pay": "To‘lash",
+    "payAndReceive": "To‘lash va qabul qilish",
+    "receiveStock": "Zaxirani qabul qilish"
+  },
+  "notifications": {
+    "paymentRequired": "Kamida bitta to‘lov summasi kiriting (UZS yoki USD).",
+    "saveError": "Qadoqni saqlashda xatolik",
+    "paymentError": "Qadoqni qabul qilish va to‘lashda xatolik"
+  }
+}

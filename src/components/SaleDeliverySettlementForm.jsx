@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
 import useCbuExchangeRate from '../hooks/useCbuExchangeRate';
 import { formatDisplayAmount } from '../utils/currencyFormat';
 import {
@@ -16,11 +17,11 @@ import {
   combinedPaymentInSaleCurrency,
 } from '../utils/salePaymentFlowHelpers';
 
-function DeliveryPaymentAmountFields({ form, setForm, meta }) {
+function DeliveryPaymentAmountFields({ form, setForm, meta, t }) {
   return (
     <>
       <div className="form-group">
-        <label>UZS</label>
+        <label>{t('currency.uzs', { ns: 'common' })}</label>
         <input
           type="text"
           inputMode="decimal"
@@ -30,7 +31,7 @@ function DeliveryPaymentAmountFields({ form, setForm, meta }) {
         />
       </div>
       <div className="form-group">
-        <label>USD</label>
+        <label>{t('currency.usd', { ns: 'common' })}</label>
         <input
           type="text"
           inputMode="decimal"
@@ -42,20 +43,20 @@ function DeliveryPaymentAmountFields({ form, setForm, meta }) {
       {meta.due != null && !Number.isNaN(meta.due) && (
         <div className="form-group" style={{ gridColumn: '1 / -1' }}>
           <p style={{ margin: 0, fontSize: '0.9em', color: '#444' }}>
-            <strong>Amount due:</strong> {formatDisplayAmount(meta.due, meta.sc)}
+            <strong>{t('deliverySettlement.amountDue')}</strong> {formatDisplayAmount(meta.due, meta.sc)}
             {meta.paid != null ? (
               <>
                 {' '}
                 ·{' '}
                 <strong>
                   {meta.splitCurrency || meta.crossCurrency
-                    ? `Total at CBU rate (${meta.sc}):`
-                    : `Entered (${meta.sc}):`}
+                    ? t('completePay.totalAtCbuIn', { currency: meta.sc })
+                    : t('completePay.enteredIn', { currency: meta.sc })}
                 </strong>{' '}
                 {formatDisplayAmount(meta.paid, meta.sc)}
               </>
             ) : meta.mixed ? (
-              <span style={{ color: '#b45309' }}> — loading CBU rate…</span>
+              <span style={{ color: '#b45309' }}> — {t('deliverySettlement.loadingCbu')}</span>
             ) : null}
           </p>
         </div>
@@ -74,6 +75,7 @@ export default function SaleDeliverySettlementForm({
   onAfterStepRecorded,
   showNotification,
 }) {
+  const { t } = useAppTranslation(['sales', 'common']);
   const { hasAnyPermission, hasPermission } = usePermissions();
   const canShopRemittance = hasPermission('sales.delivery_shop_received');
   const canPayDispatchFee = hasAnyPermission([
@@ -93,10 +95,10 @@ export default function SaleDeliverySettlementForm({
   const { exchangeRate, exchangeRateError, cbuRate } = useCbuExchangeRate(!!saleProp?.id);
 
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [saleProp?.id]);
 
   useEffect(() => {
@@ -213,15 +215,16 @@ export default function SaleDeliverySettlementForm({
   const needsDispatchFeePayment = !!(d && !d.is_paid && dispatchFeeDue > 0);
 
   const productLabel = sale.product_detail
-    ? [sale.product_detail.brand, sale.product_detail.model].filter(Boolean).join(' ').trim() || 'Product'
-    : 'Product';
+    ? [sale.product_detail.brand, sale.product_detail.model].filter(Boolean).join(' ').trim() ||
+      t('deliverySettlement.productFallback')
+    : t('deliverySettlement.productFallback');
 
   const handleStep1 = async () => {
     const sc = sale.sale_currency || 'USD';
     const uzsT = parseFloat(step1.uzs) || 0;
     const usdT = parseFloat(step1.usd) || 0;
     if (uzsT + usdT === 0) {
-      showNotification?.('Enter at least one amount collected from the customer.', 'error');
+      showNotification?.(t('deliverySettlement.errAmount'), 'error');
       return;
     }
     const needsCbuRate =
@@ -230,14 +233,14 @@ export default function SaleDeliverySettlementForm({
       (sc === 'UZS' && usdT > 0 && uzsT === 0);
     if (needsCbuRate && !cbuRate) {
       showNotification?.(
-        exchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
+        exchangeRateError || t('completePay.errRateLoading'),
         'error',
       );
       return;
     }
     const totalInSaleCurrency = combinedPaymentInSaleCurrency(sale, step1.uzs, step1.usd, cbuRate);
     if (totalInSaleCurrency == null) {
-      showNotification?.('Could not calculate total collected.', 'error');
+      showNotification?.(t('deliverySettlement.errCalc'), 'error');
       return;
     }
     const due = computeAdvanceRemainingDue(sale);
@@ -249,15 +252,23 @@ export default function SaleDeliverySettlementForm({
     if (amountChanged) {
       const ok = window.confirm(
         [
-          'Confirm “Payment received by dispatch”?',
+          t('deliverySettlement.confirmStep1Title'),
           '',
-          `Sale #${sale.id} · ${productLabel}`,
+          t('deliverySettlement.confirmStep1SaleLine', { id: sale.id, product: productLabel }),
           '',
-          `Expected on record: ${formatDisplayAmount(due, sc)}`,
-          `Entered (in ${sc}, at CBU rate): ${formatDisplayAmount(totalInSaleCurrency, sc)}`,
-          `UZS: ${uzsT.toFixed(2)} · USD: ${usdT.toFixed(2)}`,
+          t('deliverySettlement.confirmStep1Expected', {
+            amount: formatDisplayAmount(due, sc),
+          }),
+          t('deliverySettlement.confirmStep1Entered', {
+            currency: sc,
+            amount: formatDisplayAmount(totalInSaleCurrency, sc),
+          }),
+          t('deliverySettlement.confirmStep1Amounts', {
+            uzs: uzsT.toFixed(2),
+            usd: usdT.toFixed(2),
+          }),
           '',
-          'This records courier hand-off only (no shop cash movement yet).',
+          t('deliverySettlement.confirmStep1Note'),
         ].join('\n'),
       );
       if (!ok) return;
@@ -274,11 +285,11 @@ export default function SaleDeliverySettlementForm({
         body.exchange_rate = exchangeRate.rate;
       }
       await api.post(`/sales/${sale.id}/delivery_customer_paid/`, body);
-      showNotification?.('Payment received by dispatch has been recorded.', 'success');
+      showNotification?.(t('deliverySettlement.step1Success'), 'success');
       await Promise.resolve(onAfterStepRecorded?.());
       onClose?.();
     } catch (e) {
-      showNotification?.(e.response?.data?.error || e.response?.data?.detail || 'Could not save step 1', 'error');
+      showNotification?.(e.response?.data?.error || e.response?.data?.detail || t('deliverySettlement.step1Err'), 'error');
     }
   };
 
@@ -298,12 +309,12 @@ export default function SaleDeliverySettlementForm({
     if (trimmedNote) body.delivery_shop_remittance_note = trimmedNote;
     try {
       await api.post(`/sales/${sale.id}/delivery_shop_received_payment/`, body);
-      showNotification?.('Payment received by shop has been recorded.', 'success');
+      showNotification?.(t('deliverySettlement.step2Success'), 'success');
       await Promise.resolve(onAfterStepRecorded?.());
       onClose?.();
     } catch (err) {
       showNotification?.(
-        err.response?.data?.error || err.response?.data?.detail || 'Could not save step 2',
+        err.response?.data?.error || err.response?.data?.detail || t('deliverySettlement.step2Err'),
         'error',
       );
     }
@@ -317,13 +328,13 @@ export default function SaleDeliverySettlementForm({
         const uzsT = parseFloat(step3Pay.uzs) || 0;
         const usdT = parseFloat(step3Pay.usd) || 0;
         if (uzsT + usdT === 0) {
-          showNotification?.('Enter at least one amount for the dispatch fee.', 'error');
+          showNotification?.(t('deliverySettlement.errDispatchFee'), 'error');
           return;
         }
         if ((uzsT > 0 && usdT > 0) || (dispatchFeeCurrency === 'USD' && uzsT > 0) || (dispatchFeeCurrency === 'UZS' && usdT > 0)) {
           if (!cbuRate) {
             showNotification?.(
-              exchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
+              exchangeRateError || t('completePay.errRateLoading'),
               'error',
             );
             return;
@@ -336,7 +347,7 @@ export default function SaleDeliverySettlementForm({
           cbuRate,
         );
         if (paidTotal == null) {
-          showNotification?.('Could not calculate dispatch payment total.', 'error');
+          showNotification?.(t('deliverySettlement.errDispatchCalc'), 'error');
           return;
         }
         const tol = dispatchFeeCurrency === 'UZS' ? 1 : 0.02;
@@ -348,14 +359,21 @@ export default function SaleDeliverySettlementForm({
         if (amountMismatch) {
           const ok = window.confirm(
             [
-              'Confirm “Pay for dispatch & complete sale”?',
+              t('deliverySettlement.confirmStep3PayTitle'),
               '',
-              `Planned dispatch fee: ${formatDisplayAmount(dispatchFeeDue, dispatchFeeCurrency)}`,
-              `Payment entered (at CBU): ${formatDisplayAmount(paidTotal, dispatchFeeCurrency)}`,
-              `UZS: ${uzsT.toFixed(2)} · USD: ${usdT.toFixed(2)}`,
+              t('deliverySettlement.confirmStep3PlannedFee', {
+                amount: formatDisplayAmount(dispatchFeeDue, dispatchFeeCurrency),
+              }),
+              t('deliverySettlement.confirmStep3PaymentEntered', {
+                amount: formatDisplayAmount(paidTotal, dispatchFeeCurrency),
+              }),
+              t('deliverySettlement.confirmStep3Amounts', {
+                uzs: uzsT.toFixed(2),
+                usd: usdT.toFixed(2),
+              }),
               '',
-              'Amount differs from dispatch on record — fee will be updated to match.',
-              'Proceed?',
+              t('deliverySettlement.confirmStep3MismatchNote'),
+              t('deliverySettlement.confirmStep3Proceed'),
             ].join('\n'),
           );
           if (!ok) return;
@@ -363,14 +381,22 @@ export default function SaleDeliverySettlementForm({
         } else if (isCrossCurrencyOnly) {
           const ok = window.confirm(
             [
-              'Confirm dispatch fee payment?',
+              t('deliverySettlement.confirmStep3FeeTitle'),
               '',
-              `Fee on record: ${formatDisplayAmount(dispatchFeeDue, dispatchFeeCurrency)}`,
-              `Payment at CBU rate (in ${dispatchFeeCurrency}): ${formatDisplayAmount(paidTotal, dispatchFeeCurrency)}`,
-              `UZS: ${uzsT.toFixed(2)} · USD: ${usdT.toFixed(2)}`,
+              t('deliverySettlement.confirmStep3FeeOnRecord', {
+                amount: formatDisplayAmount(dispatchFeeDue, dispatchFeeCurrency),
+              }),
+              t('deliverySettlement.confirmStep3FeeAtCbu', {
+                currency: dispatchFeeCurrency,
+                amount: formatDisplayAmount(paidTotal, dispatchFeeCurrency),
+              }),
+              t('deliverySettlement.confirmStep3Amounts', {
+                uzs: uzsT.toFixed(2),
+                usd: usdT.toFixed(2),
+              }),
               exchangeRate?.label ? `\n${exchangeRate.label}` : '',
               '',
-              'Continue?',
+              t('completePay.confirmContinue'),
             ]
               .filter(Boolean)
               .join('\n'),
@@ -388,15 +414,15 @@ export default function SaleDeliverySettlementForm({
       await api.post(`/sales/${sale.id}/delivery_pay_dispatch_fee/`, body);
       showNotification?.(
         needsDispatchFeePayment
-          ? 'Pay for dispatch completed — sale is now completed.'
-          : 'Sale completed.',
+          ? t('deliverySettlement.step3SuccessPay')
+          : t('deliverySettlement.step3Success'),
         'success',
       );
       await Promise.resolve(onSuccess?.());
       onClose?.();
     } catch (err) {
       showNotification?.(
-        err.response?.data?.error || err.response?.data?.detail || 'Could not complete step 3',
+        err.response?.data?.error || err.response?.data?.detail || t('deliverySettlement.step3Err'),
         'error',
       );
     }
@@ -407,17 +433,16 @@ export default function SaleDeliverySettlementForm({
       {activeStep === 0 ? (
         <div className="form-card" style={{ marginBottom: 20 }}>
           <p style={{ color: '#666', margin: 0, fontSize: '0.9rem' }}>
-            All settlement steps are already recorded for sale #{sale.id}.
+            {t('deliverySettlement.allDone', { id: sale.id })}
           </p>
         </div>
       ) : null}
 
       {activeStep === 1 ? (
         <div className="form-card" style={{ marginBottom: 20 }}>
-          <h2>Payment received by dispatch — Sale #{sale.id}</h2>
+          <h2>{t('deliverySettlement.step1Title', { id: sale.id })}</h2>
           <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
-            Enter what the courier collected from the customer (UZS and/or USD; mixed amounts use the CBU rate).
-            Hand-off only — no shop cash movement yet.
+            {t('deliverySettlement.step1Intro')}
           </p>
           {exchangeRate?.label ? (
             <p style={{ color: '#4a5568', marginBottom: 12, fontSize: '0.85em' }}>{exchangeRate.label}</p>
@@ -425,11 +450,11 @@ export default function SaleDeliverySettlementForm({
             <p style={{ color: '#b45309', marginBottom: 12, fontSize: '0.85em' }}>{exchangeRateError}</p>
           ) : null}
           <div className="form-grid">
-            <DeliveryPaymentAmountFields form={step1} setForm={setStep1} meta={meta1} />
+            <DeliveryPaymentAmountFields form={step1} setForm={setStep1} meta={meta1} t={t} />
           </div>
           <div className="form-actions" style={{ marginTop: 12 }}>
             <button type="button" className="btn-primary" onClick={handleStep1}>
-              Payment received by dispatch
+              {t('deliverySettlement.step1Button')}
             </button>
           </div>
         </div>
@@ -437,20 +462,18 @@ export default function SaleDeliverySettlementForm({
 
       {activeStep === 2 && !canShopRemittance ? (
         <div className="form-card" style={{ marginBottom: 20 }}>
-          <h2>Settlement — Sale #{sale.id}</h2>
+          <h2>{t('deliverySettlement.settlementTitle', { id: sale.id })}</h2>
           <p style={{ color: '#666', margin: 0, fontSize: '0.9em', lineHeight: 1.45 }}>
-            Courier collection is recorded. Shop staff must record payment received by shop — dispatchers cannot
-            book shop remittance or sale income.
+            {t('deliverySettlement.step2NoPerm')}
           </p>
         </div>
       ) : null}
 
       {activeStep === 2 && canShopRemittance ? (
         <div className="form-card" style={{ marginBottom: 20 }}>
-          <h2>Payment received by shop — Sale #{sale.id}</h2>
+          <h2>{t('deliverySettlement.step2Title', { id: sale.id })}</h2>
           <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
-            Enter what the courier remitted to the shop (UZS and/or USD — same rules as Complete & Pay). Books sale
-            income and clears receivable where applicable.
+            {t('deliverySettlement.step2Intro')}
           </p>
           {exchangeRate?.label ? (
             <p style={{ color: '#4a5568', marginBottom: 12, fontSize: '0.85em' }}>{exchangeRate.label}</p>
@@ -461,16 +484,15 @@ export default function SaleDeliverySettlementForm({
             <div className="form-grid">
               {step2.prepayment_amount && parseFloat(step2.prepayment_amount) > 0 ? (
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label>Prepayment on record</label>
+                  <label>{t('deliverySettlement.prepaymentOnRecord')}</label>
                   <input readOnly style={{ background: '#f5f5f5' }} value={step2.prepayment_amount ?? ''} />
                 </div>
               ) : null}
-              <DeliveryPaymentAmountFields form={step2} setForm={setStep2} meta={meta2} />
+              <DeliveryPaymentAmountFields form={step2} setForm={setStep2} meta={meta2} t={t} />
               {meta2.needs && (
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <p style={{ margin: '0 0 10px', fontSize: '0.9em', color: '#555', lineHeight: 1.45 }}>
-                    Payment is below the amount due. Choose <strong>Discount</strong> to record the remainder, or
-                    collect more.
+                    {t('completePay.shortfallHint')}
                   </p>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                     <input
@@ -479,24 +501,24 @@ export default function SaleDeliverySettlementForm({
                       checked={step2.balance_shortfall_type === 'discount'}
                       onChange={() => setStep2({ ...step2, balance_shortfall_type: 'discount' })}
                     />
-                    <span>Discount (remainder after courier remittance)</span>
+                    <span>{t('deliverySettlement.discountRemainder')}</span>
                   </label>
                 </div>
               )}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Note (optional)</label>
+                <label>{t('deliverySettlement.noteOptional')}</label>
                 <textarea
                   rows={3}
                   value={step2Note}
                   onChange={(e) => setStep2Note(e.target.value)}
-                  placeholder="Any note about this remittance…"
+                  placeholder={t('deliverySettlement.notePlaceholder')}
                   style={{ width: '100%', resize: 'vertical', minHeight: 72 }}
                 />
               </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Record payment received by shop
+                {t('deliverySettlement.step2Button')}
               </button>
             </div>
           </form>
@@ -505,10 +527,9 @@ export default function SaleDeliverySettlementForm({
 
       {activeStep === 3 && !canPayDispatchFee ? (
         <div className="form-card" style={{ marginBottom: 20 }}>
-          <h2>Settlement — Sale #{sale.id}</h2>
+          <h2>{t('deliverySettlement.settlementTitle', { id: sale.id })}</h2>
           <p style={{ color: '#666', margin: 0, fontSize: '0.9em', lineHeight: 1.45 }}>
-            Courier steps are recorded. Shop staff must pay the dispatch fee (if any) and complete the sale — you
-            cannot pay from company balances as a dispatcher.
+            {t('deliverySettlement.step3NoPerm')}
           </p>
         </div>
       ) : null}
@@ -517,13 +538,13 @@ export default function SaleDeliverySettlementForm({
         <div className="form-card" style={{ marginBottom: 20 }}>
           <h2>
             {needsDispatchFeePayment
-              ? `Pay for dispatch & complete sale — Sale #${sale.id}`
-              : `Complete sale — Sale #${sale.id}`}
+              ? t('deliverySettlement.step3TitlePay', { id: sale.id })
+              : t('deliverySettlement.step3TitleComplete', { id: sale.id })}
           </h2>
           <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em' }}>
             {needsDispatchFeePayment
-              ? 'Pay the dispatch fee from shop balances (UZS and/or USD at CBU rate). Marks the sale completed.'
-              : 'No dispatch fee payout is configured. Submit to mark the sale completed.'}
+              ? t('deliverySettlement.step3IntroPay')
+              : t('deliverySettlement.step3IntroFree')}
           </p>
           {needsDispatchFeePayment ? (
             <form onSubmit={handleStep3}>
@@ -535,7 +556,7 @@ export default function SaleDeliverySettlementForm({
               <div className="form-grid">
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <p style={{ margin: 0, fontSize: '0.9em', color: '#444' }}>
-                    <strong>Dispatch fee due:</strong>{' '}
+                    <strong>{t('deliverySettlement.dispatchFeeDue')}</strong>{' '}
                     {formatDisplayAmount(dispatchFeeDue, dispatchFeeCurrency)}
                     {step3CombinedTotal != null ? (
                       <>
@@ -547,18 +568,18 @@ export default function SaleDeliverySettlementForm({
                             step3Pay.usd,
                             dispatchFeeCurrency,
                           )
-                            ? `Total at CBU rate (${dispatchFeeCurrency}):`
-                            : 'Entered:'}
+                            ? t('completePay.totalAtCbuIn', { currency: dispatchFeeCurrency })
+                            : t('sellReserved.entered', { currency: dispatchFeeCurrency })}
                         </strong>{' '}
                         {formatDisplayAmount(step3CombinedTotal, dispatchFeeCurrency)}
                       </>
                     ) : step3Pay.uzs || step3Pay.usd ? (
-                      <span style={{ color: '#b45309' }}> — loading CBU rate…</span>
+                      <span style={{ color: '#b45309' }}> — {t('deliverySettlement.loadingCbu')}</span>
                     ) : null}
                   </p>
                 </div>
                 <div className="form-group">
-                  <label>UZS</label>
+                  <label>{t('currency.uzs', { ns: 'common' })}</label>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -567,7 +588,7 @@ export default function SaleDeliverySettlementForm({
                   />
                 </div>
                 <div className="form-group">
-                  <label>USD</label>
+                  <label>{t('currency.usd', { ns: 'common' })}</label>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -578,7 +599,7 @@ export default function SaleDeliverySettlementForm({
               </div>
               <div className="form-actions">
                 <button type="submit" className="btn-primary">
-                  Pay for dispatch & complete sale
+                  {t('deliverySettlement.step3ButtonPay')}
                 </button>
               </div>
             </form>
@@ -586,7 +607,7 @@ export default function SaleDeliverySettlementForm({
             <form onSubmit={handleStep3}>
               <div className="form-actions">
                 <button type="submit" className="btn-primary">
-                  Complete sale
+                  {t('deliverySettlement.step3ButtonComplete')}
                 </button>
               </div>
             </form>
@@ -596,7 +617,7 @@ export default function SaleDeliverySettlementForm({
 
       <div className="form-actions">
         <button type="button" className="btn-edit" onClick={onClose}>
-          Close
+          {t('actions.close', { ns: 'common' })}
         </button>
       </div>
     </div>

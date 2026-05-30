@@ -1,5 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../utils/api';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppDateTime, formatAppNumber } from '../utils/localeFormat';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
@@ -43,6 +46,7 @@ const OTHER_INCOME_SORT_ACCESSORS = {
 };
 
 const ProfitLoss = () => {
+  const { t, monthOptions } = useAppTranslation(['profitLoss', 'common']);
   const [profitLoss, setProfitLoss] = useState(null);
   const [expandedPlSaleId, setExpandedPlSaleId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -105,24 +109,30 @@ const ProfitLoss = () => {
     [profitLoss?.other_income, otherIncomeSort],
   );
 
+  const fmtUsd = useCallback(
+    (n) =>
+      `$${formatAppNumber(n || 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    [],
+  );
+
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Profit / Loss</h1>
+        <PageTitle ns="profitLoss" />
       </div>
 
       <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
         <h3 className="filter-card__title" style={{ marginBottom: '8px' }}>
-          Filters
+          {t('filters.title')}
         </h3>
         <div className="filter-toolbar">
           <div className="filter-field">
-            <label>Year</label>
+            <label>{t('filters.year')}</label>
             <select
               value={filter.year}
               onChange={(e) => setFilter({ ...filter, year: e.target.value })}
             >
-              <option value="">All Years</option>
+              <option value="">{t('filters.allYears')}</option>
               {Array.from({ length: 10 }, (_, i) => {
                 const year = new Date().getFullYear() - i;
                 return (
@@ -134,28 +144,24 @@ const ProfitLoss = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Month</label>
+            <label>{t('filters.month')}</label>
             <select
               value={filter.month}
               onChange={(e) => setFilter({ ...filter, month: e.target.value })}
             >
-              <option value="">All Months</option>
-              {Array.from({ length: 12 }, (_, i) => {
-                const month = (i + 1).toString();
-                return (
-                  <option key={month} value={month.padStart(2, '0')}>
-                    {new Date(2000, i, 1).toLocaleString('default', { month: 'long' })}
-                  </option>
-                );
-              })}
+              <option value="">{t('filters.allMonths')}</option>
+              {monthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
       </div>
 
       <p style={{ color: '#666', marginBottom: '8px', fontSize: '0.9em' }}>
-        All amounts are reported in USD. UZS entries are converted using the CBU exchange rate for each
-        transaction date.
+        {t('intro')}
       </p>
       {profitLoss?.exchange_rate?.label && (
         <p style={{ color: '#888', marginBottom: '16px', fontSize: '0.75em' }}>
@@ -164,44 +170,32 @@ const ProfitLoss = () => {
       )}
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px' }}>Loading...</div>
+        <div style={{ textAlign: 'center', padding: '40px' }}>{t('actions.loading', { ns: 'common' })}</div>
       ) : profitLoss ? (
         <div>
           <div className="metrics-grid" style={{ marginBottom: '20px' }}>
             <div className="metric-card" style={{ border: '2px solid #28a745' }}>
-              <div className="metric-label">Net revenue</div>
+              <div className="metric-label">{t('metrics.netRevenue')}</div>
               <div className="metric-value" style={{ color: '#28a745', fontSize: '1.6em' }}>
-                ${(profitLoss.totals.total_income_usd || 0).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {fmtUsd(profitLoss.totals.total_income_usd)}
               </div>
             </div>
             <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-              <div className="metric-label">Net COGS</div>
+              <div className="metric-label">{t('metrics.netCogs')}</div>
               <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
-                ${(profitLoss.totals.total_cogs_usd || 0).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {fmtUsd(profitLoss.totals.total_cogs_usd)}
               </div>
             </div>
             <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
-              <div className="metric-label">Operating expenses</div>
+              <div className="metric-label">{t('metrics.operatingExpenses')}</div>
               <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>
-                ${(profitLoss.totals.total_operating_expenses_usd || 0).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {fmtUsd(profitLoss.totals.total_operating_expenses_usd)}
               </div>
             </div>
             <div className="metric-card" style={{ border: '2px solid #28a745' }}>
-              <div className="metric-label">Other income</div>
+              <div className="metric-label">{t('metrics.otherIncome')}</div>
               <div className="metric-value" style={{ color: '#28a745', fontSize: '1.6em' }}>
-                ${(profitLoss.totals.total_other_income_usd || 0).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {fmtUsd(profitLoss.totals.total_other_income_usd)}
               </div>
             </div>
             <div
@@ -210,7 +204,7 @@ const ProfitLoss = () => {
                 border: `2px solid ${(profitLoss.totals.net_profit_usd || 0) >= 0 ? '#28a745' : '#dc3545'}`,
               }}
             >
-              <div className="metric-label">Net profit / loss</div>
+              <div className="metric-label">{t('metrics.netProfitLoss')}</div>
               <div
                 className="metric-value"
                 style={{
@@ -218,18 +212,15 @@ const ProfitLoss = () => {
                   fontSize: '1.6em',
                 }}
               >
-                ${(profitLoss.totals.net_profit_usd || 0).toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {fmtUsd(profitLoss.totals.net_profit_usd)}
               </div>
             </div>
           </div>
 
           <div className="table-card" style={{ marginBottom: '20px' }}>
-            <h3>Sales (USD, UZS converted at transaction-date rate)</h3>
+            <h3>{t('sales.title')}</h3>
             <p style={{ color: '#888', fontSize: '0.85em', margin: '0 0 8px' }}>
-              Click a row to see how net profit was calculated for that sale.
+              {t('sales.hint')}
             </p>
             <div className="data-table-scroll">
               <table className="data-table">
@@ -241,7 +232,7 @@ const ProfitLoss = () => {
                       sortDir={profitLossSalesSort.sortDir}
                       onSort={profitLossSalesSort.onHeaderClick}
                     >
-                      Sale ID
+                      {t('sales.saleId')}
                     </SortableTh>
                     <SortableTh
                       columnId="product"
@@ -249,7 +240,7 @@ const ProfitLoss = () => {
                       sortDir={profitLossSalesSort.sortDir}
                       onSort={profitLossSalesSort.onHeaderClick}
                     >
-                      Product
+                      {t('sales.product')}
                     </SortableTh>
                     <SortableTh
                       columnId="quantity"
@@ -257,7 +248,7 @@ const ProfitLoss = () => {
                       sortDir={profitLossSalesSort.sortDir}
                       onSort={profitLossSalesSort.onHeaderClick}
                     >
-                      Qty
+                      {t('sales.qty')}
                     </SortableTh>
                     <SortableTh
                       columnId="completed_at"
@@ -265,7 +256,7 @@ const ProfitLoss = () => {
                       sortDir={profitLossSalesSort.sortDir}
                       onSort={profitLossSalesSort.onHeaderClick}
                     >
-                      Completed
+                      {t('sales.completed')}
                     </SortableTh>
                     <SortableTh
                       columnId="income_usd"
@@ -273,7 +264,7 @@ const ProfitLoss = () => {
                       sortDir={profitLossSalesSort.sortDir}
                       onSort={profitLossSalesSort.onHeaderClick}
                     >
-                      Income (USD)
+                      {t('sales.incomeUsd')}
                     </SortableTh>
                     <SortableTh
                       columnId="cogs_usd"
@@ -281,7 +272,7 @@ const ProfitLoss = () => {
                       sortDir={profitLossSalesSort.sortDir}
                       onSort={profitLossSalesSort.onHeaderClick}
                     >
-                      COGS (USD)
+                      {t('sales.cogsUsd')}
                     </SortableTh>
                     <SortableTh
                       columnId="profit_usd"
@@ -289,7 +280,7 @@ const ProfitLoss = () => {
                       sortDir={profitLossSalesSort.sortDir}
                       onSort={profitLossSalesSort.onHeaderClick}
                     >
-                      Profit (USD)
+                      {t('sales.profitUsd')}
                     </SortableTh>
                   </tr>
                 </thead>
@@ -297,24 +288,19 @@ const ProfitLoss = () => {
                   {profitLoss.sales.length === 0 ? (
                     <tr>
                       <td colSpan="7" style={{ textAlign: 'center' }}>
-                        No sales completed in this period
+                        {t('sales.noRows')}
                       </td>
                     </tr>
                   ) : (
                     sortedProfitLossSales.map((item) => {
                       const expanded = expandedPlSaleId === item.sale_id;
                       const bd = item.cogs_breakdown || {};
-                      const fmtUsd = (n) =>
-                        `$${(n || 0).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}`;
                       return (
                         <React.Fragment key={item.sale_id}>
                           <tr
                             onClick={() => setExpandedPlSaleId(expanded ? null : item.sale_id)}
                             style={{ cursor: 'pointer', backgroundColor: expanded ? '#f0f7ff' : undefined }}
-                            title="Click to show profit calculation"
+                            title={t('sales.rowTitle')}
                           >
                             <td>#{item.sale_id}</td>
                             <td>{item.product}</td>
@@ -323,12 +309,12 @@ const ProfitLoss = () => {
                               {item.quantity_returned > 0 && (
                                 <span style={{ color: '#888', fontSize: '0.85em' }}>
                                   {' '}
-                                  ({item.quantity_returned} returned)
+                                  {t('sales.returned', { count: item.quantity_returned })}
                                 </span>
                               )}
                             </td>
                             <td style={{ fontSize: '0.9em' }}>
-                              {item.completed_at ? new Date(item.completed_at).toLocaleString() : '—'}
+                              {item.completed_at ? formatAppDateTime(item.completed_at) : '—'}
                             </td>
                             <td>{fmtUsd(item.income_usd)}</td>
                             <td>{fmtUsd(item.total_cogs_usd)}</td>
@@ -345,7 +331,7 @@ const ProfitLoss = () => {
                             <tr>
                               <td colSpan="7" style={{ backgroundColor: '#fafafa', padding: '12px 16px' }}>
                                 <div style={{ fontSize: '0.9em', lineHeight: 1.7 }}>
-                                  <strong>Net profit breakdown (USD)</strong>
+                                  <strong>{t('sales.breakdownTitle')}</strong>
                                   <div
                                     style={{
                                       marginTop: '8px',
@@ -357,26 +343,26 @@ const ProfitLoss = () => {
                                   >
                                     {(item.gross_income_usd || 0) > 0 && (
                                       <>
-                                        <span>Gross sale revenue</span>
+                                        <span>{t('sales.grossRevenue')}</span>
                                         <span style={{ textAlign: 'right' }}>{fmtUsd(item.gross_income_usd)}</span>
                                       </>
                                     )}
                                     {(item.refunds_usd || 0) > 0 && (
                                       <>
                                         <span style={{ paddingLeft: '12px', color: '#666' }}>
-                                          − Refunds paid (actual)
+                                          {t('sales.refundsPaid')}
                                         </span>
                                         <span style={{ textAlign: 'right', color: '#dc3545' }}>
                                           {fmtUsd(item.refunds_usd)}
                                         </span>
                                       </>
                                     )}
-                                    <span>Net revenue</span>
+                                    <span>{t('sales.netRevenue')}</span>
                                     <span style={{ textAlign: 'right' }}>{fmtUsd(item.income_usd)}</span>
                                     {(item.cogs_reversal_usd || 0) > 0 && (
                                       <>
                                         <span style={{ paddingLeft: '12px', color: '#666' }}>
-                                          + COGS restored (returns)
+                                          {t('sales.cogsRestored')}
                                         </span>
                                         <span style={{ textAlign: 'right', color: '#28a745' }}>
                                           {fmtUsd(item.cogs_reversal_usd)}
@@ -386,7 +372,7 @@ const ProfitLoss = () => {
                                     {(item.other_profit_usd || 0) > 0 && (
                                       <>
                                         <span style={{ paddingLeft: '12px', color: '#5e35b1' }}>
-                                          Other profit (refund &lt; attributed)
+                                          {t('sales.otherProfit')}
                                         </span>
                                         <span style={{ textAlign: 'right', color: '#5e35b1' }}>
                                           {fmtUsd(item.other_profit_usd)}
@@ -396,7 +382,7 @@ const ProfitLoss = () => {
                                     {(item.other_loss_usd || 0) > 0 && (
                                       <>
                                         <span style={{ paddingLeft: '12px', color: '#c62828' }}>
-                                          Other loss (refund &gt; attributed)
+                                          {t('sales.otherLoss')}
                                         </span>
                                         <span style={{ textAlign: 'right', color: '#c62828' }}>
                                           {fmtUsd(item.other_loss_usd)}
@@ -404,24 +390,24 @@ const ProfitLoss = () => {
                                       </>
                                     )}
                                     <span style={{ paddingLeft: '12px', color: '#666' }}>
-                                      − Purchase COGS (supplier + cargo)
+                                      {t('sales.purchaseCogs')}
                                     </span>
                                     <span style={{ textAlign: 'right' }}>{fmtUsd(bd.purchase_cogs_usd)}</span>
                                     <span style={{ paddingLeft: '24px', color: '#888', fontSize: '0.92em' }}>
-                                      Supplier
+                                      {t('sales.supplier')}
                                     </span>
                                     <span style={{ textAlign: 'right', color: '#888' }}>
                                       {fmtUsd(bd.supplier_cogs_usd)}
                                     </span>
                                     <span style={{ paddingLeft: '24px', color: '#888', fontSize: '0.92em' }}>
-                                      Allocated cargo
+                                      {t('sales.allocatedCargo')}
                                     </span>
                                     <span style={{ textAlign: 'right', color: '#888' }}>
                                       {fmtUsd(bd.cargo_cogs_usd)}
                                     </span>
-                                    <span style={{ paddingLeft: '12px', color: '#666' }}>− Package COGS</span>
+                                    <span style={{ paddingLeft: '12px', color: '#666' }}>{t('sales.packageCogs')}</span>
                                     <span style={{ textAlign: 'right' }}>{fmtUsd(bd.package_cogs_usd)}</span>
-                                    <span style={{ paddingLeft: '12px', color: '#666' }}>− Delivery COGS</span>
+                                    <span style={{ paddingLeft: '12px', color: '#666' }}>{t('sales.deliveryCogs')}</span>
                                     <span style={{ textAlign: 'right' }}>{fmtUsd(bd.delivery_cogs_usd)}</span>
                                     <span
                                       style={{
@@ -430,7 +416,7 @@ const ProfitLoss = () => {
                                         fontWeight: 600,
                                       }}
                                     >
-                                      = Net profit (this sale)
+                                      {t('sales.netProfitSale')}
                                     </span>
                                     <span
                                       style={{
@@ -445,8 +431,7 @@ const ProfitLoss = () => {
                                     </span>
                                   </div>
                                   <p style={{ margin: '10px 0 0', color: '#888', fontSize: '0.82em' }}>
-                                    Operating expenses are not allocated per sale; see the summary cards and
-                                    operating expenses table.
+                                    {t('sales.opexNote')}
                                   </p>
                                 </div>
                               </td>
@@ -459,27 +444,11 @@ const ProfitLoss = () => {
                 </tbody>
                 <tfoot>
                   <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
-                    <td colSpan="4">Totals</td>
-                    <td>
-                      $
-                      {(profitLoss.totals.total_income_usd || 0).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td>
-                      $
-                      {(profitLoss.totals.total_cogs_usd || 0).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
+                    <td colSpan="4">{t('sales.totals')}</td>
+                    <td>{fmtUsd(profitLoss.totals.total_income_usd)}</td>
+                    <td>{fmtUsd(profitLoss.totals.total_cogs_usd)}</td>
                     <td style={{ color: profitLoss.totals.net_profit_usd >= 0 ? '#28a745' : '#dc3545' }}>
-                      $
-                      {(profitLoss.totals.net_profit_usd || 0).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      {fmtUsd(profitLoss.totals.net_profit_usd)}
                     </td>
                   </tr>
                 </tfoot>
@@ -488,7 +457,7 @@ const ProfitLoss = () => {
           </div>
 
           <div className="table-card">
-            <h3>Operating expenses</h3>
+            <h3>{t('operating.title')}</h3>
             <div className="data-table-scroll">
               <table className="data-table">
                 <thead>
@@ -499,7 +468,7 @@ const ProfitLoss = () => {
                       sortDir={operatingExpenseSort.sortDir}
                       onSort={operatingExpenseSort.onHeaderClick}
                     >
-                      Type
+                      {t('operating.type')}
                     </SortableTh>
                     <SortableTh
                       columnId="amount_usd"
@@ -507,7 +476,7 @@ const ProfitLoss = () => {
                       sortDir={operatingExpenseSort.sortDir}
                       onSort={operatingExpenseSort.onHeaderClick}
                     >
-                      Amount (USD)
+                      {t('operating.amountUsd')}
                     </SortableTh>
                     <SortableTh
                       columnId="date"
@@ -515,7 +484,7 @@ const ProfitLoss = () => {
                       sortDir={operatingExpenseSort.sortDir}
                       onSort={operatingExpenseSort.onHeaderClick}
                     >
-                      Date
+                      {t('operating.date')}
                     </SortableTh>
                   </tr>
                 </thead>
@@ -523,20 +492,14 @@ const ProfitLoss = () => {
                   {profitLoss.operating_expenses.length === 0 ? (
                     <tr>
                       <td colSpan="3" style={{ textAlign: 'center' }}>
-                        No operating expenses in this period
+                        {t('operating.noRows')}
                       </td>
                     </tr>
                   ) : (
                     sortedOperatingExpenses.map((item, idx) => (
                       <tr key={idx}>
                         <td>{item.type}</td>
-                        <td>
-                          $
-                          {(item.amount_usd || 0).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
+                        <td>{fmtUsd(item.amount_usd)}</td>
                         <td>{item.date}</td>
                       </tr>
                     ))
@@ -544,14 +507,8 @@ const ProfitLoss = () => {
                 </tbody>
                 <tfoot>
                   <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
-                    <td>Total operating</td>
-                    <td>
-                      $
-                      {(profitLoss.totals.total_operating_expenses_usd || 0).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
+                    <td>{t('operating.totalOperating')}</td>
+                    <td>{fmtUsd(profitLoss.totals.total_operating_expenses_usd)}</td>
                     <td>—</td>
                   </tr>
                 </tfoot>
@@ -560,10 +517,9 @@ const ProfitLoss = () => {
           </div>
 
           <div className="table-card" style={{ marginTop: '20px' }}>
-            <h3>Other income</h3>
+            <h3>{t('otherIncome.title')}</h3>
             <p style={{ color: '#666', fontSize: '0.85em', marginTop: 0 }}>
-              Non-sale income (e.g. gain on fixed-asset sale). Cash proceeds are in Money Balance;
-              only the profit portion is shown here.
+              {t('otherIncome.hint')}
             </p>
             <div className="data-table-scroll">
               <table className="data-table">
@@ -575,7 +531,7 @@ const ProfitLoss = () => {
                       sortDir={otherIncomeSort.sortDir}
                       onSort={otherIncomeSort.onHeaderClick}
                     >
-                      Type
+                      {t('otherIncome.type')}
                     </SortableTh>
                     <SortableTh
                       columnId="description"
@@ -583,7 +539,7 @@ const ProfitLoss = () => {
                       sortDir={otherIncomeSort.sortDir}
                       onSort={otherIncomeSort.onHeaderClick}
                     >
-                      Description
+                      {t('otherIncome.description')}
                     </SortableTh>
                     <SortableTh
                       columnId="amount_usd"
@@ -591,7 +547,7 @@ const ProfitLoss = () => {
                       sortDir={otherIncomeSort.sortDir}
                       onSort={otherIncomeSort.onHeaderClick}
                     >
-                      Amount (USD)
+                      {t('otherIncome.amountUsd')}
                     </SortableTh>
                     <SortableTh
                       columnId="date"
@@ -599,7 +555,7 @@ const ProfitLoss = () => {
                       sortDir={otherIncomeSort.sortDir}
                       onSort={otherIncomeSort.onHeaderClick}
                     >
-                      Date
+                      {t('otherIncome.date')}
                     </SortableTh>
                   </tr>
                 </thead>
@@ -607,7 +563,7 @@ const ProfitLoss = () => {
                   {sortedOtherIncome.length === 0 ? (
                     <tr>
                       <td colSpan="4" style={{ textAlign: 'center' }}>
-                        No other income in this period
+                        {t('otherIncome.noRows')}
                       </td>
                     </tr>
                   ) : (
@@ -615,13 +571,7 @@ const ProfitLoss = () => {
                       <tr key={item.id ?? idx}>
                         <td>{item.type}</td>
                         <td>{item.description}</td>
-                        <td>
-                          $
-                          {(item.amount_usd || 0).toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
+                        <td>{fmtUsd(item.amount_usd)}</td>
                         <td>{item.date}</td>
                       </tr>
                     ))
@@ -629,14 +579,8 @@ const ProfitLoss = () => {
                 </tbody>
                 <tfoot>
                   <tr style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }}>
-                    <td colSpan="2">Total other income</td>
-                    <td>
-                      $
-                      {(profitLoss.totals.total_other_income_usd || 0).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
+                    <td colSpan="2">{t('otherIncome.total')}</td>
+                    <td>{fmtUsd(profitLoss.totals.total_other_income_usd)}</td>
                     <td>—</td>
                   </tr>
                 </tfoot>
@@ -645,7 +589,7 @@ const ProfitLoss = () => {
           </div>
         </div>
       ) : (
-        <div style={{ textAlign: 'center', padding: '40px' }}>No data available</div>
+        <div style={{ textAlign: 'center', padding: '40px' }}>{t('noData')}</div>
       )}
     </div>
   );

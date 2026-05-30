@@ -1,0 +1,118 @@
+{
+
+  "title": "Pul balansi",
+
+  "adjustBalance": "Balansni tuzatish",
+
+  "currencyConversion": "Valyuta konvertatsiyasi",
+
+  "totalUsd": "USD (jami)",
+
+  "totalUzs": "UZS (jami)",
+
+  "transactionHistory": "Tranzaksiyalar tarixi",
+
+  "transactionType": "Tranzaksiya turi",
+
+  "bucket": "Hisob",
+
+  "operation": "Amal",
+
+  "relatedSale": "Bog‘liq sotuv",
+
+  "relatedOrder": "Bog‘liq buyurtma",
+
+  "addMoney": "Pul qo‘shish",
+
+  "subtractMoney": "Pul ayirish",
+
+  "ledgerBucket": "Hisob turi",
+
+  "currencyView": "Valyuta (ko‘rinish)",
+
+  "totalLabel": "{{currency}} (jami)",
+
+  "adjustTitle": "Balansni tuzatish",
+
+  "adjustIntro": "Yangi yozuvlar shu valyutaning naqd hisobiga tushadi (karta hisoblari eski rejim).",
+
+  "balance": "Balans",
+
+  "amount": "Summa",
+
+  "notesRequired": "Izoh *",
+
+  "allBuckets": "Barcha hisoblar",
+
+  "usdCash": "USD (naqd)",
+
+  "uzsCash": "UZS (naqd)",
+
+  "usdCardLegacy": "USD (eski karta)",
+
+  "uzsCardLegacy": "UZS (eski karta)",
+
+  "errNoteRequired": "Balans tuzatish uchun izoh kiriting.",
+
+  "errBalanceNotFound": "Balans topilmadi",
+
+  "errAdjust": "Balansni tuzatishda xatolik",
+
+  "conversion": {
+
+    "title": "Valyuta konvertatsiyasi",
+
+    "intro": "USD va UZS naqd hisoblar o‘rtasida konvertatsiya. Markaziy bank kursi kutilgan summaga qo‘llanadi; qabul qilingan summani o‘zgartirishingiz mumkin — farq Foyda va zararda konvertatsiya foyda/zarari sifatida yoziladi.",
+
+    "loadingRate": "Tanlangan sana uchun kurs yuklanmoqda…",
+
+    "rateLine": "1 USD = {{rate}} UZS",
+
+    "rateAsOf": "(kurs: {{date}})",
+
+    "direction": "Yo‘nalish",
+
+    "usdToUzs": "USD → UZS",
+
+    "uzsToUsd": "UZS → USD",
+
+    "conversionDate": "Konvertatsiya sanasi",
+
+    "sourceAmount": "Manba summa ({{currency}})",
+
+    "convertedAmount": "Konvertatsiya qilingan summa ({{currency}})",
+
+    "cbExpected": "MB kutilgan: {{amount}} {{currency}}",
+
+    "notesOptional": "Izoh (ixtiyoriy)",
+
+    "profit": "Konvertatsiya foydasi",
+
+    "loss": "Konvertatsiya zarari",
+
+    "recordedInPl": "(Foyda va zararda yoziladi)",
+
+    "noPlEffect": "Foyda/zararga ta’sir yo‘q — summa MB kursiga mos.",
+
+    "converting": "Konvertatsiya…",
+
+    "convert": "Konvertatsiya qilish",
+
+    "errAmounts": "To‘g‘ri manba va konvertatsiya summalarini kiriting.",
+
+    "errRate": "Valyuta kursi mavjud emas. Birozdan keyin qayta urinib ko‘ring.",
+
+    "errFailed": "Konvertatsiya amalga oshmadi"
+
+  },
+
+  "noTransactions": "Tranzaksiyalar topilmadi",
+
+  "footerHint": "Summalar valyuta bo‘yicha jamlanadi; hisob ustuni asosiy yozuvni ko‘rsatadi.",
+
+  "saleRef": "Sotuv #{{id}}",
+
+  "orderRef": "Buyurtma #{{id}}"
+
+}
+

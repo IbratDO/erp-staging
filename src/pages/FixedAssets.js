@@ -1,25 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
 import { cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppNumber } from '../utils/localeFormat';
 import './TablePage.css';
 
-const CATEGORIES = [
-  ['vehicle', 'Vehicle'],
-  ['equipment', 'Equipment'],
-  ['computer', 'Computer'],
-  ['machinery', 'Machinery'],
-  ['furniture', 'Furniture'],
-  ['building', 'Building'],
-  ['office_equipment', 'Office Equipment'],
-  ['other', 'Other'],
+const CATEGORY_VALUES = [
+  'vehicle',
+  'equipment',
+  'computer',
+  'machinery',
+  'furniture',
+  'building',
+  'office_equipment',
+  'other',
 ];
-
-const PURCHASE_STATUS_LABEL = {
-  ordered: 'Ordered',
-  order_paid: 'Paid',
-  received: 'Received',
-};
 
 const defaultPaymentState = {
   assetId: null,
@@ -43,6 +40,8 @@ function formatApiError(data) {
 }
 
 const FixedAssets = () => {
+  const { t } = useAppTranslation(['fixedAssets', 'common']);
+  const uzsLabel = t('currency.uzs', { ns: 'common' });
   const { hasPermission } = useAuth();
   const isAdmin = hasPermission('fixed_assets.create');
   const [assets, setAssets] = useState([]);
@@ -63,6 +62,11 @@ const FixedAssets = () => {
     notes: '',
     pay_immediately: false,
   });
+
+  const categoryOptions = useMemo(
+    () => CATEGORY_VALUES.map((value) => ({ value, label: t(`categories.${value}`) })),
+    [t],
+  );
 
   const showNotification = (message, type = 'success') => {
     setNotification({ show: true, message, type });
@@ -96,6 +100,9 @@ const FixedAssets = () => {
   }, []);
 
   const getAvailableBalance = (currency) => cashBalanceTotalByCurrency(balances, currency);
+
+  const formatCurrency = (currency) =>
+    (currency || 'USD').toUpperCase() === 'UZS' ? uzsLabel : t('currency.usd', { ns: 'common' });
 
   const prefillPaymentForAsset = (asset, action) => {
     const cost = parseFloat(asset.purchase_cost) || 0;
@@ -142,9 +149,9 @@ const FixedAssets = () => {
       });
       fetchAssets();
       fetchBalances();
-      showNotification('Fixed asset saved.');
+      showNotification(t('notifications.saved'));
     } catch (err) {
-      showNotification(formatApiError(err.response?.data) || 'Failed to save asset', 'error');
+      showNotification(formatApiError(err.response?.data) || t('notifications.saveFailed'), 'error');
     }
   };
 
@@ -163,7 +170,7 @@ const FixedAssets = () => {
 
     if (paymentForm.action !== 'receive') {
       if (uzs + usd === 0) {
-        showNotification('Enter at least one payment amount.', 'error');
+        showNotification(t('notifications.enterPayment'), 'error');
         return;
       }
       if (uzs > 0 && getAvailableBalance('UZS') < uzs) {
@@ -187,9 +194,9 @@ const FixedAssets = () => {
       setPaymentForm(defaultPaymentState);
       fetchAssets();
       fetchBalances();
-      showNotification('Updated successfully.');
+      showNotification(t('notifications.updated'));
     } catch (err) {
-      showNotification(formatApiError(err.response?.data) || 'Action failed', 'error');
+      showNotification(formatApiError(err.response?.data) || t('notifications.actionFailed'), 'error');
     }
   };
 
@@ -197,54 +204,54 @@ const FixedAssets = () => {
     try {
       await api.post(`/fixed-assets/${asset.id}/receive_asset/`, {});
       fetchAssets();
-      showNotification('Asset received onto the balance sheet.');
+      showNotification(t('notifications.received'));
     } catch (err) {
-      showNotification(formatApiError(err.response?.data) || 'Receive failed', 'error');
+      showNotification(formatApiError(err.response?.data) || t('notifications.receiveFailed'), 'error');
     }
   };
 
   const handleWriteOff = async (asset) => {
-    const notes = window.prompt('Notes for write-off (optional):', '') ?? '';
-    if (!window.confirm(`Write off "${asset.name}"? Remaining book value will be expensed.`)) return;
+    const notes = window.prompt(t('promptWriteOffNotes'), '') ?? '';
+    if (!window.confirm(t('confirmWriteOff', { name: asset.name }))) return;
     try {
       await api.post(`/fixed-assets/${asset.id}/write_off/`, { notes });
       fetchAssets();
       fetchBalances();
-      showNotification('Asset written off.');
+      showNotification(t('notifications.writtenOff'));
     } catch (err) {
-      showNotification(formatApiError(err.response?.data) || 'Write-off failed', 'error');
+      showNotification(formatApiError(err.response?.data) || t('notifications.writeOffFailed'), 'error');
     }
   };
 
   const handleDelete = async (asset) => {
-    if (!window.confirm(`Remove purchase order for "${asset.name}"? Payable will be cancelled.`)) return;
+    if (!window.confirm(t('confirmDelete', { name: asset.name }))) return;
     try {
       await api.delete(`/fixed-assets/${asset.id}/`);
       fetchAssets();
-      showNotification('Purchase order removed.');
+      showNotification(t('notifications.removed'));
     } catch (err) {
-      showNotification(formatApiError(err.response?.data) || 'Delete failed', 'error');
+      showNotification(formatApiError(err.response?.data) || t('notifications.deleteFailed'), 'error');
     }
   };
 
   const paymentTitle = () => {
     const a = assets.find((x) => x.id === paymentForm.assetId);
-    if (!a) return 'Payment';
-    if (paymentForm.action === 'pay') return `Pay for asset #${a.id} — ${a.name}`;
-    if (paymentForm.action === 'receive') return `Receive asset #${a.id} — ${a.name}`;
-    if (paymentForm.action === 'sell') return `Sell asset — ${a.name}`;
-    return 'Payment';
+    if (!a) return t('payment.title');
+    if (paymentForm.action === 'pay') return t('payment.payTitle', { id: a.id, name: a.name });
+    if (paymentForm.action === 'receive') return t('payment.receiveTitle', { id: a.id, name: a.name });
+    if (paymentForm.action === 'sell') return t('payment.sellTitle', { name: a.name });
+    return t('payment.title');
   };
 
-  if (loading) return <div className="page-container">Loading…</div>;
+  if (loading) return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Fixed Assets</h1>
+        <PageTitle ns="fixedAssets" />
         {isAdmin && (
           <button type="button" className="btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : '+ Add asset'}
+            {showForm ? t('actions.cancel', { ns: 'common' }) : t('addAsset')}
           </button>
         )}
       </div>
@@ -256,30 +263,28 @@ const FixedAssets = () => {
       )}
 
       <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em', maxWidth: 820 }}>
-        Create a purchase order (payable), pay supplier (cash down — shows as fixed-asset receivable until
-        received), then receive onto the balance sheet. You may also receive on credit first (payable stays
-        until paid). Sell or write off updates cash and removes the asset from the books.
+        {t('intro')}
       </p>
 
       {showForm && isAdmin && (
         <div className="form-card" style={{ marginBottom: 16 }}>
-          <h2>New fixed asset</h2>
+          <h2>{t('form.newTitle')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Asset name *</label>
+                <label>{t('form.assetName')}</label>
                 <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>Category</label>
+                <label>{t('form.category')}</label>
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  {CATEGORIES.map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
+                  {categoryOptions.map(({ value, label }) => (
+                    <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label>Purchase date</label>
+                <label>{t('form.purchaseDate')}</label>
                 <input
                   type="date"
                   required
@@ -288,14 +293,14 @@ const FixedAssets = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Currency</label>
+                <label>{t('form.currency')}</label>
                 <select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
+                  <option value="USD">{t('currency.usd', { ns: 'common' })}</option>
+                  <option value="UZS">{uzsLabel}</option>
                 </select>
               </div>
               <div className="form-group">
-                <label>Purchase cost *</label>
+                <label>{t('form.purchaseCost')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -306,7 +311,7 @@ const FixedAssets = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Current value (optional)</label>
+                <label>{t('form.currentValue')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -316,7 +321,7 @@ const FixedAssets = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Accumulated depreciation (optional)</label>
+                <label>{t('form.depreciation')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -326,7 +331,7 @@ const FixedAssets = () => {
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes</label>
+                <label>{t('form.notes')}</label>
                 <textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -336,13 +341,13 @@ const FixedAssets = () => {
                     checked={form.pay_immediately}
                     onChange={(e) => setForm({ ...form, pay_immediately: e.target.checked })}
                   />
-                  Pay immediately from cash (receive separately when the asset arrives)
+                  {t('form.payImmediately')}
                 </label>
               </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                {form.pay_immediately ? 'Pay now (receive later)' : 'Create purchase order'}
+                {form.pay_immediately ? t('form.payNowReceiveLater') : t('form.createPurchaseOrder')}
               </button>
             </div>
           </form>
@@ -356,7 +361,7 @@ const FixedAssets = () => {
             {paymentForm.action !== 'receive' && (
               <div className="form-grid">
                 <div className="form-group">
-                  <label>UZS payment</label>
+                  <label>{t('payment.uzsPayment')}</label>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -370,7 +375,7 @@ const FixedAssets = () => {
                   />
                 </div>
                 <div className="form-group">
-                  <label>USD payment</label>
+                  <label>{t('payment.usdPayment')}</label>
                   <input
                     type="text"
                     inputMode="decimal"
@@ -387,7 +392,7 @@ const FixedAssets = () => {
             )}
             {paymentForm.action === 'sell' && (
               <div className="form-group" style={{ marginTop: 8 }}>
-                <label>Notes</label>
+                <label>{t('form.notes')}</label>
                 <input
                   value={paymentForm.notes}
                   onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
@@ -395,7 +400,7 @@ const FixedAssets = () => {
               </div>
             )}
             <div className="form-actions" style={{ marginTop: 12 }}>
-              <button type="submit" className="btn-primary">Confirm</button>
+              <button type="submit" className="btn-primary">{t('payment.confirm')}</button>
               <button
                 type="button"
                 className="btn-secondary"
@@ -404,7 +409,7 @@ const FixedAssets = () => {
                   setPaymentForm(defaultPaymentState);
                 }}
               >
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -415,21 +420,21 @@ const FixedAssets = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Category</th>
-              <th>Purchase date</th>
-              <th>Cost</th>
-              <th>Book value</th>
-              <th>Purchase</th>
-              <th>Status</th>
-              {isAdmin && <th>Actions</th>}
+              <th>{t('table.name')}</th>
+              <th>{t('table.category')}</th>
+              <th>{t('table.purchaseDate')}</th>
+              <th>{t('table.cost')}</th>
+              <th>{t('table.bookValue')}</th>
+              <th>{t('table.purchase')}</th>
+              <th>{t('table.status')}</th>
+              {isAdmin && <th>{t('table.actions')}</th>}
             </tr>
           </thead>
           <tbody>
             {assets.length === 0 ? (
               <tr>
                 <td colSpan={isAdmin ? 8 : 7} style={{ textAlign: 'center' }}>
-                  No fixed assets
+                  {t('table.noRows')}
                 </td>
               </tr>
             ) : (
@@ -449,30 +454,35 @@ const FixedAssets = () => {
                 return (
                   <tr key={a.id}>
                     <td>{a.name}</td>
-                    <td>{a.category}</td>
+                    <td>{t(`categories.${a.category}`, { defaultValue: a.category })}</td>
                     <td>{a.purchase_date}</td>
                     <td>
-                      {cost.toLocaleString()} {a.currency}
+                      {formatAppNumber(cost)} {formatCurrency(a.currency)}
                       {a.payable_status === 'pending' && a.purchase_status === 'received' && (
-                        <div style={{ fontSize: '0.8em', color: '#c62828' }}>Payable (on credit)</div>
+                        <div style={{ fontSize: '0.8em', color: '#c62828' }}>{t('table.payableOnCredit')}</div>
                       )}
                     </td>
                     <td>
-                      {a.book_value_display} {a.currency}
+                      {a.book_value_display} {formatCurrency(a.currency)}
                     </td>
                     <td>
                       <span className={`status-badge ${a.purchase_status}`}>
-                        {PURCHASE_STATUS_LABEL[a.purchase_status] || a.purchase_status}
+                        {t(`purchaseStatus.${a.purchase_status}`, { defaultValue: a.purchase_status })}
                       </span>
                       {a.is_paid && a.purchase_status !== 'received' && (
-                        <span style={{ marginLeft: 6, fontSize: '0.8em', color: '#2e7d32' }}>Paid</span>
+                        <span style={{ marginLeft: 6, fontSize: '0.8em', color: '#2e7d32' }}>{t('table.paid')}</span>
                       )}
                     </td>
                     <td>
-                      <span className={`status-badge ${a.status}`}>{a.status}</span>
+                      <span className={`status-badge ${a.status}`}>
+                        {t(`assetStatus.${a.status}`, { defaultValue: a.status })}
+                      </span>
                       {a.sale_price != null && a.status === 'sold' && (
                         <div style={{ fontSize: '0.8em' }}>
-                          Sold: {parseFloat(a.sale_price).toLocaleString()} {a.sale_currency || a.currency}
+                          {t('table.sold', {
+                            amount: formatAppNumber(a.sale_price),
+                            currency: formatCurrency(a.sale_currency || a.currency),
+                          })}
                         </div>
                       )}
                     </td>
@@ -485,7 +495,7 @@ const FixedAssets = () => {
                             style={{ marginRight: 4 }}
                             onClick={() => prefillPaymentForAsset(a, 'pay')}
                           >
-                            Pay
+                            {t('actions.pay')}
                           </button>
                         )}
                         {showReceive && (
@@ -495,7 +505,7 @@ const FixedAssets = () => {
                             style={{ marginRight: 4 }}
                             onClick={() => handleReceive(a)}
                           >
-                            Receive
+                            {t('actions.receive')}
                           </button>
                         )}
                         {onBooks && (
@@ -506,7 +516,7 @@ const FixedAssets = () => {
                               style={{ marginRight: 4, backgroundColor: '#4caf50', color: '#fff' }}
                               onClick={() => prefillPaymentForAsset(a, 'sell')}
                             >
-                              Sell
+                              {t('actions.sell')}
                             </button>
                             <button
                               type="button"
@@ -514,7 +524,7 @@ const FixedAssets = () => {
                               style={{ marginRight: 4 }}
                               onClick={() => handleWriteOff(a)}
                             >
-                              Write off
+                              {t('actions.writeOff')}
                             </button>
                           </>
                         )}
@@ -524,7 +534,7 @@ const FixedAssets = () => {
                             className="btn-status"
                             onClick={() => handleDelete(a)}
                           >
-                            Remove
+                            {t('actions.remove')}
                           </button>
                         )}
                       </td>

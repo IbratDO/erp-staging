@@ -9,6 +9,9 @@ import {
   usdToUzs,
 } from './saleCompletePayHelpers';
 import { formatDisplayAmount } from './currencyFormat';
+import i18n from '../i18n';
+
+const tr = (key, opts) => i18n.t(key, { ns: 'returns', ...opts });
 
 /** Refund due at mark-refunded: stored sold price from return creation, else legacy sale unit price. */
 export function computeReturnRefundDue(returnItem) {
@@ -154,9 +157,11 @@ export function buildReturnCombinedRefundConfirmMessage({
 }) {
   const sc = meta.sc || 'USD';
   const rateLine = exchangeRate?.label
-    ? `CBU rate: ${exchangeRate.label}`
+    ? tr('confirm.cbuRateLabel', { label: exchangeRate.label })
     : cbuRate
-      ? `CBU rate: 1 USD = ${Number(cbuRate).toLocaleString(undefined, { maximumFractionDigits: 2 })} UZS`
+      ? tr('confirm.cbuRateUsdUzs', {
+          rate: Number(cbuRate).toLocaleString(undefined, { maximumFractionDigits: 2 }),
+        })
       : null;
 
   const uzsLine =
@@ -174,41 +179,53 @@ export function buildReturnCombinedRefundConfirmMessage({
 
   const totalLine =
     meta.paid != null
-      ? `Total refund (in ${sc}): ${formatAmountForCurrency(meta.paid, sc)}`
+      ? tr('confirm.totalRefundInCurrency', {
+          currency: sc,
+          amount: formatAmountForCurrency(meta.paid, sc),
+        })
       : null;
   const dueLine =
-    meta.due != null ? `Refund due (in ${sc}): ${formatAmountForCurrency(meta.due, sc)}` : null;
+    meta.due != null
+      ? tr('confirm.refundDueInCurrency', {
+          currency: sc,
+          amount: formatAmountForCurrency(meta.due, sc),
+        })
+      : null;
 
-  let statusLine = 'This matches the refund due.';
+  let statusLine = tr('confirm.matchesDue');
   if (meta.needs && meta.short > 0) {
-    statusLine = `Below due by ${formatAmountForCurrency(meta.short, sc)} — remainder will not be refunded.`;
+    statusLine = tr('confirm.belowDueRemainder', {
+      short: formatAmountForCurrency(meta.short, sc),
+    });
   } else if (meta.hasOverpayment && meta.overpaymentAmount != null) {
-    statusLine = `Above due by ${formatAmountForCurrency(meta.overpaymentAmount, sc)} — excess will still be paid from cash.`;
+    statusLine = tr('confirm.aboveDueExcess', {
+      excess: formatAmountForCurrency(meta.overpaymentAmount, sc),
+    });
   }
 
   const productLabel = returnItem?.product_detail
     ? `${returnItem.product_detail.brand} ${returnItem.product_detail.model}`
-    : `Product #${returnItem?.product ?? '?'}`;
+    : tr('confirm.productFallback', { id: returnItem?.product ?? '?' });
   const customerLine = returnItem?.customer_detail?.name
-    ? `Customer: ${returnItem.customer_detail.name}`
+    ? tr('confirm.customerLine', { name: returnItem.customer_detail.name })
     : null;
 
   return [
-    `Mark Return #${returnItem?.id ?? '?'} as refunded?`,
+    tr('confirm.markRefundedTitle', { id: returnItem?.id ?? '?' }),
     '',
     productLabel,
     customerLine,
-    returnItem?.quantity != null ? `Qty: ${returnItem.quantity}` : null,
+    returnItem?.quantity != null ? tr('confirm.qtyLine', { qty: returnItem.quantity }) : null,
     '',
     rateLine,
     dueLine,
-    'Paying:',
+    tr('confirm.payingLabel'),
     uzsLine,
     usdLine,
     totalLine,
     statusLine,
     '',
-    'Proceed?',
+    tr('confirm.proceedShort'),
   ]
     .filter((line) => line != null && line !== '')
     .join('\n');
@@ -226,9 +243,11 @@ export function buildReturnCrossCurrencyConfirmMessage({
   const dueLabel = formatAmountForCurrency(due, sc);
   const payLabel = formatAmountForCurrency(otherAmount, otherCurrency);
   const rateLine = exchangeRate?.label
-    ? `Based on CBU exchange rate: ${exchangeRate.label}`
+    ? tr('confirm.cbuRateBased', { label: exchangeRate.label })
     : cbuRate
-      ? `Based on CBU exchange rate: 1 USD = ${Number(cbuRate).toLocaleString(undefined, { maximumFractionDigits: 2 })} UZS`
+      ? tr('confirm.cbuRateBasedUsdUzs', {
+          rate: Number(cbuRate).toLocaleString(undefined, { maximumFractionDigits: 2 }),
+        })
       : null;
   const equiv =
     cbuRate && otherAmount > 0
@@ -240,14 +259,21 @@ export function buildReturnCrossCurrencyConfirmMessage({
       : null;
   const totalLine =
     paidInSaleCurrency != null
-      ? `Total refund (in ${sc}): ${formatAmountForCurrency(paidInSaleCurrency, sc)}`
+      ? tr('confirm.totalRefundInCurrency', {
+          currency: sc,
+          amount: formatAmountForCurrency(paidInSaleCurrency, sc),
+        })
       : null;
   return [
     rateLine,
-    `Refund due (in ${sc}): ${dueLabel}.`,
-    `You are refunding ${payLabel} in ${otherCurrency}${equiv ? ` ${equiv}` : ''}.`,
+    tr('confirm.crossCurrencyDue', { currency: sc, amount: dueLabel }),
+    tr('confirm.crossCurrencyPaying', {
+      payAmount: payLabel,
+      payCurrency: otherCurrency,
+      equiv: equiv || '',
+    }),
     totalLine,
-    'Continue?',
+    tr('confirm.continue'),
   ]
     .filter(Boolean)
     .join('\n\n');

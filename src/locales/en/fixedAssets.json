@@ -1,0 +1,85 @@
+{
+  "title": "Fixed Assets",
+  "addAsset": "+ Add asset",
+  "intro": "Create a purchase order (payable), pay supplier (cash down — shows as fixed-asset receivable until received), then receive onto the balance sheet. You may also receive on credit first (payable stays until paid). Sell or write off updates cash and removes the asset from the books.",
+  "form": {
+    "newTitle": "New fixed asset",
+    "assetName": "Asset name *",
+    "category": "Category",
+    "purchaseDate": "Purchase date",
+    "currency": "Currency",
+    "purchaseCost": "Purchase cost *",
+    "currentValue": "Current value (optional)",
+    "depreciation": "Accumulated depreciation (optional)",
+    "notes": "Notes",
+    "payImmediately": "Pay immediately from cash (receive separately when the asset arrives)",
+    "payNowReceiveLater": "Pay now (receive later)",
+    "createPurchaseOrder": "Create purchase order"
+  },
+  "categories": {
+    "vehicle": "Vehicle",
+    "equipment": "Equipment",
+    "computer": "Computer",
+    "machinery": "Machinery",
+    "furniture": "Furniture",
+    "building": "Building",
+    "office_equipment": "Office Equipment",
+    "other": "Other"
+  },
+  "purchaseStatus": {
+    "ordered": "Ordered",
+    "order_paid": "Paid",
+    "received": "Received"
+  },
+  "assetStatus": {
+    "active": "Active",
+    "sold": "Sold",
+    "written_off": "Written off"
+  },
+  "payment": {
+    "title": "Payment",
+    "payTitle": "Pay for asset #{{id}} — {{name}}",
+    "receiveTitle": "Receive asset #{{id}} — {{name}}",
+    "sellTitle": "Sell asset — {{name}}",
+    "uzsPayment": "UZS payment",
+    "usdPayment": "USD payment",
+    "confirm": "Confirm"
+  },
+  "table": {
+    "name": "Name",
+    "category": "Category",
+    "purchaseDate": "Purchase date",
+    "cost": "Cost",
+    "bookValue": "Book value",
+    "purchase": "Purchase",
+    "status": "Status",
+    "actions": "Actions",
+    "noRows": "No fixed assets",
+    "payableOnCredit": "Payable (on credit)",
+    "paid": "Paid",
+    "sold": "Sold: {{amount}} {{currency}}"
+  },
+  "actions": {
+    "pay": "Pay",
+    "receive": "Receive",
+    "sell": "Sell",
+    "writeOff": "Write off",
+    "remove": "Remove"
+  },
+  "confirmWriteOff": "Write off \"{{name}}\"? Remaining book value will be expensed.",
+  "confirmDelete": "Remove purchase order for \"{{name}}\"? Payable will be cancelled.",
+  "promptWriteOffNotes": "Notes for write-off (optional):",
+  "notifications": {
+    "saved": "Fixed asset saved.",
+    "saveFailed": "Failed to save asset",
+    "updated": "Updated successfully.",
+    "actionFailed": "Action failed",
+    "received": "Asset received onto the balance sheet.",
+    "receiveFailed": "Receive failed",
+    "writtenOff": "Asset written off.",
+    "writeOffFailed": "Write-off failed",
+    "removed": "Purchase order removed.",
+    "deleteFailed": "Delete failed",
+    "enterPayment": "Enter at least one payment amount."
+  }
+}

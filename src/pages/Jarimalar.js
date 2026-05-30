@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../utils/api';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppNumber } from '../utils/localeFormat';
 import './TablePage.css';
 
 const EMPTY_FILTERS = {
@@ -20,15 +23,9 @@ function managerDisplayName(detail, fallbackId = '') {
   );
 }
 
-function managerOptionLabel(m) {
-  return (
-    [m.username, m.first_name, m.last_name].filter(Boolean).join(' ') ||
-    m.username ||
-    `User #${m.id}`
-  );
-}
-
 const Jarimalar = () => {
+  const { t, monthOptions } = useAppTranslation(['penalties', 'common']);
+  const uzsLabel = t('currency.uzs', { ns: 'common' });
   const { hasPermission } = usePermissions();
   const canManage = hasPermission('penalties.manage');
   const [rows, setRows] = useState([]);
@@ -45,6 +42,14 @@ const Jarimalar = () => {
     reason: '',
     penalty_date: new Date().toISOString().slice(0, 10),
   });
+
+  const managerOptionLabel = useCallback(
+    (m) =>
+      [m.username, m.first_name, m.last_name].filter(Boolean).join(' ') ||
+      m.username ||
+      t('userFallback', { id: m.id }),
+    [t],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,48 +158,50 @@ const Jarimalar = () => {
       setShowForm(false);
       load();
     } catch (err) {
-      alert(err.response?.data?.detail || err.response?.data?.error || 'Could not save penalty');
+      alert(err.response?.data?.detail || err.response?.data?.error || t('notifications.saveFailed'));
     }
   };
 
   const handleDelete = async (row) => {
-    if (!window.confirm('Delete this penalty record?')) return;
+    if (!window.confirm(t('confirmDelete'))) return;
     try {
       await api.delete(`/penalties/${row.id}/`);
       load();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Could not delete');
+      alert(err.response?.data?.detail || t('notifications.deleteFailed'));
     }
   };
 
+  const formatCurrency = (currency) => (currency === 'UZS' ? uzsLabel : t('currency.usd', { ns: 'common' }));
+
   if (!canManage) {
-    return <div className="page-container">You do not have access to Jarimalar.</div>;
+    return <div className="page-container">{t('accessDenied')}</div>;
   }
 
-  if (loading) return <div className="page-container">Loading…</div>;
+  if (loading) return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Jarimalar</h1>
+        <PageTitle ns="penalties" />
         <button type="button" className="btn-primary" onClick={openCreate}>
-          + Add penalty
+          {t('addPenalty')}
         </button>
       </div>
 
       {showForm && (
         <div className="form-card" style={{ marginBottom: 20 }}>
-          <h2>{editing ? 'Edit penalty' : 'New penalty'}</h2>
+          <h2>{editing ? t('form.editTitle') : t('form.newTitle')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Manager</label>
+                <label>{t('form.manager')}</label>
                 <select
                   value={form.employee}
                   onChange={(e) => setForm({ ...form, employee: e.target.value })}
                   required
                 >
-                  <option value="">Select manager</option>
+                  <option value="">{t('form.selectManager')}</option>
                   {managers.map((m) => (
                     <option key={m.id} value={m.id}>
                       {managerOptionLabel(m)} ({m.role_name || m.role_code})
@@ -203,7 +210,7 @@ const Jarimalar = () => {
                 </select>
               </div>
               <div className="form-group">
-                <label>Date</label>
+                <label>{t('form.date')}</label>
                 <input
                   type="date"
                   value={form.penalty_date}
@@ -212,7 +219,7 @@ const Jarimalar = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Points</label>
+                <label>{t('form.points')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -223,7 +230,7 @@ const Jarimalar = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Amount</label>
+                <label>{t('form.amount')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -234,17 +241,17 @@ const Jarimalar = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Currency</label>
+                <label>{t('form.currency')}</label>
                 <select
                   value={form.currency}
                   onChange={(e) => setForm({ ...form, currency: e.target.value })}
                 >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
+                  <option value="USD">{t('currency.usd', { ns: 'common' })}</option>
+                  <option value="UZS">{uzsLabel}</option>
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Reason</label>
+                <label>{t('form.reason')}</label>
                 <textarea
                   rows={3}
                   value={form.reason}
@@ -255,10 +262,10 @@ const Jarimalar = () => {
             </div>
             <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
               <button type="submit" className="btn-primary">
-                Save
+                {t('actions.save', { ns: 'common' })}
               </button>
               <button type="button" className="btn-edit" onClick={() => setShowForm(false)}>
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -267,15 +274,15 @@ const Jarimalar = () => {
 
       {!showForm && (
         <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
-          <h3 className="filter-card__title">Filters</h3>
+          <h3 className="filter-card__title">{t('filters.title')}</h3>
           <div className="filter-toolbar">
             <div className="filter-field">
-              <label>Manager</label>
+              <label>{t('filters.manager')}</label>
               <select
                 value={filters.employee}
                 onChange={(e) => setFilters({ ...filters, employee: e.target.value })}
               >
-                <option value="">All managers</option>
+                <option value="">{t('filters.allManagers')}</option>
                 {managers.map((m) => (
                   <option key={m.id} value={String(m.id)}>
                     {managerOptionLabel(m)}
@@ -284,23 +291,23 @@ const Jarimalar = () => {
               </select>
             </div>
             <div className="filter-field">
-              <label>Currency</label>
+              <label>{t('filters.currency')}</label>
               <select
                 value={filters.currency}
                 onChange={(e) => setFilters({ ...filters, currency: e.target.value })}
               >
-                <option value="">All currencies</option>
-                <option value="USD">USD</option>
-                <option value="UZS">UZS</option>
+                <option value="">{t('filters.allCurrencies')}</option>
+                <option value="USD">{t('currency.usd', { ns: 'common' })}</option>
+                <option value="UZS">{uzsLabel}</option>
               </select>
             </div>
             <div className="filter-field">
-              <label>Assigned by</label>
+              <label>{t('filters.assignedBy')}</label>
               <select
                 value={filters.created_by}
                 onChange={(e) => setFilters({ ...filters, created_by: e.target.value })}
               >
-                <option value="">All assigners</option>
+                <option value="">{t('filters.allAssigners')}</option>
                 {assignerOptions.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.label}
@@ -309,12 +316,12 @@ const Jarimalar = () => {
               </select>
             </div>
             <div className="filter-field">
-              <label>Year</label>
+              <label>{t('filters.year')}</label>
               <select
                 value={filters.year}
                 onChange={(e) => setFilters({ ...filters, year: e.target.value })}
               >
-                <option value="">All years</option>
+                <option value="">{t('filters.allYears')}</option>
                 {Array.from({ length: 10 }, (_, i) => {
                   const year = new Date().getFullYear() - i;
                   return (
@@ -326,29 +333,22 @@ const Jarimalar = () => {
               </select>
             </div>
             <div className="filter-field">
-              <label>Month</label>
+              <label>{t('filters.month')}</label>
               <select
                 value={filters.month}
                 onChange={(e) => setFilters({ ...filters, month: e.target.value })}
               >
-                <option value="">All months</option>
-                <option value="1">January</option>
-                <option value="2">February</option>
-                <option value="3">March</option>
-                <option value="4">April</option>
-                <option value="5">May</option>
-                <option value="6">June</option>
-                <option value="7">July</option>
-                <option value="8">August</option>
-                <option value="9">September</option>
-                <option value="10">October</option>
-                <option value="11">November</option>
-                <option value="12">December</option>
+                <option value="">{t('filters.allMonths')}</option>
+                {monthOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="filter-toolbar__actions">
               <button type="button" className="btn-edit" onClick={() => setFilters(EMPTY_FILTERS)}>
-                Clear all
+                {t('filters.clearAll')}
               </button>
             </div>
           </div>
@@ -360,20 +360,20 @@ const Jarimalar = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Manager</th>
-                <th>Points</th>
-                <th>Amount</th>
-                <th>Reason</th>
-                <th>Assigned by</th>
-                <th>Actions</th>
+                <th>{t('table.date')}</th>
+                <th>{t('table.manager')}</th>
+                <th>{t('table.points')}</th>
+                <th>{t('table.amount')}</th>
+                <th>{t('table.reason')}</th>
+                <th>{t('table.assignedBy')}</th>
+                <th>{t('table.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center' }}>
-                    {rows.length === 0 ? 'No penalties yet' : 'No penalties match these filters'}
+                    {rows.length === 0 ? t('table.noRows') : t('table.noMatch')}
                   </td>
                 </tr>
               ) : (
@@ -383,16 +383,16 @@ const Jarimalar = () => {
                     <td>{managerDisplayName(p.employee_detail, p.employee)}</td>
                     <td>{p.points}</td>
                     <td>
-                      {p.amount} {p.currency}
+                      {p.amount} {formatCurrency(p.currency)}
                     </td>
                     <td style={{ maxWidth: 240 }}>{p.reason}</td>
                     <td>{managerDisplayName(p.created_by_detail)}</td>
                     <td>
                       <button type="button" className="btn-edit" onClick={() => openEdit(p)}>
-                        Edit
+                        {t('actions.edit', { ns: 'common' })}
                       </button>{' '}
                       <button type="button" className="btn-delete" onClick={() => handleDelete(p)}>
-                        Delete
+                        {t('actions.delete', { ns: 'common' })}
                       </button>
                     </td>
                   </tr>
@@ -402,10 +402,10 @@ const Jarimalar = () => {
             <tfoot>
               <tr>
                 <td colSpan={2} style={{ textAlign: 'right', fontWeight: 600 }}>
-                  Total ({columnTotals.count.toLocaleString()})
+                  {t('table.total', { count: columnTotals.count.toLocaleString() })}
                 </td>
                 <td style={{ fontWeight: 600 }}>
-                  {columnTotals.points.toLocaleString(undefined, {
+                  {formatAppNumber(columnTotals.points, {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 2,
                   })}
@@ -413,16 +413,16 @@ const Jarimalar = () => {
                 <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
                   {[
                     columnTotals.usd > 0
-                      ? `$${columnTotals.usd.toLocaleString(undefined, {
+                      ? `$${formatAppNumber(columnTotals.usd, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}`
                       : null,
                     columnTotals.uzs > 0
-                      ? `${columnTotals.uzs.toLocaleString(undefined, {
+                      ? `${formatAppNumber(columnTotals.uzs, {
                           minimumFractionDigits: 0,
                           maximumFractionDigits: 0,
-                        })} UZS`
+                        })} ${uzsLabel}`
                       : null,
                   ]
                     .filter(Boolean)

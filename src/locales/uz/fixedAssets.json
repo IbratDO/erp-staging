@@ -1,0 +1,85 @@
+{
+  "title": "Asosiy vositalar",
+  "addAsset": "+ Vosita qo‘shish",
+  "intro": "Xarid buyurtmasi (kreditorlik) yarating, yetkazuvchiga to‘lang (naqd — qabul qilinmaguncha asosiy vosita debitorligi), keyin balansga qabul qiling. Avval kreditga qabul qilish ham mumkin (to‘languncha kreditorlik qoladi). Sotish yoki hisobdan chiqarish naqdni yangilaydi va vosita balansdan olib tashlanadi.",
+  "form": {
+    "newTitle": "Yangi asosiy vosita",
+    "assetName": "Vosita nomi *",
+    "category": "Kategoriya",
+    "purchaseDate": "Xarid sanasi",
+    "currency": "Valyuta",
+    "purchaseCost": "Xarid narxi *",
+    "currentValue": "Joriy qiymat (ixtiyoriy)",
+    "depreciation": "Yig‘ilgan amortizatsiya (ixtiyoriy)",
+    "notes": "Izoh",
+    "payImmediately": "Darhol naqddan to‘lash (vosita kelganda alohida qabul qiling)",
+    "payNowReceiveLater": "Hozir to‘lash (keyinroq qabul qilish)",
+    "createPurchaseOrder": "Xarid buyurtmasi yaratish"
+  },
+  "categories": {
+    "vehicle": "Transport",
+    "equipment": "Uskuna",
+    "computer": "Kompyuter",
+    "machinery": "Mashina",
+    "furniture": "Mebel",
+    "building": "Bino",
+    "office_equipment": "Ofis jihozlari",
+    "other": "Boshqa"
+  },
+  "purchaseStatus": {
+    "ordered": "Buyurtma qilingan",
+    "order_paid": "To‘langan",
+    "received": "Qabul qilingan"
+  },
+  "assetStatus": {
+    "active": "Faol",
+    "sold": "Sotilgan",
+    "written_off": "Hisobdan chiqarilgan"
+  },
+  "payment": {
+    "title": "To‘lov",
+    "payTitle": "Vosita #{{id}} uchun to‘lov — {{name}}",
+    "receiveTitle": "Vosita #{{id}} qabul qilish — {{name}}",
+    "sellTitle": "Vositani sotish — {{name}}",
+    "uzsPayment": "UZS to‘lov",
+    "usdPayment": "USD to‘lov",
+    "confirm": "Tasdiqlash"
+  },
+  "table": {
+    "name": "Nom",
+    "category": "Kategoriya",
+    "purchaseDate": "Xarid sanasi",
+    "cost": "Narx",
+    "bookValue": "Balans qiymati",
+    "purchase": "Xarid",
+    "status": "Holat",
+    "actions": "Harakatlar",
+    "noRows": "Asosiy vositalar yo‘q",
+    "payableOnCredit": "Kreditorlik (kreditda)",
+    "paid": "To‘langan",
+    "sold": "Sotilgan: {{amount}} {{currency}}"
+  },
+  "actions": {
+    "pay": "To‘lash",
+    "receive": "Qabul qilish",
+    "sell": "Sotish",
+    "writeOff": "Hisobdan chiqarish",
+    "remove": "Olib tashlash"
+  },
+  "confirmWriteOff": "\"{{name}}\" hisobdan chiqarilsinmi? Qolgan balans qiymati xarajatga yoziladi.",
+  "confirmDelete": "\"{{name}}\" uchun xarid buyurtmasi olib tashlansinmi? Kreditorlik bekor qilinadi.",
+  "promptWriteOffNotes": "Hisobdan chiqarish izohi (ixtiyoriy):",
+  "notifications": {
+    "saved": "Asosiy vosita saqlandi.",
+    "saveFailed": "Vositani saqlab bo‘lmadi",
+    "updated": "Muvaffaqiyatli yangilandi.",
+    "actionFailed": "Amal bajarilmadi",
+    "received": "Vosita balansga qabul qilindi.",
+    "receiveFailed": "Qabul qilib bo‘lmadi",
+    "writtenOff": "Vosita hisobdan chiqarildi.",
+    "writeOffFailed": "Hisobdan chiqarib bo‘lmadi",
+    "removed": "Xarid buyurtmasi olib tashlandi.",
+    "deleteFailed": "O‘chirib bo‘lmadi",
+    "enterPayment": "Kamida bitta to‘lov summasini kiriting."
+  }
+}

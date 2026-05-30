@@ -1,0 +1,59 @@
+{
+  "title": "Audit Logs",
+  "tabs": {
+    "actions": "Permission-sensitive actions",
+    "status": "Status changes"
+  },
+  "filters": {
+    "title": "Filters",
+    "action": "Action",
+    "objectType": "Object type",
+    "objectId": "Object ID",
+    "type": "Type",
+    "id": "ID",
+    "objectTypePlaceholder": "e.g. order",
+    "objectIdPlaceholder": "#",
+    "objectIdStatusPlaceholder": "Object #"
+  },
+  "statusTypes": {
+    "all": "All types",
+    "order": "Order",
+    "inventory_item": "Inventory item",
+    "sale": "Sale",
+    "dispatch": "Dispatch"
+  },
+  "actionTypes": {
+    "all": "All actions",
+    "orders.pay_order": "Pay order",
+    "orders.pay_cargo": "Pay cargo",
+    "orders.move_to_inventory": "Move to inventory",
+    "sales.update_status": "Sale status change",
+    "sales.complete_from_order": "Complete from order",
+    "returns.mark_refunded": "Mark refunded",
+    "cash.adjust": "Cash adjust"
+  },
+  "table": {
+    "actions": {
+      "id": "ID",
+      "action": "Action",
+      "object": "Object",
+      "user": "User",
+      "timestamp": "Timestamp",
+      "before": "Before",
+      "after": "After",
+      "notes": "Notes",
+      "noRows": "No action audit logs found"
+    },
+    "status": {
+      "id": "ID",
+      "objectType": "Object Type",
+      "objectId": "Object ID",
+      "previousStatus": "Previous Status",
+      "newStatus": "New Status",
+      "changedBy": "Changed By",
+      "timestamp": "Timestamp",
+      "notes": "Notes",
+      "noRows": "No status logs found"
+    }
+  }
+}

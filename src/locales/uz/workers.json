@@ -1,0 +1,73 @@
+{
+  "title": "Xodimlar",
+  "intro": "Savdo jamoasi a’zolari Foydalanuvchilar bo‘limida boshqariladi (Savdo menejeri yoki Katta savdo menejeri roli).",
+  "salesTeam": "Savdo jamoasi",
+  "table": {
+    "id": "ID",
+    "name": "Ism",
+    "login": "Login",
+    "telephone": "Telefon",
+    "notes": "Izoh",
+    "actions": "Harakatlar",
+    "noRows": "Xodimlar topilmadi",
+    "total": "Jami",
+    "workerCount_one": "{{count}} xodim",
+    "workerCount_other": "{{count}} xodim"
+  },
+  "actions": {
+    "viewPerformance": "Natijani ko‘rish",
+    "viewTransactions": "Tranzaksiyalarni ko‘rish"
+  },
+  "performance": {
+    "title": "Natija: {{name}}",
+    "year": "Yil",
+    "month": "Oy",
+    "period": "Davr",
+    "totalSales": "Jami sotuvlar",
+    "completedSales": "Yakunlangan sotuvlar",
+    "reservedSales": "Band qilingan sotuvlar",
+    "pendingSales": "Kutilayotgan sotuvlar",
+    "totalAmountCompleted": "Jami summa (yakunlangan)",
+    "reservedAmount": "Band qilingan summa",
+    "depositsReceived": "Olingan depozitlar",
+    "mixedCurrencyHint": "UZS va USD aralashishi mumkin",
+    "salesDetails": "Sotuv tafsilotlari",
+    "noSales": "Bu davrda sotuvlar topilmadi",
+    "noSalesman": "Ushbu xodim nomiga mos savdo menejeri topilmadi. Statistika faqat savdo menejerlari uchun mavjud.",
+    "productFallback": "Mahsulot #{{id}}",
+    "productSize": "{{brand}} {{model}} — O‘lcham {{size}} ({{color}})"
+  },
+  "saleTypes": {
+    "bought_from_shop": "Do‘kon",
+    "from_order": "Buyurtmadan",
+    "delivery": "Yetkazib berish"
+  },
+  "transactions": {
+    "title": "Tranzaksiyalar: {{name}}",
+    "totalSalary": "Jami maosh",
+    "totalLunch": "Jami tushlik xarajatlari",
+    "totalPrepayments": "Jami oldindan to‘lovlar",
+    "totalTransactions": "Jami tranzaksiyalar",
+    "history": "Tranzaksiya tarixi",
+    "noRows": "Tranzaksiyalar topilmadi",
+    "salary": "Maosh",
+    "lunch": "Tushlik"
+  },
+  "tableCols": {
+    "date": "Sana",
+    "product": "Mahsulot",
+    "quantity": "Miqdor",
+    "price": "Narx",
+    "total": "Jami",
+    "type": "Turi",
+    "status": "Holat",
+    "customer": "Mijoz",
+    "amount": "Summa",
+    "currency": "Valyuta",
+    "notes": "Izoh"
+  },
+  "notifications": {
+    "performanceFailed": "Xodim natijasini yuklab bo‘lmadi",
+    "transactionsFailed": "Tranzaksiyalarni yuklab bo‘lmadi"
+  }
+}

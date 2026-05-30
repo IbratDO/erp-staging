@@ -4,6 +4,9 @@ import { cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppDateTime, formatAppNumber } from '../utils/localeFormat';
 import './TablePage.css';
 
 const PKG_INV_SORT = {
@@ -68,6 +71,8 @@ function formatApiError(data) {
 }
 
 const Packages = () => {
+  const { t } = useAppTranslation(['packages', 'common']);
+  const uzsLabel = t('currency.uzs', { ns: 'common' });
   const { hasPermission } = usePermissions();
   const canCreate = hasPermission('packages.create');
   const canMarkPaid = hasPermission('packages.mark_paid');
@@ -188,7 +193,7 @@ const Packages = () => {
   const formatHistoryUzs = (n) => {
     const v = parseFloat(n);
     if (!v || v <= 0) return '—';
-    return `${v.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`;
+    return `${formatAppNumber(v, { maximumFractionDigits: 0 })} ${uzsLabel}`;
   };
   const formatHistoryUsd = (n) => {
     const v = parseFloat(n);
@@ -316,7 +321,7 @@ const Packages = () => {
       console.error('Error saving package:', error);
       const d = error.response?.data;
       const msg = formatApiError(d) || error.message;
-      showNotification(msg || 'Error saving package', 'error');
+      showNotification(msg || t('notifications.saveError'), 'error');
     } finally {
       fetchPackageHistory();
     }
@@ -347,11 +352,17 @@ const Packages = () => {
   };
 
   const statusLabel = (status) => {
-    if (status === 'paid' || status === 'in_stock') return 'IN STOCK';
-    if (status === 'order_paid') return 'PAID · AWAITING RECEIPT';
-    if (status === 'ordered') return 'ORDERED';
-    if (status === 'received') return 'IN STOCK';
+    const key = status === 'paid' || status === 'in_stock' ? 'in_stock' : status;
+    const label = t(`status.${key}`, { defaultValue: '' });
+    if (label) return label;
     return String(status || '').toUpperCase();
+  };
+
+  const statusTitle = (status) => {
+    if (status === 'ordered') return t('statusTitle.ordered');
+    if (status === 'order_paid') return t('statusTitle.order_paid');
+    if (status === 'paid') return t('statusTitle.paid');
+    return t('statusTitle.default');
   };
 
   const statusClass = (status) => {
@@ -376,7 +387,7 @@ const Packages = () => {
         (dueUzs > 0 || dueUsd > 0) &&
         uzs + usd <= 0
       ) {
-        showNotification('Enter at least one payment amount (UZS or USD).', 'error');
+        showNotification(t('notifications.paymentRequired'), 'error');
         return;
       }
       let freshBalances = balances;
@@ -427,7 +438,7 @@ const Packages = () => {
       console.error('Error completing package purchase step:', error);
       const d = error.response?.data;
       const msg = formatApiError(d) || error.message;
-      showNotification(msg || 'Error marking package as received and paid', 'error');
+      showNotification(msg || t('notifications.paymentError'), 'error');
     }
   };
 
@@ -443,7 +454,7 @@ const Packages = () => {
   );
 
   if (loading) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   return (
@@ -493,7 +504,7 @@ const Packages = () => {
       )}
 
       <div className="page-header">
-        <h1>Packages</h1>
+        <PageTitle ns="packages" />
         {canCreate && (
         <button
           className="btn-primary"
@@ -507,24 +518,26 @@ const Packages = () => {
             }
           }}
         >
-          {showForm ? 'Cancel' : '+ Order Package Stock'}
+          {showForm ? t('actions.cancel', { ns: 'common' }) : t('newOrder')}
         </button>
         )}
       </div>
 
       <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em', maxWidth: 820 }}>
-        Each purchase at a different unit price is a separate FIFO layer. Default flow: order → pay (payable) →
-        receive into inventory. Payables appear under Receivables / Payables. Package stock is included on the
-        balance sheet; COGS on sales uses oldest layers first.
+        {t('intro')}
       </p>
 
       {showForm && canCreate && (
         <div className="form-card">
-          <h2>{editingPackage ? `Add Stock — Package ${editingPackage.package_type}` : 'Order Package Stock'}</h2>
+          <h2>
+            {editingPackage
+              ? t('form.addStockTitle', { type: editingPackage.package_type })
+              : t('form.orderTitle')}
+          </h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Package Type</label>
+                <label>{t('form.packageType')}</label>
                 {editingPackage ? (
                   <input
                     type="text"
@@ -556,17 +569,21 @@ const Packages = () => {
                       }}
                       required
                     >
-                      <option value="custom">+ Add New Package Type</option>
+                      <option value="custom">{t('form.addNewType')}</option>
                       {packages.map(pkg => (
                         <option key={pkg.id} value={pkg.package_type}>
-                          {pkg.package_type} (UZS {parseFloat(pkg.cost_per_unit_uzs || 0).toLocaleString()} · ${parseFloat(pkg.cost_per_unit_usd || 0).toFixed(2)})
+                          {t('form.optionCost', {
+                            type: pkg.package_type,
+                            uzs: formatAppNumber(pkg.cost_per_unit_uzs || 0, { maximumFractionDigits: 0 }),
+                            usd: parseFloat(pkg.cost_per_unit_usd || 0).toFixed(2),
+                          })}
                         </option>
                       ))}
                     </select>
                     {(!formData.package_type || formData.package_type === '' || !packages.find(p => p.package_type === formData.package_type)) && (
                       <input
                         type="text"
-                        placeholder="Enter package type name (e.g., M, L, Small Box, etc.)"
+                        placeholder={t('form.typePlaceholder')}
                         value={formData.package_type || ''}
                         onChange={(e) => setFormData({ ...formData, package_type: e.target.value })}
                         required
@@ -577,14 +594,14 @@ const Packages = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Quantity to order</label>
+                <label>{t('form.quantityOrder')}</label>
                 <input
                   type="number"
                   min="1"
                   value={formData.quantity}
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   required
-                  placeholder="Units in this purchase"
+                  placeholder={t('form.quantityPlaceholder')}
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -596,11 +613,11 @@ const Packages = () => {
                       setFormData({ ...formData, pay_immediately: e.target.checked })
                     }
                   />
-                  Pay and receive immediately (skip payable; deduct cash now)
+                  {t('form.payImmediately')}
                 </label>
               </div>
               <div className="form-group">
-                <label>Cost per unit (UZS)</label>
+                <label>{t('form.costUzs')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -611,7 +628,7 @@ const Packages = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Cost per unit (USD)</label>
+                <label>{t('form.costUsd')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -624,7 +641,7 @@ const Packages = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                {formData.pay_immediately ? 'Pay, receive & add stock' : 'Create purchase order'}
+                {formData.pay_immediately ? t('form.submitPayReceive') : t('form.submitCreateOrder')}
               </button>
             </div>
           </form>
@@ -635,15 +652,15 @@ const Packages = () => {
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>
             {paymentFormData.action === 'pay'
-              ? `Pay package purchase #${paymentFormData.historyId}`
+              ? t('paymentForm.payTitle', { id: paymentFormData.historyId })
               : paymentFormData.action === 'receive'
-                ? `Receive stock — purchase #${paymentFormData.historyId}`
-                : `Pay & receive — purchase #${paymentFormData.historyId}`}
+                ? t('paymentForm.receiveTitle', { id: paymentFormData.historyId })
+                : t('paymentForm.payReceiveTitle', { id: paymentFormData.historyId })}
           </h2>
           <form onSubmit={handlePaymentSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Quantity Received</label>
+                <label>{t('paymentForm.quantityReceived')}</label>
                 <input
                   type="number"
                   min="0"
@@ -665,13 +682,15 @@ const Packages = () => {
                   required
                 />
                 <small style={{ color: '#666', fontSize: '0.85em' }}>
-                  Ordered: {packageHistory.find(h => h.id === paymentFormData.historyId)?.quantity_added || 0}
+                  {t('paymentForm.ordered', {
+                    qty: packageHistory.find(h => h.id === paymentFormData.historyId)?.quantity_added || 0,
+                  })}
                 </small>
               </div>
               {paymentFormData.action !== 'receive' && (
                 <>
                   <div className="form-group">
-                    <label>UZS payment</label>
+                    <label>{t('paymentForm.uzsPayment')}</label>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -685,7 +704,7 @@ const Packages = () => {
                     />
                   </div>
                   <div className="form-group">
-                    <label>USD payment</label>
+                    <label>{t('paymentForm.usdPayment')}</label>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -704,10 +723,10 @@ const Packages = () => {
             <div className="form-actions">
               <button type="submit" className="btn-primary">
                 {paymentFormData.action === 'pay'
-                  ? 'Record payment'
+                  ? t('paymentForm.recordPayment')
                   : paymentFormData.action === 'receive'
-                    ? 'Receive into inventory'
-                    : 'Pay & receive'}
+                    ? t('paymentForm.receiveInventory')
+                    : t('paymentForm.payAndReceive')}
               </button>
               <button
                 type="button"
@@ -721,7 +740,7 @@ const Packages = () => {
                   });
                 }}
               >
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -729,36 +748,36 @@ const Packages = () => {
       )}
 
       <div className="table-card">
-        <h2 style={{ marginTop: 0 }}>Package inventory (on hand by batch)</h2>
+        <h2 style={{ marginTop: 0 }}>{t('inventory.title')}</h2>
         <p style={{ color: '#666', fontSize: '0.85em', marginTop: 0 }}>
-          Current stock only — one row per purchase price layer. Purchases and payments are in the history table below.
+          {t('inventory.subtitle')}
         </p>
         <table className="data-table">
           <thead>
             <tr>
               <SortableTh columnId="package_type" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
-                Package type
+                {t('inventory.packageType')}
               </SortableTh>
               <SortableTh columnId="batch_ref" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
-                Batch / purchase #
+                {t('inventory.batchRef')}
               </SortableTh>
               <SortableTh columnId="quantity" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
-                Qty on hand
+                {t('inventory.qtyOnHand')}
               </SortableTh>
               <SortableTh columnId="cost_uzs_unit" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
-                Cost / unit (UZS)
+                {t('inventory.costUzsUnit')}
               </SortableTh>
               <SortableTh columnId="cost_usd_unit" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
-                Cost / unit (USD)
+                {t('inventory.costUsdUnit')}
               </SortableTh>
               <SortableTh columnId="total_uzs" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
-                Total (UZS)
+                {t('inventory.totalUzs')}
               </SortableTh>
               <SortableTh columnId="total_usd" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
-                Total (USD)
+                {t('inventory.totalUsd')}
               </SortableTh>
               <SortableTh columnId="received_at" sortCol={pkgInvSort.sortCol} sortDir={pkgInvSort.sortDir} onSort={pkgInvSort.onHeaderClick}>
-                Received
+                {t('inventory.received')}
               </SortableTh>
             </tr>
           </thead>
@@ -766,7 +785,7 @@ const Packages = () => {
             {displayInventory.length === 0 ? (
               <tr>
                 <td colSpan="8" style={{ textAlign: 'center' }}>
-                  No package stock on hand
+                  {t('inventory.noStock')}
                 </td>
               </tr>
             ) : (
@@ -775,14 +794,14 @@ const Packages = () => {
                 const totUsd = row.quantity * (row.cost_per_unit_usd || 0);
                 return (
                   <tr key={row.rowKey}>
-                    <td><strong>Package {row.package_type}</strong></td>
-                    <td>{row.historyId ? `#${row.historyId}` : `Layer ${row.batchId}`}</td>
+                    <td><strong>{t('inventory.packageLabel', { type: row.package_type })}</strong></td>
+                    <td>{row.historyId ? `#${row.historyId}` : t('inventory.layer', { id: row.batchId })}</td>
                     <td>{row.quantity}</td>
-                    <td>{row.cost_per_unit_uzs > 0 ? row.cost_per_unit_uzs.toLocaleString() : '—'}</td>
+                    <td>{row.cost_per_unit_uzs > 0 ? formatAppNumber(row.cost_per_unit_uzs) : '—'}</td>
                     <td>${row.cost_per_unit_usd.toFixed(2)}</td>
-                    <td>{totUzs > 0 ? `${totUzs.toLocaleString()} UZS` : '—'}</td>
+                    <td>{totUzs > 0 ? `${formatAppNumber(totUzs)} ${uzsLabel}` : '—'}</td>
                     <td>{totUsd > 0 ? `$${totUsd.toFixed(2)}` : '—'}</td>
-                    <td>{row.received_at ? new Date(row.received_at).toLocaleString() : '—'}</td>
+                    <td>{row.received_at ? formatAppDateTime(row.received_at) : '—'}</td>
                   </tr>
                 );
               })
@@ -790,12 +809,12 @@ const Packages = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="2" style={{ textAlign: 'right' }}>On hand total</td>
-              <td style={{ fontWeight: 600 }}>{inventoryTotals.quantity.toLocaleString()}</td>
+              <td colSpan="2" style={{ textAlign: 'right' }}>{t('inventory.onHandTotal')}</td>
+              <td style={{ fontWeight: 600 }}>{formatAppNumber(inventoryTotals.quantity)}</td>
               <td>—</td>
               <td>—</td>
               <td style={{ fontWeight: 600 }}>
-                {inventoryTotals.totalUzs.toLocaleString()} UZS
+                {formatAppNumber(inventoryTotals.totalUzs)} {uzsLabel}
               </td>
               <td style={{ fontWeight: 600 }}>
                 ${inventoryTotals.totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -807,48 +826,48 @@ const Packages = () => {
       </div>
 
       <div className="table-card" style={{ marginTop: '30px' }}>
-        <h2>Package Stock History</h2>
+        <h2>{t('history.title')}</h2>
         <table className="data-table">
           <thead>
             <tr>
               <SortableTh columnId="id" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                ID
+                {t('table.id', { ns: 'common' })}
               </SortableTh>
               <SortableTh columnId="package_type" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                Package Type
+                {t('inventory.packageType')}
               </SortableTh>
               <SortableTh columnId="quantity_added" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                Quantity Added
+                {t('history.quantityAdded')}
               </SortableTh>
               <SortableTh columnId="cost_unit_key" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                Cost / unit
+                {t('history.costPerUnit')}
               </SortableTh>
               <SortableTh columnId="total_cost_key" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                Total cost
+                {t('history.totalCost')}
               </SortableTh>
               <SortableTh columnId="status" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                Status
+                {t('history.status')}
               </SortableTh>
               <SortableTh columnId="uzs_paid" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                UZS Paid
+                {t('history.uzsPaid')}
               </SortableTh>
               <SortableTh columnId="usd_paid" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                USD Paid
+                {t('history.usdPaid')}
               </SortableTh>
               <SortableTh columnId="added_by" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                Added By
+                {t('history.addedBy')}
               </SortableTh>
               <SortableTh columnId="date" sortCol={pkgHistSort.sortCol} sortDir={pkgHistSort.sortDir} onSort={pkgHistSort.onHeaderClick}>
-                Date
+                {t('history.date')}
               </SortableTh>
-              <th>Actions</th>
+              <th>{t('table.actions', { ns: 'common' })}</th>
             </tr>
           </thead>
           <tbody>
             {packageHistory.length === 0 ? (
               <tr>
                 <td colSpan="11" style={{ textAlign: 'center' }}>
-                  No package history found
+                  {t('history.noHistory')}
                 </td>
               </tr>
             ) : (
@@ -861,38 +880,39 @@ const Packages = () => {
                 return (
                 <tr key={historyItem.id}>
                   <td>#{historyItem.id}</td>
-                  <td><strong>Package {historyItem.package_detail?.package_type || historyItem.package}</strong></td>
+                  <td>
+                    <strong>
+                      {t('history.packageLabel', {
+                        type: historyItem.package_detail?.package_type || historyItem.package,
+                      })}
+                    </strong>
+                  </td>
                   <td style={{ color: '#28a745', fontWeight: '600' }}>
                     {historyItem.quantity_received !== null && historyItem.quantity_received !== historyItem.quantity_added ? (
                       <span>
-                        +{historyItem.quantity_received} <small style={{ color: '#666', fontSize: '0.85em' }}>(ordered: {historyItem.quantity_added})</small>
+                        +{historyItem.quantity_received}{' '}
+                        <small style={{ color: '#666', fontSize: '0.85em' }}>
+                          ({t('history.orderedQty', { qty: historyItem.quantity_added })})
+                        </small>
                       </span>
                     ) : (
                       `+${historyItem.quantity_added}`
                     )}
                   </td>
                   <td style={{ fontSize: '0.9em' }}>
-                    {cpuU > 0 && <div>{cpuU.toLocaleString()} UZS</div>}
+                    {cpuU > 0 && <div>{formatAppNumber(cpuU)} {uzsLabel}</div>}
                     {cpuD > 0 && <div>${cpuD.toFixed(2)} USD</div>}
                     {cpuU === 0 && cpuD === 0 && '—'}
                   </td>
                   <td style={{ fontWeight: '600', fontSize: '0.9em' }}>
-                    {totU > 0 && <div>{totU.toLocaleString()} UZS</div>}
+                    {totU > 0 && <div>{formatAppNumber(totU)} {uzsLabel}</div>}
                     {totD > 0 && <div>${totD.toFixed(2)} USD</div>}
                     {totU === 0 && totD === 0 && '—'}
                   </td>
                   <td>
                     <span
                       className={`status-badge ${statusClass(historyItem.status)}`}
-                      title={
-                        historyItem.status === 'ordered'
-                          ? 'Awaiting payment and receipt'
-                          : historyItem.status === 'order_paid'
-                            ? 'Paid; receive when stock arrives'
-                            : historyItem.status === 'paid'
-                              ? 'Paid and in inventory'
-                              : 'In stock'
-                      }
+                      title={statusTitle(historyItem.status)}
                     >
                       {statusLabel(historyItem.status)}
                     </span>
@@ -904,7 +924,7 @@ const Packages = () => {
                     {showPay ? formatHistoryUsd((parseFloat(historyItem.payment_usd_cash) || 0) + (parseFloat(historyItem.payment_usd_card) || 0)) : '—'}
                   </td>
                   <td>{historyItem.created_by_detail?.username || '-'}</td>
-                  <td>{new Date(historyItem.created_at).toLocaleString()}</td>
+                  <td>{formatAppDateTime(historyItem.created_at)}</td>
                   <td>
                     {historyItem.status === 'ordered' && (canMarkPaid || canMarkReceivedAndPay) && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -914,7 +934,7 @@ const Packages = () => {
                           className="btn-status"
                           onClick={() => openPaymentForm(historyItem.id, 'pay')}
                         >
-                          Pay
+                          {t('actions.pay')}
                         </button>
                         )}
                         {canMarkReceivedAndPay && (
@@ -924,7 +944,7 @@ const Packages = () => {
                           style={{ fontSize: '0.85em', padding: '4px 8px' }}
                           onClick={() => openPaymentForm(historyItem.id, 'pay_receive')}
                         >
-                          Pay & receive
+                          {t('actions.payAndReceive')}
                         </button>
                         )}
                       </div>
@@ -935,7 +955,7 @@ const Packages = () => {
                         className="btn-status"
                         onClick={() => openPaymentForm(historyItem.id, 'receive')}
                       >
-                        Receive stock
+                        {t('actions.receiveStock')}
                       </button>
                     )}
                     {(historyItem.status === 'paid' || historyItem.status === 'received') && (
@@ -950,14 +970,14 @@ const Packages = () => {
           <tfoot>
             <tr>
               <td colSpan="2" style={{ textAlign: 'right' }}>
-                Total
+                {t('history.total')}
               </td>
-              <td style={{ fontWeight: 600 }}>{packageHistoryTotals.quantityAdded.toLocaleString()}</td>
+              <td style={{ fontWeight: 600 }}>{formatAppNumber(packageHistoryTotals.quantityAdded)}</td>
               <td>—</td>
               <td style={{ fontWeight: 600, fontSize: '0.95em' }}>
                 {packageHistoryTotals.totalCostUzs > 0 && (
                   <div>
-                    {packageHistoryTotals.totalCostUzs.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS
+                    {formatAppNumber(packageHistoryTotals.totalCostUzs, { maximumFractionDigits: 0 })} {uzsLabel}
                   </div>
                 )}
                 {packageHistoryTotals.totalCostUsd > 0 && (

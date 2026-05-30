@@ -1,0 +1,110 @@
+{
+  "title": "Boshqa moliyaviy yozuvlar",
+  "intro": "Faqat qo‘lda kiritilgan boshqa daromad va xarajatlar. Sotuvlar, ombor, debitor/kreditor va Pul balansi alohida bo‘limlarda. <strong>Keyinroq to‘lash</strong> — avval kreditor/debitor yaratish; keyin shu yerda yoki Debitor/Kreditor bo‘limida yakunlash.",
+  "addIncome": "+ Daromad qo‘shish",
+  "addExpense": "+ Xarajat qo‘shish",
+  "expenseForm": {
+    "title": "Yangi xarajat",
+    "expenseType": "Xarajat turi",
+    "target": "Maqsad",
+    "selectTarget": "— Tanlang —",
+    "currency": "Valyuta",
+    "amount": "Summa",
+    "recipient": "Qabul qiluvchi *",
+    "selectRecipient": "Qabul qiluvchini tanlang",
+    "notes": "Izoh",
+    "notesRequiredOther": "Izoh *",
+    "payImmediately": "Darhol to‘lash (belgilanmasa avval kreditor yaratiladi)",
+    "submit": "Xarajat qo‘shish",
+    "notesPlaceholderSalary": "masalan, Oldindan to‘lov, oylik maosh",
+    "notesPlaceholderOther": "Ushbu xarajatni tasvirlang",
+    "notesPlaceholderDefault": "Boshqa turi bo‘lmasa ixtiyoriy"
+  },
+  "incomeForm": {
+    "title": "Boshqa daromad",
+    "currency": "Valyuta",
+    "amount": "Summa",
+    "notes": "Izoh *",
+    "notesPlaceholder": "masalan, xizmat daromadi, bonus, yetkazuvchidan qaytarish",
+    "receivedImmediately": "Darhol qabul qilindi (belgilanmasa avval debitor yaratiladi)",
+    "submit": "Daromad qo‘shish"
+  },
+  "expenseTypes": {
+    "salary": "Maosh",
+    "lunch": "Tushlik",
+    "taxi": "Taksi",
+    "office_supplies": "Ofis jihozlari",
+    "utilities": "Kommunal",
+    "rent": "Ijara",
+    "delivery": "Yetkazib berish",
+    "cargo": "Kargo",
+    "smm": "SMM",
+    "other": "Boshqa"
+  },
+  "targets": {
+    "shop": "Do‘kon",
+    "warehouse": "Ombor",
+    "office": "Ofis",
+    "marketing": "Marketing",
+    "logistics": "Logistika",
+    "operations": "Operatsiyalar",
+    "other": "Boshqa"
+  },
+  "recordTypes": {
+    "income": "Daromad",
+    "expense": "Xarajat"
+  },
+  "metrics": {
+    "totalIncomeUsd": "Jami daromad (USD)",
+    "totalIncomeUzs": "Jami daromad (UZS)",
+    "totalExpenseUsd": "Jami xarajat (USD)",
+    "totalExpenseUzs": "Jami xarajat (UZS)",
+    "netOtherUsd": "Sof boshqa (USD)",
+    "netOtherUzs": "Sof boshqa (UZS)",
+    "netHint": "Faqat yakunlangan qatorlar — sotuvlar uchun Foyda va zarga qarang"
+  },
+  "filters": {
+    "title": "Filtrlar",
+    "type": "Turi",
+    "allTypes": "Barcha turlar",
+    "expenseType": "Xarajat turi",
+    "allExpenseTypes": "Barcha xarajat turlari",
+    "status": "Holat",
+    "allStatuses": "Barcha holatlar",
+    "year": "Yil",
+    "allYears": "Barcha yillar",
+    "month": "Oy",
+    "allMonths": "Barcha oylar",
+    "clearAll": "Hammasini tozalash"
+  },
+  "table": {
+    "id": "ID",
+    "type": "Turi",
+    "expenseType": "Xarajat turi",
+    "status": "Holat",
+    "relatedOrder": "Bog‘liq buyurtma",
+    "relatedSale": "Bog‘liq sotuv",
+    "relatedDispatch": "Bog‘liq yetkazish",
+    "recipient": "Qabul qiluvchi",
+    "notes": "Izoh",
+    "date": "Sana",
+    "action": "Harakat",
+    "noRows": "Moliyaviy yozuvlar topilmadi",
+    "orderRef": "Buyurtma #{{id}}",
+    "saleRef": "Sotuv #{{id}}",
+    "dispatchRef": "Yetkazish #{{id}}",
+    "recordNotes": "Yozuv #{{id}}",
+    "settle": "Yakunlash",
+    "netCompleted": "Sof (yakunlangan)",
+    "footerHint": "Sof (yakunlangan): yakunlangan qatorlar valyuta bo‘yicha; eski daromad/xarajat naqd/karta ajratmalari o‘z ustunida."
+  },
+  "confirmSettle": "Ushbu yozuv to‘langan/qabul qilingan deb belgilansinmi va Pul balansi yangilansinmi?",
+  "notifications": {
+    "settled": "Yakunlandi.",
+    "settleFailed": "Yakunlab bo‘lmadi.",
+    "notesRequiredOther": "Xarajat turi Boshqa bo‘lganda izoh kiriting.",
+    "createExpenseFailed": "Xarajat yaratib bo‘lmadi",
+    "notesRequiredIncome": "Ushbu daromadni tasvirlovchi izoh kiriting.",
+    "createIncomeFailed": "Daromad yaratib bo‘lmadi"
+  }
+}

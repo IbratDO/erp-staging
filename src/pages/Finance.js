@@ -1,20 +1,24 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Trans } from 'react-i18next';
 import api from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import useAppTranslation from '../hooks/useAppTranslation';
+import { formatAppDateTime, formatAppNumber } from '../utils/localeFormat';
 import {
   signedFinanceAmountsByLeg,
   BALANCE_TABLE_LEGS,
   financeRecordLegKey,
 } from '../utils/tableTotals';
+import PageTitle from '../components/PageTitle';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 
-function financeLegHeader(leg) {
-  if (leg === 'uzs_cash') return 'UZS';
-  if (leg === 'usd_cash') return 'USD';
-  return leg;
-}
+const EXPENSE_TYPE_VALUES = [
+  'salary', 'lunch', 'taxi', 'office_supplies', 'utilities', 'rent', 'delivery', 'cargo', 'smm', 'other',
+];
+const EXPENSE_TARGET_VALUES = ['shop', 'warehouse', 'office', 'marketing', 'logistics', 'operations', 'other'];
+const FILTER_EXPENSE_TYPES = ['salary', 'lunch', 'taxi', 'office_supplies', 'utilities', 'rent', 'smm', 'other'];
 
 /** Signed value for the leg that matches this record, or null if not applicable. */
 function signedForFinanceRecordLeg(record, leg) {
@@ -99,6 +103,14 @@ function FinanceLegTotal({ value, leg }) {
 }
 
 const Finance = () => {
+  const { t, tStatus, monthOptions } = useAppTranslation(['finance', 'common', 'status']);
+  const uzsLabel = t('currency.uzs', { ns: 'common' });
+  const usdLabel = t('currency.usd', { ns: 'common' });
+  const financeLegHeader = (leg) => {
+    if (leg === 'uzs_cash' || leg.startsWith('uzs')) return uzsLabel;
+    if (leg === 'usd_cash' || leg.startsWith('usd')) return usdLabel;
+    return leg;
+  };
   const { hasPermission } = useAuth();
   const canCreateManual = hasPermission('finance.create_manual');
   const [records, setRecords] = useState([]);
@@ -115,15 +127,10 @@ const Finance = () => {
     pay_immediately: true,
   });
 
-  const EXPENSE_TARGET_OPTIONS = [
-    { value: 'shop', label: 'Shop' },
-    { value: 'warehouse', label: 'Warehouse' },
-    { value: 'office', label: 'Office' },
-    { value: 'marketing', label: 'Marketing' },
-    { value: 'logistics', label: 'Logistics' },
-    { value: 'operations', label: 'Operations' },
-    { value: 'other', label: 'Other' },
-  ];
+  const expenseTargetOptions = useMemo(
+    () => EXPENSE_TARGET_VALUES.map((value) => ({ value, label: t(`targets.${value}`) })),
+    [t],
+  );
 
   const [incomeFormData, setIncomeFormData] = useState({
     currency: 'USD',
@@ -201,13 +208,13 @@ const Finance = () => {
   };
 
   const handleSettleRecord = async (record) => {
-    if (!window.confirm('Mark this record as paid/received and update Money Balance?')) return;
+    if (!window.confirm(t('confirmSettle'))) return;
     try {
       const res = await api.post(`/finance/${record.id}/settle/`);
-      alert(res.data?.message || 'Settled.');
+      alert(res.data?.message || t('notifications.settled'));
       fetchRecords();
     } catch (error) {
-      alert(error.response?.data?.error || 'Could not settle record.');
+      alert(error.response?.data?.error || t('notifications.settleFailed'));
     }
   };
 
@@ -217,7 +224,7 @@ const Finance = () => {
       expenseFormData.expense_type === 'other' &&
       !String(expenseFormData.notes || '').trim()
     ) {
-      alert('Please enter notes when expense type is Other.');
+      alert(t('notifications.notesRequiredOther'));
       return;
     }
     try {
@@ -254,7 +261,7 @@ const Finance = () => {
       const errorMessage = error.response?.data?.detail || 
                           error.response?.data?.non_field_errors?.[0] ||
                           (Array.isArray(error.response?.data) ? error.response.data[0] : null) ||
-                          'Error creating expense';
+                          t('notifications.createExpenseFailed');
       alert(errorMessage);
     }
   };
@@ -262,7 +269,7 @@ const Finance = () => {
   const handleIncomeSubmit = async (e) => {
     e.preventDefault();
     if (!String(incomeFormData.notes || '').trim()) {
-      alert('Please enter notes describing this income.');
+      alert(t('notifications.notesRequiredIncome'));
       return;
     }
     try {
@@ -282,7 +289,7 @@ const Finance = () => {
         error.response?.data?.detail ||
         error.response?.data?.non_field_errors?.[0] ||
         error.response?.data?.error ||
-        'Error creating income';
+        t('notifications.createIncomeFailed');
       alert(errorMessage);
     }
   };
@@ -299,7 +306,7 @@ const Finance = () => {
   );
 
   if (loading) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   // Calculate statistics separately for USD and UZS
@@ -325,56 +332,48 @@ const Finance = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Other Financial Records</h1>
+        <PageTitle ns="finance" />
         {canCreateManual && (
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-primary" onClick={() => { setShowIncomeForm(!showIncomeForm); setShowExpenseForm(false); }}>
-              {showIncomeForm ? 'Cancel' : '+ Add Income'}
+              {showIncomeForm ? t('actions.cancel', { ns: 'common' }) : t('addIncome')}
             </button>
             <button className="btn-edit" onClick={() => { setShowExpenseForm(!showExpenseForm); setShowIncomeForm(false); }}>
-              {showExpenseForm ? 'Cancel' : '+ Add Expense'}
+              {showExpenseForm ? t('actions.cancel', { ns: 'common' }) : t('addExpense')}
             </button>
           </div>
         )}
       </div>
 
       <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em', maxWidth: 720 }}>
-        Manual other income and expenses only. Sales, inventory, receivables/payables, and Money Balance are tracked on their own tabs.
-        Use <strong>Pay later</strong> to create a payable/receivable first; then settle here or from Receivables / Payables.
+        <Trans i18nKey="intro" ns="finance" components={{ strong: <strong /> }} />
       </p>
 
       {showExpenseForm && canCreateManual && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>Add New Expense</h2>
+          <h2>{t('expenseForm.title')}</h2>
           <form onSubmit={handleExpenseSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Expense Type</label>
+                <label>{t('expenseForm.expenseType')}</label>
                 <select
                   value={expenseFormData.expense_type}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, expense_type: e.target.value })}
                   required
                 >
-                  <option value="salary">Salary</option>
-                  <option value="lunch">Lunch</option>
-                  <option value="taxi">Taxi</option>
-                  <option value="office_supplies">Office Supplies</option>
-                  <option value="utilities">Utilities</option>
-                  <option value="rent">Rent</option>
-                  <option value="delivery">Delivery</option>
-                  <option value="cargo">Cargo</option>
-                  <option value="smm">SMM</option>
-                  <option value="other">Other</option>
+                  {EXPENSE_TYPE_VALUES.map((value) => (
+                    <option key={value} value={value}>{t(`expenseTypes.${value}`)}</option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">
-                <label>Target</label>
+                <label>{t('expenseForm.target')}</label>
                 <select
                   value={expenseFormData.target}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, target: e.target.value })}
                 >
-                  <option value="">— Select —</option>
-                  {EXPENSE_TARGET_OPTIONS.map((o) => (
+                  <option value="">{t('expenseForm.selectTarget')}</option>
+                  {expenseTargetOptions.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>
@@ -382,18 +381,18 @@ const Finance = () => {
                 </select>
               </div>
               <div className="form-group">
-                <label>Currency</label>
+                <label>{t('expenseForm.currency')}</label>
                 <select
                   value={expenseFormData.currency}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, currency: e.target.value })}
                   required
                 >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
+                  <option value="USD">{usdLabel}</option>
+                  <option value="UZS">{uzsLabel}</option>
                 </select>
               </div>
               <div className="form-group">
-                <label>Amount</label>
+                <label>{t('expenseForm.amount')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -405,13 +404,13 @@ const Finance = () => {
               </div>
               {(expenseFormData.expense_type === 'salary' || expenseFormData.expense_type === 'lunch') && (
                 <div className="form-group">
-                  <label>Recipient *</label>
+                  <label>{t('expenseForm.recipient')}</label>
                   <select
                     value={expenseFormData.recipient}
                     onChange={(e) => setExpenseFormData({ ...expenseFormData, recipient: e.target.value })}
                     required
                   >
-                    <option value="">Select recipient</option>
+                    <option value="">{t('expenseForm.selectRecipient')}</option>
                     {workers.map((worker) => (
                       <option key={worker.id} value={worker.id}>
                         {worker.name} {worker.telephone ? `(${worker.telephone})` : ''}
@@ -421,7 +420,9 @@ const Finance = () => {
                 </div>
               )}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes{expenseFormData.expense_type === 'other' ? ' *' : ''}</label>
+                <label>
+                  {expenseFormData.expense_type === 'other' ? t('expenseForm.notesRequiredOther') : t('expenseForm.notes')}
+                </label>
                 <textarea
                   value={expenseFormData.notes}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, notes: e.target.value })}
@@ -429,10 +430,10 @@ const Finance = () => {
                   required={expenseFormData.expense_type === 'other'}
                   placeholder={
                     expenseFormData.expense_type === 'salary'
-                      ? 'e.g., Prepayment, Monthly salary, etc.'
+                      ? t('expenseForm.notesPlaceholderSalary')
                       : expenseFormData.expense_type === 'other'
-                        ? 'Describe this expense'
-                        : 'Optional unless type is Other'
+                        ? t('expenseForm.notesPlaceholderOther')
+                        : t('expenseForm.notesPlaceholderDefault')
                   }
                 />
               </div>
@@ -445,13 +446,13 @@ const Finance = () => {
                       setExpenseFormData({ ...expenseFormData, pay_immediately: e.target.checked })
                     }
                   />{' '}
-                  Pay immediately (uncheck to create a payable first)
+                  {t('expenseForm.payImmediately')}
                 </label>
               </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Add Expense
+                {t('expenseForm.submit')}
               </button>
             </div>
           </form>
@@ -460,22 +461,22 @@ const Finance = () => {
 
       {showIncomeForm && canCreateManual && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>Add Other Income</h2>
+          <h2>{t('incomeForm.title')}</h2>
           <form onSubmit={handleIncomeSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Currency</label>
+                <label>{t('incomeForm.currency')}</label>
                 <select
                   value={incomeFormData.currency}
                   onChange={(e) => setIncomeFormData({ ...incomeFormData, currency: e.target.value })}
                   required
                 >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
+                  <option value="USD">{usdLabel}</option>
+                  <option value="UZS">{uzsLabel}</option>
                 </select>
               </div>
               <div className="form-group">
-                <label>Amount</label>
+                <label>{t('incomeForm.amount')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -486,13 +487,13 @@ const Finance = () => {
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes *</label>
+                <label>{t('incomeForm.notes')}</label>
                 <textarea
                   value={incomeFormData.notes}
                   onChange={(e) => setIncomeFormData({ ...incomeFormData, notes: e.target.value })}
                   rows="2"
                   required
-                  placeholder="e.g. Service income, bonus, refund from supplier"
+                  placeholder={t('incomeForm.notesPlaceholder')}
                 />
               </div>
               <div className="form-group">
@@ -504,12 +505,12 @@ const Finance = () => {
                       setIncomeFormData({ ...incomeFormData, pay_immediately: e.target.checked })
                     }
                   />{' '}
-                  Received immediately (uncheck to create a receivable first)
+                  {t('incomeForm.receivedImmediately')}
                 </label>
               </div>
             </div>
             <div className="form-actions">
-              <button type="submit" className="btn-primary">Add Income</button>
+              <button type="submit" className="btn-primary">{t('incomeForm.submit')}</button>
             </div>
           </form>
         </div>
@@ -517,40 +518,40 @@ const Finance = () => {
 
       <div className="metrics-grid" style={{ marginBottom: '20px' }}>
           <div className="metric-card">
-            <div className="metric-label">Total Income (USD)</div>
+            <div className="metric-label">{t('metrics.totalIncomeUsd')}</div>
             <div className="metric-value" style={{ color: '#27ae60' }}>
-              {totalIncomeUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+              {formatAppNumber(totalIncomeUSD, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {usdLabel}
             </div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Total Income (UZS)</div>
+            <div className="metric-label">{t('metrics.totalIncomeUzs')}</div>
             <div className="metric-value" style={{ color: '#27ae60' }}>
-              {totalIncomeUZS.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UZS
+              {formatAppNumber(totalIncomeUZS, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {uzsLabel}
             </div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Total Expenses (USD)</div>
+            <div className="metric-label">{t('metrics.totalExpenseUsd')}</div>
             <div className="metric-value" style={{ color: '#e74c3c' }}>
-              {totalExpenseUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+              {formatAppNumber(totalExpenseUSD, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {usdLabel}
             </div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Total Expenses (UZS)</div>
+            <div className="metric-label">{t('metrics.totalExpenseUzs')}</div>
             <div className="metric-value" style={{ color: '#e74c3c' }}>
-              {totalExpenseUZS.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UZS
+              {formatAppNumber(totalExpenseUZS, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {uzsLabel}
             </div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Net other (USD)</div>
+            <div className="metric-label">{t('metrics.netOtherUsd')}</div>
             <div className="metric-value" style={{ color: netOtherUSD >= 0 ? '#27ae60' : '#e74c3c' }}>
-              {netOtherUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+              {formatAppNumber(netOtherUSD, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {usdLabel}
             </div>
-            <div style={{ fontSize: '0.75em', color: '#888' }}>Completed rows only — see Profit / Loss for sales</div>
+            <div style={{ fontSize: '0.75em', color: '#888' }}>{t('metrics.netHint')}</div>
           </div>
           <div className="metric-card">
-            <div className="metric-label">Net other (UZS)</div>
+            <div className="metric-label">{t('metrics.netOtherUzs')}</div>
             <div className="metric-value" style={{ color: netOtherUZS >= 0 ? '#27ae60' : '#e74c3c' }}>
-              {netOtherUZS.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UZS
+              {formatAppNumber(netOtherUZS, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {uzsLabel}
             </div>
           </div>
         </div>
@@ -558,10 +559,10 @@ const Finance = () => {
       {/* Filters */}
       {!showExpenseForm && !showIncomeForm && (
         <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
-          <h3 className="filter-card__title" style={{ marginBottom: '8px' }}>Filters</h3>
+          <h3 className="filter-card__title" style={{ marginBottom: '8px' }}>{t('filters.title')}</h3>
           <div className="filter-toolbar">
               <div className="filter-field">
-                <label>Type</label>
+                <label>{t('filters.type')}</label>
                 <select
                   value={filter.type}
                   onChange={(e) => {
@@ -573,49 +574,44 @@ const Finance = () => {
                     });
                   }}
                 >
-                  <option value="">All Types</option>
-                  <option value="income">Income</option>
-                  <option value="expense">Expense</option>
+                  <option value="">{t('filters.allTypes')}</option>
+                  <option value="income">{t('recordTypes.income')}</option>
+                  <option value="expense">{t('recordTypes.expense')}</option>
                 </select>
               </div>
               {(filter.type === 'expense' || filter.type === '') && (
                 <div className="filter-field">
-                  <label>Expense Type</label>
+                  <label>{t('filters.expenseType')}</label>
                   <select
                     value={filter.expense_type}
                     onChange={(e) => setFilter({ ...filter, expense_type: e.target.value })}
                   >
-                    <option value="">All Expense Types</option>
-                    <option value="salary">Salary</option>
-                    <option value="lunch">Lunch</option>
-                    <option value="taxi">Taxi</option>
-                    <option value="office_supplies">Office Supplies</option>
-                    <option value="utilities">Utilities</option>
-                    <option value="rent">Rent</option>
-                    <option value="smm">SMM</option>
-                    <option value="other">Other</option>
+                    <option value="">{t('filters.allExpenseTypes')}</option>
+                    {FILTER_EXPENSE_TYPES.map((value) => (
+                      <option key={value} value={value}>{t(`expenseTypes.${value}`)}</option>
+                    ))}
                   </select>
                 </div>
               )}
             <div className="filter-field">
-              <label>Status</label>
+              <label>{t('filters.status')}</label>
               <select
                 value={filter.status}
                 onChange={(e) => setFilter({ ...filter, status: e.target.value })}
               >
-                <option value="">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
+                <option value="">{t('filters.allStatuses')}</option>
+                <option value="pending">{tStatus('pending', 'finance')}</option>
+                <option value="completed">{tStatus('completed', 'finance')}</option>
+                <option value="cancelled">{tStatus('cancelled', 'finance')}</option>
               </select>
             </div>
           <div className="filter-field">
-            <label>Year</label>
+            <label>{t('filters.year')}</label>
             <select
               value={filter.year}
               onChange={(e) => setFilter({ ...filter, year: e.target.value })}
             >
-              <option value="">All Years</option>
+              <option value="">{t('filters.allYears')}</option>
               {Array.from({ length: 10 }, (_, i) => {
                 const year = new Date().getFullYear() - i;
                 return (
@@ -627,24 +623,17 @@ const Finance = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Month</label>
+            <label>{t('filters.month')}</label>
             <select
               value={filter.month}
               onChange={(e) => setFilter({ ...filter, month: e.target.value })}
             >
-              <option value="">All Months</option>
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
+              <option value="">{t('filters.allMonths')}</option>
+              {monthOptions.filter((o) => o.value).map((opt) => (
+                <option key={opt.value} value={opt.value.padStart(2, '0')}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="filter-toolbar__actions">
@@ -653,7 +642,7 @@ const Finance = () => {
               className="btn-edit"
               onClick={() => setFilter({ type: '', status: '', expense_type: '', currency: '', year: '', month: '' })}
             >
-              Clear all
+              {t('filters.clearAll')}
             </button>
           </div>
         </div>
@@ -665,27 +654,27 @@ const Finance = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <SortableTh columnId="id" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>ID</SortableTh>
-                <SortableTh columnId="record_type" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Type</SortableTh>
-                <SortableTh columnId="expense_type" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Expense Type</SortableTh>
+                <SortableTh columnId="id" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.id')}</SortableTh>
+                <SortableTh columnId="record_type" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.type')}</SortableTh>
+                <SortableTh columnId="expense_type" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.expenseType')}</SortableTh>
                 {BALANCE_TABLE_LEGS.map((leg) => (
                   <SortableTh key={leg} columnId={`leg_${leg}`} sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{financeLegHeader(leg)}</SortableTh>
                 ))}
-                <SortableTh columnId="status" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Status</SortableTh>
-                <SortableTh columnId="related_order" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Related Order</SortableTh>
-                <SortableTh columnId="related_sale" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Related Sale</SortableTh>
-                <SortableTh columnId="related_dispatch" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Related Dispatch</SortableTh>
-                <SortableTh columnId="recipient_key" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Recipient</SortableTh>
-                <SortableTh columnId="notes" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Notes</SortableTh>
-                <SortableTh columnId="transaction_date" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>Date</SortableTh>
-                {canCreateManual && <th>Action</th>}
+                <SortableTh columnId="status" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.status')}</SortableTh>
+                <SortableTh columnId="related_order" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.relatedOrder')}</SortableTh>
+                <SortableTh columnId="related_sale" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.relatedSale')}</SortableTh>
+                <SortableTh columnId="related_dispatch" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.relatedDispatch')}</SortableTh>
+                <SortableTh columnId="recipient_key" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.recipient')}</SortableTh>
+                <SortableTh columnId="notes" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.notes')}</SortableTh>
+                <SortableTh columnId="transaction_date" sortCol={financeRecordsSort.sortCol} sortDir={financeRecordsSort.sortDir} onSort={financeRecordsSort.onHeaderClick}>{t('table.date')}</SortableTh>
+                {canCreateManual && <th>{t('table.action')}</th>}
               </tr>
             </thead>
             <tbody>
               {records.length === 0 ? (
                 <tr>
                   <td colSpan="12" style={{ textAlign: 'center' }}>
-                    No finance records found
+                    {t('table.noRows')}
                   </td>
                 </tr>
               ) : (
@@ -698,11 +687,11 @@ const Finance = () => {
                           record.record_type === 'income' ? 'confirmed' : 'pending'
                         }`}
                       >
-                        {record.record_type}
+                        {t(`recordTypes.${record.record_type}`, { defaultValue: record.record_type })}
                       </span>
                     </td>
                     <td>
-                      {record.expense_type ? record.expense_type.replace('_', ' ') : '-'}
+                      {record.expense_type ? t(`expenseTypes.${record.expense_type}`, { defaultValue: record.expense_type }) : '-'}
                     </td>
                     {BALANCE_TABLE_LEGS.map((leg) => (
                       <td key={leg}>
@@ -711,17 +700,17 @@ const Finance = () => {
                     ))}
                     <td>
                       <span className={`status-badge ${record.status}`}>
-                        {record.status}
+                        {tStatus(record.status, 'finance')}
                       </span>
                     </td>
                     <td>
-                      {record.order ? `Order #${record.order}` : '-'}
+                      {record.order ? t('table.orderRef', { id: record.order }) : '-'}
                     </td>
                     <td>
-                      {record.sale ? `Sale #${record.sale}` : '-'}
+                      {record.sale ? t('table.saleRef', { id: record.sale }) : '-'}
                     </td>
                     <td>
-                      {record.dispatch ? `Dispatch #${record.dispatch}` : '-'}
+                      {record.dispatch ? t('table.dispatchRef', { id: record.dispatch }) : '-'}
                     </td>
                     <td>
                       {record.recipient_detail ? (
@@ -730,7 +719,7 @@ const Finance = () => {
                     </td>
                     <td style={{ fontSize: '0.9em', maxWidth: '240px' }}>
                       {(() => {
-                        const idLabel = `Record #${record.id}`;
+                        const idLabel = t('table.recordNotes', { id: record.id });
                         const text = record.notes && String(record.notes).trim() ? String(record.notes).trim() : '';
                         const full = text ? `${idLabel} — ${text}` : idLabel;
                         return (
@@ -740,12 +729,12 @@ const Finance = () => {
                         );
                       })()}
                     </td>
-                    <td>{new Date(record.transaction_date).toLocaleString()}</td>
+                    <td>{formatAppDateTime(record.transaction_date)}</td>
                     {canCreateManual && (
                       <td>
                         {record.status === 'pending' ? (
                           <button type="button" className="btn-edit" onClick={() => handleSettleRecord(record)}>
-                            Settle
+                            {t('table.settle')}
                           </button>
                         ) : (
                           '—'
@@ -759,7 +748,7 @@ const Finance = () => {
             <tfoot>
               <tr>
                 <td colSpan="3" style={{ textAlign: 'right' }}>
-                  Net (completed)
+                  {t('table.netCompleted')}
                 </td>
                 {BALANCE_TABLE_LEGS.map((leg) => (
                   <td key={leg}>
@@ -771,12 +760,10 @@ const Finance = () => {
                   </td>
                 ))}
                 <td
-                  colSpan="7"
+                  colSpan={canCreateManual ? 8 : 7}
                   style={{ fontSize: '0.85em', color: '#666', textAlign: 'right' }}
                 >
-                  {records.length > 0
-                    ? 'Net (completed): completed rows summed by currency (UZS vs USD); legacy income/expense splits by cash/card appear in their currency column.'
-                    : ' '}
+                  {records.length > 0 ? t('table.footerHint') : ' '}
                 </td>
               </tr>
             </tfoot>

@@ -1,0 +1,60 @@
+{
+  "title": "Balans",
+  "intro": "Muayyan vaqtdagi moliyaviy holat (USD). Tanlangan oyning sof foydasi kapitalga oqadi va shu davr uchun Foyda va zarar hisobotiga bog‘lanadi. O‘tgan sanalar shu sanadan oldin qayd etilgan tranzaksiyalar bo‘yicha qayta hisoblanadi.",
+  "filters": {
+    "title": "Sanaga / davrga ko‘ra",
+    "asOf": "Sanaga ko‘ra",
+    "year": "Yil",
+    "month": "Oy",
+    "emptyOption": "—"
+  },
+  "positionAsOf": "Holat: {{date}}",
+  "plPeriod": " · F&Z davri: {{label}}",
+  "loading": "Yuklanmoqda…",
+  "loadFailed": "Balansni yuklab bo‘lmadi.",
+  "balanceCheck": {
+    "unbalanced": "Balans tekshiruvi: Aktivlar va majburiyatlar + kapital {{diff}} ga farq qiladi. Bu yig‘ma F&Z va nuqtaviy balans vaqtlari farq qilganda yuz berishi mumkin; quyidagi izohlarni ko‘ring.",
+    "balanced": "Balansda: Aktivlar = Majburiyatlar + Kapital ({{total}})"
+  },
+  "metrics": {
+    "totalAssets": "Jami aktivlar",
+    "equityLiabilities": "Kapital + majburiyatlar"
+  },
+  "assets": {
+    "title": "Aktivlar",
+    "total": "JAMI AKTIVLAR",
+    "sections": {
+      "money": "Pul",
+      "receivables": "Debitorlik",
+      "inventory": "Ombor",
+      "fixedAssets": "Asosiy vositalar"
+    },
+    "cash": "Naqd",
+    "bank": "Bank",
+    "customerReceivables": "Mijoz debitorligi (to‘lanmagan sotuvlar)",
+    "productReceivables": "Mahsulot debitorligi (oldindan to‘langan buyurtmalar, yo‘lda)",
+    "fixedAssetReceivables": "Asosiy vosita debitorligi (to‘langan, hali olinmagan)",
+    "products": "Mahsulotlar",
+    "packages": "Qadoqlar",
+    "packagesWithUnits": "Qadoqlar ({{units}} dona)",
+    "prepaidExpenses": "Oldindan to‘langan xarajatlar",
+    "fixedAssetsOnBooks": "Asosiy vositalar (balansda)"
+  },
+  "liabilities": {
+    "title": "Majburiyatlar",
+    "total": "JAMI MAJBURIYATLAR",
+    "sections": {
+      "payables": "Kreditorlik"
+    },
+    "payableExpenses": "To‘lanadigan xarajatlar",
+    "customerAdvances": "Mijoz avanslari (depozitlar)"
+  },
+  "equity": {
+    "title": "Kapital",
+    "total": "JAMI KAPITAL",
+    "ownerCapital": "Egasi kapitali (sof hissalar)",
+    "retainedEarnings": "Saqlangan daromad (oldingi davrlar)",
+    "currentPeriodPl": "Joriy davr foyda / zarari (F&Z)"
+  },
+  "notes": "Izohlar"
+}

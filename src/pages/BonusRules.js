@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppDateTime } from '../utils/localeFormat';
 import './TablePage.css';
 
 const emptyRule = () => ({
@@ -14,7 +17,10 @@ const emptyRule = () => ({
   is_active: true,
 });
 
+const SALE_TYPE_VALUES = ['', 'bought_from_shop', 'delivery', 'from_order', 'reserved'];
+
 const BonusRules = () => {
+  const { t } = useAppTranslation(['bonusRules', 'common']);
   const { hasPermission } = usePermissions();
   const canManage = hasPermission('bonus.manage');
   const [rules, setRules] = useState([]);
@@ -92,126 +98,133 @@ const BonusRules = () => {
       setShowForm(false);
       loadAll();
     } catch (err) {
-      alert(err.response?.data?.detail || err.response?.data?.error || 'Could not save rule');
+      alert(err.response?.data?.detail || err.response?.data?.error || t('notifications.saveFailed'));
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this bonus rule?')) return;
+    if (!window.confirm(t('confirmDelete'))) return;
     try {
       await api.delete(`/bonus-rules/${id}/`);
       loadAll();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Could not delete rule');
+      alert(err.response?.data?.detail || t('notifications.deleteFailed'));
     }
   };
 
-  if (loading) return <div className="page-container">Loading...</div>;
+  const saleTypeLabel = (type) =>
+    type ? t(`saleTypes.${type}`) : t('form.any');
+
+  if (loading) return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Bonus Rules</h1>
+        <PageTitle ns="bonusRules" />
         {canManage && (
           <button type="button" className="btn-primary" onClick={openCreate}>
-            + New rule
+            {t('newRule')}
           </button>
         )}
       </div>
 
       {showForm && canManage && (
         <div className="form-card" style={{ marginBottom: 16 }}>
-          <h2>{editingId ? 'Edit rule' : 'New bonus rule'}</h2>
+          <h2>{editingId ? t('form.editTitle') : t('form.newTitle')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <label>
-                Sales manager *
+                {t('form.salesManager')}
                 <select required value={formData.user} onChange={(e) => setFormData({ ...formData, user: e.target.value })}>
-                  <option value="">Select user</option>
+                  <option value="">{t('form.selectUser')}</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>{u.username} ({u.role_name || u.role_code})</option>
                   ))}
                 </select>
               </label>
               <label>
-                Product (optional)
+                {t('form.productOptional')}
                 <select value={formData.product} onChange={(e) => setFormData({ ...formData, product: e.target.value })}>
-                  <option value="">Any product</option>
+                  <option value="">{t('form.anyProduct')}</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>{p.brand} {p.model}</option>
                   ))}
                 </select>
               </label>
               <label>
-                Category (optional)
-                <input value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} placeholder="e.g. sneakers" />
+                {t('form.categoryOptional')}
+                <input value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} placeholder={t('form.categoryPlaceholder')} />
               </label>
               <label>
-                Sale type (optional)
+                {t('form.saleTypeOptional')}
                 <select value={formData.sale_type} onChange={(e) => setFormData({ ...formData, sale_type: e.target.value })}>
-                  <option value="">Any</option>
-                  <option value="bought_from_shop">Shop</option>
-                  <option value="delivery">Delivery</option>
-                  <option value="from_order">From order</option>
-                  <option value="reserved">Reserved</option>
+                  {SALE_TYPE_VALUES.map((value) => (
+                    <option key={value || 'any'} value={value}>
+                      {saleTypeLabel(value)}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
-                Bonus type
+                {t('form.bonusType')}
                 <select value={formData.bonus_type} onChange={(e) => setFormData({ ...formData, bonus_type: e.target.value })}>
-                  <option value="fixed">Fixed per unit</option>
-                  <option value="percent">Percent of revenue</option>
+                  <option value="fixed">{t('form.fixedPerUnit')}</option>
+                  <option value="percent">{t('form.percentRevenue')}</option>
                 </select>
               </label>
               {formData.bonus_type === 'fixed' ? (
                 <label>
-                  Amount per unit
+                  {t('form.amountPerUnit')}
                   <input type="number" step="0.01" required value={formData.bonus_amount} onChange={(e) => setFormData({ ...formData, bonus_amount: e.target.value })} />
                 </label>
               ) : (
                 <label>
-                  Percent
+                  {t('form.percent')}
                   <input type="number" step="0.01" required value={formData.bonus_percent} onChange={(e) => setFormData({ ...formData, bonus_percent: e.target.value })} />
                 </label>
               )}
               <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="checkbox" checked={formData.is_active} onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })} />
-                Active
+                {t('form.active')}
               </label>
             </div>
             <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-              <button type="submit" className="btn-primary">Save</button>
-              <button type="button" className="btn-edit" onClick={() => setShowForm(false)}>Cancel</button>
+              <button type="submit" className="btn-primary">{t('actions.save', { ns: 'common' })}</button>
+              <button type="button" className="btn-edit" onClick={() => setShowForm(false)}>{t('actions.cancel', { ns: 'common' })}</button>
             </div>
           </form>
         </div>
       )}
 
       <div className="table-card" style={{ marginBottom: 24 }}>
-        <h3 style={{ padding: '12px 16px', margin: 0 }}>Rules</h3>
+        <h3 style={{ padding: '12px 16px', margin: 0 }}>{t('rulesTable.title')}</h3>
         <div className="data-table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Manager</th><th>Target</th><th>Type</th><th>Value</th><th>Active</th>
-                {canManage && <th>Actions</th>}
+                <th>{t('rulesTable.manager')}</th>
+                <th>{t('rulesTable.target')}</th>
+                <th>{t('rulesTable.type')}</th>
+                <th>{t('rulesTable.value')}</th>
+                <th>{t('rulesTable.active')}</th>
+                {canManage && <th>{t('rulesTable.actions')}</th>}
               </tr>
             </thead>
             <tbody>
               {rules.length === 0 ? (
-                <tr><td colSpan={canManage ? 6 : 5} style={{ textAlign: 'center' }}>No bonus rules</td></tr>
+                <tr><td colSpan={canManage ? 6 : 5} style={{ textAlign: 'center' }}>{t('rulesTable.noRows')}</td></tr>
               ) : rules.map((r) => (
                 <tr key={r.id}>
                   <td>{r.username || r.user}</td>
-                  <td>{r.product_name || r.category || r.sale_type || 'All sales'}</td>
+                  <td>{r.product_name || r.category || (r.sale_type ? saleTypeLabel(r.sale_type) : t('rulesTable.allSales'))}</td>
                   <td>{r.bonus_type}</td>
                   <td>{r.bonus_type === 'percent' ? `${r.bonus_percent}%` : r.bonus_amount}</td>
-                  <td>{r.is_active ? 'Yes' : 'No'}</td>
+                  <td>{r.is_active ? t('rulesTable.yes') : t('rulesTable.no')}</td>
                   {canManage && (
                     <td>
-                      <button type="button" className="btn-edit" onClick={() => openEdit(r)}>Edit</button>
+                      <button type="button" className="btn-edit" onClick={() => openEdit(r)}>{t('actions.edit', { ns: 'common' })}</button>
                       {' '}
-                      <button type="button" className="btn-delete" onClick={() => handleDelete(r.id)}>Delete</button>
+                      <button type="button" className="btn-delete" onClick={() => handleDelete(r.id)}>{t('actions.delete', { ns: 'common' })}</button>
                     </td>
                   )}
                 </tr>
@@ -222,22 +235,28 @@ const BonusRules = () => {
       </div>
 
       <div className="table-card">
-        <h3 style={{ padding: '12px 16px', margin: 0 }}>Bonus transactions</h3>
+        <h3 style={{ padding: '12px 16px', margin: 0 }}>{t('transactionsTable.title')}</h3>
         <div className="data-table-scroll">
           <table className="data-table">
             <thead>
-              <tr><th>Date</th><th>Manager</th><th>Sale</th><th>Amount</th><th>Notes</th></tr>
+              <tr>
+                <th>{t('transactionsTable.date')}</th>
+                <th>{t('transactionsTable.manager')}</th>
+                <th>{t('transactionsTable.sale')}</th>
+                <th>{t('transactionsTable.amount')}</th>
+                <th>{t('transactionsTable.notes')}</th>
+              </tr>
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan="5" style={{ textAlign: 'center' }}>No transactions yet</td></tr>
-              ) : transactions.map((t) => (
-                <tr key={t.id}>
-                  <td>{new Date(t.created_at).toLocaleString()}</td>
-                  <td>{t.username || t.user}</td>
-                  <td>#{t.sale}</td>
-                  <td>{parseFloat(t.amount).toLocaleString()}</td>
-                  <td>{t.notes || '-'}</td>
+                <tr><td colSpan="5" style={{ textAlign: 'center' }}>{t('transactionsTable.noRows')}</td></tr>
+              ) : transactions.map((tx) => (
+                <tr key={tx.id}>
+                  <td>{formatAppDateTime(tx.created_at)}</td>
+                  <td>{tx.username || tx.user}</td>
+                  <td>#{tx.sale}</td>
+                  <td>{parseFloat(tx.amount).toLocaleString()}</td>
+                  <td>{tx.notes || '-'}</td>
                 </tr>
               ))}
             </tbody>

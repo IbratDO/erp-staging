@@ -3,15 +3,14 @@ import api from '../utils/api';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
 import './TablePage.css';
 
-const PRODUCT_CATEGORY_TYPES = [
-  { value: 'sports', label: 'Sports' },
-  { value: 'casual', label: 'Casual' },
-];
+const PRODUCT_CATEGORY_TYPE_VALUES = ['sports', 'casual'];
 
-const categoryTypeLabel = (value) =>
-  PRODUCT_CATEGORY_TYPES.find((t) => t.value === value)?.label ?? '';
+const categoryTypeLabel = (value, t) =>
+  value ? t(`categoryTypes.${value}`, { defaultValue: '' }) : '';
 
 const PRODUCTS_SORT_ACCESSORS = {
   id: (p) => Number(p.id) || 0,
@@ -98,7 +97,7 @@ function customSizesFromProductsAndSelection(products, selectedSizes) {
   );
 }
 
-function apiErrorMessage(error, fallback = 'Request failed') {
+function apiErrorMessage(error, fallback) {
   const data = error.response?.data;
   if (!data) return error.message || fallback;
   if (typeof data === 'string') return data;
@@ -114,7 +113,13 @@ function apiErrorMessage(error, fallback = 'Request failed') {
 }
 
 const Products = () => {
+  const { t, monthOptions } = useAppTranslation(['products', 'common']);
   const { hasPermission } = usePermissions();
+
+  const productCategoryTypes = useMemo(
+    () => PRODUCT_CATEGORY_TYPE_VALUES.map((value) => ({ value, label: t(`categoryTypes.${value}`) })),
+    [t],
+  );
   const canCreate = hasPermission('products.create');
   const canUpdate = hasPermission('products.update');
   const canDelete = hasPermission('products.delete');
@@ -187,7 +192,7 @@ const Products = () => {
     if (!raw) return;
     const normalized = normalizeSizeValue(raw);
     if (normalized.length > 20) {
-      showNotification('Size must be 20 characters or less.', 'error');
+      showNotification(t('notifications.errSizeMax'), 'error');
       return;
     }
     setSelectedSizes((prev) => (prev.includes(normalized) ? prev : [...prev, normalized]));
@@ -325,7 +330,7 @@ const Products = () => {
     try {
       if (editingProduct) {
         if (selectedColors.length === 0) {
-          showNotification('Please select at least one color.', 'error');
+          showNotification(t('notifications.errSelectColor'), 'error');
           return;
         }
         const basePayload = { ...payload, color: selectedColors[0] };
@@ -341,50 +346,50 @@ const Products = () => {
             else toPost.push(body);
           }
           if (toPost.length === 0) {
-            showNotification(
-              'That product variant is already included (same brand, model, size, and color). No duplicate rows were added.',
-              'error',
-            );
+            showNotification(t('notifications.errVariantExistsNoAdd'), 'error');
           } else {
             await Promise.all(toPost.map((body) => api.post('/products/', body)));
             if (skippedDup.length > 0) {
               showNotification(
-                `Product updated. Added ${toPost.length} new variant(s). Skipped ${skippedDup.length} already in the catalog.`,
+                t('notifications.updatedWithVariants', {
+                  added: toPost.length,
+                  skipped: skippedDup.length,
+                }),
                 'success',
               );
             } else {
               showNotification(
-                `Product updated. Created ${toPost.length} additional color variant${toPost.length !== 1 ? 's' : ''}.`,
+                t('notifications.updatedWithVariantsSimple', { count: toPost.length }),
                 'success',
               );
             }
           }
         } else {
-          showNotification('Product updated.', 'success');
+          showNotification(t('notifications.updated'), 'success');
         }
       } else {
         if (!String(formData.category_type || '').trim()) {
-          showNotification('Please select a category type.', 'error');
+          showNotification(t('notifications.errCategoryType'), 'error');
           return;
         }
         if (!String(formData.category || '').trim()) {
-          showNotification('Please select or enter a category.', 'error');
+          showNotification(t('notifications.errCategory'), 'error');
           return;
         }
         if (!String(formData.brand || '').trim()) {
-          showNotification('Please select or enter a brand.', 'error');
+          showNotification(t('notifications.errBrand'), 'error');
           return;
         }
         if (!String(formData.model || '').trim()) {
-          showNotification('Please select or enter a model.', 'error');
+          showNotification(t('notifications.errModel'), 'error');
           return;
         }
         if (selectedSizes.length === 0) {
-          showNotification('Please select at least one size.', 'error');
+          showNotification(t('notifications.errSelectSize'), 'error');
           return;
         }
         if (selectedColors.length === 0) {
-          showNotification('Please select at least one color.', 'error');
+          showNotification(t('notifications.errSelectColor'), 'error');
           return;
         }
         const combos = [];
@@ -401,23 +406,25 @@ const Products = () => {
           else toCreate.push(body);
         }
         if (toCreate.length === 0) {
-          showNotification(
-            'This product has already been included (same brand, model, size, and color).',
-            'error',
-          );
+          showNotification(t('notifications.errAlreadyIncluded'), 'error');
           return;
         }
         await Promise.all(toCreate.map((body) => api.post('/products/', body)));
         if (skippedDup.length > 0) {
           showNotification(
-            `Created ${toCreate.length} product${toCreate.length !== 1 ? 's' : ''}. Skipped ${skippedDup.length} variant${skippedDup.length !== 1 ? 's' : ''} already in the catalog.`,
+            t('notifications.createdWithSkipped', {
+              created: toCreate.length,
+              skipped: skippedDup.length,
+            }),
             'success',
           );
         } else {
           showNotification(
-            `Created ${toCreate.length} product${toCreate.length !== 1 ? 's' : ''} (${selectedSizes.length} size${
-              selectedSizes.length !== 1 ? 's' : ''
-            } × ${selectedColors.length} color${selectedColors.length !== 1 ? 's' : ''}).`,
+            t('notifications.createdCombo', {
+              count: toCreate.length,
+              sizes: selectedSizes.length,
+              colors: selectedColors.length,
+            }),
             'success',
           );
         }
@@ -447,7 +454,7 @@ const Products = () => {
       console.error('Error saving product:', error);
       const msg =
         error.response?.data?.selling_price?.[0] ||
-        apiErrorMessage(error, 'Error saving product');
+        apiErrorMessage(error, t('notifications.errSave'));
       showNotification(msg, 'error');
     }
   };
@@ -477,13 +484,13 @@ const Products = () => {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this product?')) {
+    if (window.confirm(t('notifications.confirmDelete'))) {
       try {
         await api.delete(`/products/${id}/`);
         fetchProducts();
       } catch (error) {
         console.error('Error deleting product:', error);
-        alert('Error deleting product');
+        alert(t('notifications.errDelete'));
       }
     }
   };
@@ -495,7 +502,7 @@ const Products = () => {
   );
 
   if (loading) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   return (
@@ -511,7 +518,7 @@ const Products = () => {
         </div>
       )}
       <div className="page-header">
-        <h1>Products</h1>
+        <PageTitle ns="products" />
         {canCreate && (
         <button className="btn-primary" onClick={() => {
           setShowForm(!showForm);
@@ -538,19 +545,19 @@ const Products = () => {
             });
           }
         }}>
-          {showForm ? 'Cancel' : '+ Add Product'}
+          {showForm ? t('actions.cancel', { ns: 'common' }) : `+ ${t('addProduct')}`}
         </button>
         )}
       </div>
 
       {showForm && (canCreate || (canUpdate && editingProduct)) && (
         <div className="form-card">
-          <h2>{editingProduct ? 'Edit Product' : 'New Product'}</h2>
+          <h2>{editingProduct ? t('editProduct') : t('newProduct')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
                 <label>
-                  Category type{' '}
+                  {t('categoryType')}{' '}
                   {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
                 </label>
                 <select
@@ -558,9 +565,9 @@ const Products = () => {
                   onChange={(e) => setFormData({ ...formData, category_type: e.target.value })}
                   required={!editingProduct}
                 >
-                  {editingProduct ? <option value="">— None —</option> : null}
-                  {!editingProduct ? <option value="">Select category type</option> : null}
-                  {PRODUCT_CATEGORY_TYPES.map((t) => (
+                  {editingProduct ? <option value="">{t('form.none')}</option> : null}
+                  {!editingProduct ? <option value="">{t('form.selectCategoryType')}</option> : null}
+                  {productCategoryTypes.map((t) => (
                     <option key={t.value} value={t.value}>
                       {t.label}
                     </option>
@@ -569,9 +576,9 @@ const Products = () => {
               </div>
               <div className="form-group">
                 <label>
-                  Category{' '}
+                  {t('category')}{' '}
                   {editingProduct ? (
-                    <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(optional)</span>
+                    <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>{t('form.optional')}</span>
                   ) : (
                     <span style={{ color: '#e53e3e' }}>*</span>
                   )}
@@ -589,18 +596,18 @@ const Products = () => {
                     }}
                     required={!editingProduct}
                   >
-                    {editingProduct ? <option value="">— None —</option> : null}
-                    {!editingProduct ? <option value="">Select category</option> : null}
+                    {editingProduct ? <option value="">{t('form.none')}</option> : null}
+                    {!editingProduct ? <option value="">{t('form.selectCategory')}</option> : null}
                     {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
-                    <option value="__new__">+ Add new category...</option>
+                    <option value="__new__">{t('form.addNewCategory')}</option>
                   </select>
                 ) : (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input
                       type="text"
-                      placeholder="e.g. Shoes, T-Shirt, Cap"
+                      placeholder={t('form.categoryPlaceholder')}
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                       required={!editingProduct}
@@ -612,14 +619,14 @@ const Products = () => {
                       onClick={() => { setIsNewCategory(false); setFormData({ ...formData, category: '' }); }}
                       style={{ padding: '0 10px', background: '#eee', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
                     >
-                      ← Back
+                      {t('form.back')}
                     </button>
                   </div>
                 )}
               </div>
               <div className="form-group">
                 <label>
-                  Brand {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
+                  {t('brand')} {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
                 </label>
                 {!isNewBrand ? (
                   <select
@@ -634,17 +641,17 @@ const Products = () => {
                     }}
                     required
                   >
-                    <option value="">Select a brand</option>
+                    <option value="">{t('form.selectBrand')}</option>
                     {[...new Set(products.map(p => p.brand).filter(Boolean))].sort().map(brand => (
                       <option key={brand} value={brand}>{brand}</option>
                     ))}
-                    <option value="__new__">+ Add new brand...</option>
+                    <option value="__new__">{t('form.addNewBrand')}</option>
                   </select>
                 ) : (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input
                       type="text"
-                      placeholder="Enter new brand name"
+                      placeholder={t('form.brandPlaceholder')}
                       value={formData.brand}
                       onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
                       required
@@ -666,14 +673,14 @@ const Products = () => {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      ← Back
+                      {t('form.back')}
                     </button>
                   </div>
                 )}
               </div>
               <div className="form-group">
                 <label>
-                  Model {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
+                  {t('model')} {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
                 </label>
                 {!isNewModel ? (
                   <select
@@ -688,17 +695,17 @@ const Products = () => {
                     }}
                     required
                   >
-                    <option value="">Select a model</option>
+                    <option value="">{t('form.selectModel')}</option>
                     {[...new Set(products.map(p => p.model).filter(Boolean))].sort().map(model => (
                       <option key={model} value={model}>{model}</option>
                     ))}
-                    <option value="__new__">+ Add new model...</option>
+                    <option value="__new__">{t('form.addNewModel')}</option>
                   </select>
                 ) : (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input
                       type="text"
-                      placeholder="Enter new model name"
+                      placeholder={t('form.modelPlaceholder')}
                       value={formData.model}
                       onChange={(e) => setFormData({ ...formData, model: e.target.value })}
                       required
@@ -720,19 +727,19 @@ const Products = () => {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      ← Back
+                      {t('form.back')}
                     </button>
                   </div>
                 )}
               </div>
               <div className="form-group">
                 <label>
-                  Size
+                  {t('size')}
                   {!editingProduct ? (
                     <>
                       <span style={{ color: '#e53e3e' }}> *</span>
                       <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em', marginLeft: '6px' }}>
-                        — click to select at least one
+                        {t('form.selectAtLeastOne')}
                       </span>
                     </>
                   ) : null}
@@ -743,13 +750,13 @@ const Products = () => {
                     onChange={(e) => setFormData({ ...formData, size: e.target.value })}
                     required
                   >
-                    <option value="">Select Size</option>
-                    <optgroup label="Letter sizes">
+                    <option value="">{t('form.selectSize')}</option>
+                    <optgroup label={t('form.letterSizes')}>
                       {pickerLetterSizes.map((size) => (
                         <option key={size} value={size}>{size}</option>
                       ))}
                     </optgroup>
-                    <optgroup label="Number sizes">
+                    <optgroup label={t('form.numberSizes')}>
                       {pickerNumericSizes.map((size) => (
                         <option key={size} value={size}>{size}</option>
                       ))}
@@ -769,7 +776,7 @@ const Products = () => {
                     >
                       <span style={{ color: selectedSizes.length === 0 ? '#999' : '#333' }}>
                         {selectedSizes.length === 0
-                          ? 'Select sizes...'
+                          ? t('form.selectSizes')
                           : sortSizesCanonical(selectedSizes).join(', ')}
                       </span>
                       <span style={{ fontSize: '0.75em', color: '#666' }}>{sizeDropdownOpen ? '▲' : '▼'}</span>
@@ -793,7 +800,7 @@ const Products = () => {
                           textTransform: 'uppercase',
                           letterSpacing: '0.06em',
                         }}>
-                          Letter sizes
+                          {t('form.letterSizes')}
                         </div>
                         {pickerLetterSizes.map((size) => {
                           const isSelected = selectedSizes.includes(size);
@@ -824,7 +831,7 @@ const Products = () => {
                           textTransform: 'uppercase',
                           letterSpacing: '0.06em',
                         }}>
-                          Number sizes
+                          {t('form.numberSizes')}
                         </div>
                         {pickerNumericSizes.map((size) => {
                           const isSelected = selectedSizes.includes(size);
@@ -857,7 +864,7 @@ const Products = () => {
                         }}>
                           <input
                             type="text"
-                            placeholder="Custom size (e.g. 37.5, 3XL)"
+                            placeholder={t('form.customSizePlaceholder')}
                             value={pendingCustomSize}
                             onChange={(e) => setPendingCustomSize(e.target.value)}
                             onKeyDown={(e) => {
@@ -883,7 +890,7 @@ const Products = () => {
                               addPendingCustomSize();
                             }}
                           >
-                            Add size
+                            {t('form.addSize')}
                           </button>
                         </div>
                       </div>
@@ -893,17 +900,17 @@ const Products = () => {
               </div>
               <div className="form-group">
                 <label>
-                  Color
+                  {t('color')}
                   {!editingProduct ? (
                     <>
                       <span style={{ color: '#e53e3e' }}> *</span>
                       <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em', marginLeft: '6px' }}>
-                        — click to select at least one
+                        {t('form.selectAtLeastOne')}
                       </span>
                     </>
                   ) : (
                     <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em', marginLeft: '6px' }}>
-                      — click to select multiple
+                      {t('form.selectMultiple')}
                     </span>
                   )}
                 </label>
@@ -933,7 +940,7 @@ const Products = () => {
                   >
                     <span style={{ color: selectedColors.length === 0 ? '#999' : '#333' }}>
                       {selectedColors.length === 0
-                        ? 'Select colors...'
+                        ? t('form.selectColors')
                         : selectedColors
                             .slice()
                             .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
@@ -961,7 +968,7 @@ const Products = () => {
                     >
                       <div
                         role="listbox"
-                        aria-label="Colors"
+                        aria-label={t('color')}
                         aria-multiselectable="true"
                         style={{
                           display: 'flex',
@@ -1024,7 +1031,7 @@ const Products = () => {
                       >
                         <input
                           type="text"
-                          placeholder="Custom color name"
+                          placeholder={t('form.customColorPlaceholder')}
                           value={pendingCustomColor}
                           onChange={(e) => setPendingCustomColor(e.target.value)}
                           onKeyDown={(e) => {
@@ -1050,22 +1057,23 @@ const Products = () => {
                             addPendingCustomColor();
                           }}
                         >
-                          Add color
+                          {t('form.addColor')}
                         </button>
                       </div>
                     </div>
                   )}
                   {!editingProduct && selectedSizes.length > 0 && selectedColors.length > 0 && (
                     <small style={{ color: '#1976d2', marginTop: '6px', display: 'block' }}>
-                      {selectedSizes.length} size{selectedSizes.length !== 1 ? 's' : ''} × {selectedColors.length}{' '}
-                      color{selectedColors.length !== 1 ? 's' : ''} = {selectedSizes.length * selectedColors.length}{' '}
-                      product{selectedSizes.length * selectedColors.length !== 1 ? 's' : ''} will be created
+                      {t('form.comboPreview', {
+                        sizes: selectedSizes.length,
+                        colors: selectedColors.length,
+                        total: selectedSizes.length * selectedColors.length,
+                      })}
                     </small>
                   )}
                   {editingProduct && selectedColors.length > 1 && (
                     <small style={{ color: '#1976d2', marginTop: '6px', display: 'block' }}>
-                      This row keeps the first selected color (after your edits); each extra color creates a new product
-                      with the same brand, model, and size.
+                      {t('form.editExtraColors')}
                     </small>
                   )}
                 </div>
@@ -1073,7 +1081,7 @@ const Products = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                {editingProduct ? 'Update' : 'Create'}
+                {editingProduct ? t('form.update') : t('form.create')}
               </button>
             </div>
           </form>
@@ -1083,16 +1091,16 @@ const Products = () => {
       {/* Filters */}
       {!showForm && (
         <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
-          <h3 className="filter-card__title">Filters</h3>
+          <h3 className="filter-card__title">{t('filters.title', { ns: 'common' })}</h3>
         <div className="filter-toolbar">
           <div className="filter-field">
-            <label>Category type</label>
+            <label>{t('categoryType')}</label>
             <select
               value={filters.category_type}
               onChange={(e) => setFilters({ ...filters, category_type: e.target.value })}
             >
-              <option value="">All types</option>
-              {PRODUCT_CATEGORY_TYPES.map((t) => (
+              <option value="">{t('filters.allTypes')}</option>
+              {productCategoryTypes.map((t) => (
                 <option key={t.value} value={t.value}>
                   {t.label}
                 </option>
@@ -1100,12 +1108,12 @@ const Products = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Category</label>
+            <label>{t('category')}</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             >
-              <option value="">All Categories</option>
+              <option value="">{t('filters.allCategories')}</option>
               {[...new Set(
                 products
                   .filter((p) => !filters.category_type || p.category_type === filters.category_type)
@@ -1121,12 +1129,12 @@ const Products = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Brand</label>
+            <label>{t('brand')}</label>
             <select
               value={filters.brand}
               onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
             >
-              <option value="">All Brands</option>
+              <option value="">{t('filters.allBrands')}</option>
               {getUniqueValues(products, 'brand').map((brand) => (
                 <option key={brand} value={brand}>
                   {brand}
@@ -1135,12 +1143,12 @@ const Products = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Model</label>
+            <label>{t('model')}</label>
             <select
               value={filters.model}
               onChange={(e) => setFilters({ ...filters, model: e.target.value })}
             >
-              <option value="">All Models</option>
+              <option value="">{t('filters.allModels')}</option>
               {getUniqueValues(products, 'model').map((model) => (
                 <option key={model} value={model}>
                   {model}
@@ -1149,26 +1157,26 @@ const Products = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Size</label>
+            <label>{t('size')}</label>
             <select
               value={filters.size}
               onChange={(e) => setFilters({ ...filters, size: e.target.value })}
             >
-              <option value="">All Sizes</option>
+              <option value="">{t('filters.allSizes')}</option>
               {(() => {
                 const sortedSizes = getUniqueValues(products, 'size');
                 const { letters, nums } = partitionSizesForUiGroups(sortedSizes);
                 return (
                   <>
                     {letters.length > 0 ? (
-                      <optgroup label="Letter sizes">
+                      <optgroup label={t('form.letterSizes')}>
                         {letters.map((size) => (
                           <option key={size} value={size}>{size}</option>
                         ))}
                       </optgroup>
                     ) : null}
                     {nums.length > 0 ? (
-                      <optgroup label="Number sizes">
+                      <optgroup label={t('form.numberSizes')}>
                         {nums.map((size) => (
                           <option key={size} value={size}>{size}</option>
                         ))}
@@ -1180,12 +1188,12 @@ const Products = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Color</label>
+            <label>{t('color')}</label>
             <select
               value={filters.color}
               onChange={(e) => setFilters({ ...filters, color: e.target.value })}
             >
-              <option value="">All Colors</option>
+              <option value="">{t('filters.allColors')}</option>
               {getUniqueValues(products, 'color').map((color) => (
                 <option key={color} value={color}>
                   {color}
@@ -1194,12 +1202,12 @@ const Products = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Year</label>
+            <label>{t('filters.year', { ns: 'common' })}</label>
             <select
               value={filters.year}
               onChange={(e) => setFilters({ ...filters, year: e.target.value })}
             >
-              <option value="">All Years</option>
+              <option value="">{t('filters.allYears', { ns: 'common' })}</option>
               {Array.from({ length: 10 }, (_, i) => {
                 const year = new Date().getFullYear() - i;
                 return (
@@ -1211,24 +1219,16 @@ const Products = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Month</label>
+            <label>{t('filters.month', { ns: 'common' })}</label>
             <select
               value={filters.month}
               onChange={(e) => setFilters({ ...filters, month: e.target.value })}
             >
-              <option value="">All Months</option>
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
+              {monthOptions.map((o) => (
+                <option key={o.value || 'all'} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="filter-toolbar__actions">
@@ -1248,7 +1248,7 @@ const Products = () => {
                 })
               }
             >
-              Clear all
+              {t('actions.clearAll', { ns: 'common' })}
             </button>
           </div>
         </div>
@@ -1261,34 +1261,34 @@ const Products = () => {
           <thead>
             <tr>
               <SortableTh columnId="id" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
-                ID
+                {t('table.id', { ns: 'common' })}
               </SortableTh>
               <SortableTh columnId="category_type" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
-                Category type
+                {t('categoryType')}
               </SortableTh>
               <SortableTh columnId="category" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
-                Category
+                {t('category')}
               </SortableTh>
               <SortableTh columnId="brand" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
-                Brand
+                {t('brand')}
               </SortableTh>
               <SortableTh columnId="model" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
-                Model
+                {t('model')}
               </SortableTh>
               <SortableTh columnId="size" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
-                Size
+                {t('size')}
               </SortableTh>
               <SortableTh columnId="color" sortCol={productSort.sortCol} sortDir={productSort.sortDir} onSort={productSort.onHeaderClick}>
-                Color
+                {t('color')}
               </SortableTh>
-              <th>Actions</th>
+              <th>{t('table.actions', { ns: 'common' })}</th>
             </tr>
           </thead>
           <tbody>
             {filteredProducts.length === 0 ? (
               <tr>
                 <td colSpan="8" style={{ textAlign: 'center' }}>
-                  No products found
+                  {t('noProducts')}
                 </td>
               </tr>
             ) : (
@@ -1297,7 +1297,7 @@ const Products = () => {
                 <tr key={product.id}>
                   <td>#{product.id}</td>
                   <td>
-                    {categoryTypeLabel(product.category_type) || (
+                    {categoryTypeLabel(product.category_type, t) || (
                       <span style={{ color: '#999' }}>—</span>
                     )}
                   </td>
@@ -1312,7 +1312,7 @@ const Products = () => {
                       className="btn-edit"
                       onClick={() => handleEdit(product)}
                     >
-                      Edit
+                      {t('actions.edit', { ns: 'common' })}
                     </button>
                     )}
                     {canDelete && (
@@ -1320,7 +1320,7 @@ const Products = () => {
                       className="btn-delete"
                       onClick={() => handleDelete(product.id)}
                     >
-                      Delete
+                      {t('actions.delete', { ns: 'common' })}
                     </button>
                     )}
                   </td>
@@ -1332,7 +1332,7 @@ const Products = () => {
           <tfoot>
             <tr>
               <td colSpan="8" style={{ textAlign: 'right', color: '#718096', fontSize: '0.85em' }}>
-                {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
+                {t('productCount', { count: filteredProducts.length })}
               </td>
             </tr>
           </tfoot>

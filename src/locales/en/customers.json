@@ -1,0 +1,102 @@
+{
+  "title": "Customers",
+  "newCustomer": "+ New Customer",
+  "addCustomer": "Add Customer",
+  "name": "Name",
+  "phone": "Telephone",
+  "region": "Region",
+  "instagram": "Instagram",
+  "notes": "Notes",
+  "form": {
+    "newTitle": "New Customer",
+    "editTitle": "Edit Customer",
+    "create": "Create Customer",
+    "update": "Update Customer"
+  },
+  "filters": {
+    "title": "Filters",
+    "name": "Name",
+    "searchPlaceholder": "Search name"
+  },
+  "table": {
+    "name": "Name",
+    "telephone": "Telephone",
+    "instagram": "Instagram",
+    "region": "Region",
+    "totalSales": "Total Sales",
+    "onCredit": "On credit (due)",
+    "actions": "Actions",
+    "noCustomers": "No customers found",
+    "salesCount": "{{count}} sales",
+    "total": "Total"
+  },
+  "history": {
+    "title": "{{name}} - Purchase History",
+    "summary": "Summary",
+    "totalSales": "Total Sales:",
+    "completedSales": "Completed Sales:",
+    "reservedSales": "Reserved Sales:",
+    "reservedAmountHint": "Sum of sale totals; may mix UZS and USD",
+    "pendingSales": "Pending Sales:",
+    "cancelledSales": "Cancelled Sales:",
+    "totalOrders": "Total Orders:",
+    "totalAdvances": "Total Advance Payments:",
+    "advancesHint": "Open-order advances; may mix UZS and USD",
+    "totalCompleted": "Total Amount (Completed):",
+    "completedHint": "Completed sale totals; may mix UZS and USD",
+    "totalPaid": "Total Paid:",
+    "paidHint": "Includes balance movements; see Money Balance for detail",
+    "onCreditOutstanding": "On credit (outstanding):",
+    "receivablesTitle": "Open on-credit (receivables)",
+    "saleNum": "Sale #",
+    "product": "Product",
+    "amount": "Amount",
+    "ordersTitle": "Orders",
+    "quantity": "Quantity",
+    "type": "Type",
+    "status": "Status",
+    "advancePayment": "Advance Payment",
+    "purchasesTitle": "Purchases",
+    "price": "Price",
+    "total": "Total",
+    "noPurchases": "No purchases found",
+    "transactionsTitle": "Transaction History",
+    "transactionType": "Transaction type",
+    "currency": "Currency",
+    "noTransactions": "No transactions found",
+    "productFallback": "Product #{{id}}",
+    "productLine": "{{brand}} {{model}} - Size {{size}} ({{color}})",
+    "sizeLabel": "Size {{size}}"
+  },
+  "saleTypes": {
+    "shop": "Shop",
+    "from_order": "From Order",
+    "delivery": "Delivery"
+  },
+  "orderTypes": {
+    "on_demand": "On-Demand",
+    "stock": "Stock"
+  },
+  "txTypes": {
+    "advance_payment": "Advance Payment",
+    "order_payment": "Order Payment",
+    "sale_payment": "Sale Payment",
+    "sale_completion": "Sale Completion"
+  },
+  "select": {
+    "placeholder": "Select a customer…",
+    "emptyLabel": "All customers",
+    "searchPlaceholder": "Search customers…",
+    "searchAria": "Search customers",
+    "noMatches": "No matches",
+    "noCustomers": "No customers found",
+    "ariaLabel": "Customers"
+  },
+  "notifications": {
+    "notesRequired": "Please enter notes.",
+    "saveError": "Error saving customer",
+    "deleteConfirm": "Are you sure you want to delete this customer?",
+    "deleteError": "Error deleting customer",
+    "historyError": "Error fetching customer history"
+  }
+}

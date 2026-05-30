@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import useAppTranslation from '../hooks/useAppTranslation';
 
 function customerLabel(c) {
   if (!c) return '';
@@ -30,6 +31,11 @@ export default function CustomerSearchableSelect({
   triggerClassName = '',
   'aria-label': ariaLabel,
 }) {
+  const { t } = useAppTranslation('customers');
+  const resolvedPlaceholder = placeholder || t('select.placeholder');
+  const resolvedEmptyLabel = emptyLabel || t('select.emptyLabel');
+  const resolvedAriaLabel = ariaLabel || t('select.ariaLabel');
+
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [panelPos, setPanelPos] = useState(null);
@@ -62,8 +68,8 @@ export default function CustomerSearchableSelect({
   const showEmptyOption = useMemo(() => {
     if (!allowEmpty) return false;
     const q = String(query || '').trim().toLowerCase();
-    return !q || emptyLabel.toLowerCase().includes(q);
-  }, [allowEmpty, emptyLabel, query]);
+    return !q || resolvedEmptyLabel.toLowerCase().includes(q);
+  }, [allowEmpty, resolvedEmptyLabel, query]);
 
   const updatePanelPos = useCallback(() => {
     const el = triggerRef.current;
@@ -116,7 +122,7 @@ export default function CustomerSearchableSelect({
     : selected
       ? customerLabel(selected)
       : allowEmpty && value === ''
-        ? emptyLabel
+        ? resolvedEmptyLabel
         : '';
   const noCustomers = !customers.length && !allowEmpty && !extraOptions.length;
 
@@ -146,7 +152,7 @@ export default function CustomerSearchableSelect({
           <div
             ref={panelRef}
             role="listbox"
-            aria-label={ariaLabel || 'Customers'}
+            aria-label={resolvedAriaLabel}
             style={{
               position: 'fixed',
               top: panelPos.top,
@@ -168,9 +174,9 @@ export default function CustomerSearchableSelect({
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search customers…"
+                placeholder={t('select.searchPlaceholder')}
                 autoComplete="off"
-                aria-label="Search customers"
+                aria-label={t('select.searchAria')}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
                     e.stopPropagation();
@@ -222,7 +228,7 @@ export default function CustomerSearchableSelect({
                       fontStyle: 'italic',
                     }}
                   >
-                    {emptyLabel}
+                    {resolvedEmptyLabel}
                   </button>
                 </li>
               ) : null}
@@ -325,15 +331,15 @@ export default function CustomerSearchableSelect({
         onClick={handleToggle}
         aria-expanded={open}
         aria-haspopup="listbox"
-        aria-label={ariaLabel}
+        aria-label={resolvedAriaLabel}
         className={mergedTriggerClassName || undefined}
         style={triggerStyle}
       >
-        {display || placeholder}
+        {display || resolvedPlaceholder}
       </button>
       {panel}
       {noCustomers && !allowEmpty ? (
-        <div style={{ marginTop: 6, fontSize: 13, color: '#666' }}>No customers found</div>
+        <div style={{ marginTop: 6, fontSize: 13, color: '#666' }}>{t('select.noCustomers')}</div>
       ) : null}
     </div>
   );

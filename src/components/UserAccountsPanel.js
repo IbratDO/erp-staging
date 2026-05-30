@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from './PageTitle';
 
 const emptyUser = () => ({
   username: '',
@@ -16,6 +18,7 @@ const emptyUser = () => ({
  * Manage ERP login accounts. Dispatcher / sales roles sync to Dispatchers & Workers tabs.
  */
 const UserAccountsPanel = () => {
+  const { t } = useAppTranslation(['users', 'common']);
   const { hasPermission } = usePermissions();
   const canManage = hasPermission('users.manage');
   const [users, setUsers] = useState([]);
@@ -70,12 +73,12 @@ const UserAccountsPanel = () => {
     e.preventDefault();
     const phone = String(formData.phone || '').trim();
     if (!phone || phone === '+998') {
-      alert('Please enter a phone number.');
+      alert(t('errPhone'));
       return;
     }
     const username = String(formData.username || '').trim();
     if (!username) {
-      alert('Please enter a login (username).');
+      alert(t('errUsername'));
       return;
     }
     const payload = {
@@ -93,7 +96,7 @@ const UserAccountsPanel = () => {
         await api.patch(`/users/${editingId}/`, payload);
       } else {
         if (!formData.password) {
-          alert('Password is required for new users');
+          alert(t('errPasswordNew'));
           return;
         }
         await api.post('/users/', { ...payload, password: formData.password });
@@ -101,56 +104,53 @@ const UserAccountsPanel = () => {
       setShowForm(false);
       loadData();
     } catch (err) {
-      alert(err.response?.data?.detail || JSON.stringify(err.response?.data) || 'Could not save user');
+      alert(err.response?.data?.detail || JSON.stringify(err.response?.data) || t('errSave'));
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this login account? Linked dispatcher/worker rows will be deactivated.')) return;
+    if (!window.confirm(t('confirmDelete'))) return;
     try {
       await api.delete(`/users/${id}/`);
       loadData();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Could not delete user');
+      alert(err.response?.data?.detail || t('errDelete'));
     }
   };
 
   if (loading) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Users &amp; Roles</h1>
+        <PageTitle ns="users" titleKey="titleFull" />
         {canManage && (
           <button type="button" className="btn-primary" onClick={openCreate}>
-            + New login account
+            + {t('newLogin')}
           </button>
         )}
       </div>
 
-      <p style={{ color: '#666', marginBottom: 16, fontSize: '0.95em' }}>
-        Create login accounts here. Accounts with Dispatcher role appear in Dispatchers; Sales Manager and
-        Senior Sales Manager appear in Workers.
-      </p>
+      <p style={{ color: '#666', marginBottom: 16, fontSize: '0.95em' }}>{t('intro')}</p>
 
       {showForm && canManage && (
         <div className="form-card">
-          <h2>{editingId ? 'Edit login account' : 'New login account'}</h2>
+          <h2>{editingId ? t('editLogin') : t('newLogin')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>First name</label>
+                <label>{t('firstName')}</label>
                 <input
                   type="text"
                   value={formData.first_name}
                   onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                  placeholder="Shown in Workers / Dispatchers"
+                  placeholder={t('firstNamePlaceholder')}
                 />
               </div>
               <div className="form-group">
-                <label>Last name</label>
+                <label>{t('lastName')}</label>
                 <input
                   type="text"
                   value={formData.last_name}
@@ -158,7 +158,7 @@ const UserAccountsPanel = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Login (username) *</label>
+                <label>{t('loginUsername')} *</label>
                 <input
                   type="text"
                   required
@@ -168,7 +168,9 @@ const UserAccountsPanel = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Password {editingId ? '(leave blank to keep)' : '*'}</label>
+                <label>
+                  {t('password')} {editingId ? t('passwordKeepBlank') : '*'}
+                </label>
                 <input
                   type="password"
                   required={!editingId}
@@ -178,20 +180,22 @@ const UserAccountsPanel = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Role *</label>
+                <label>{t('role')} *</label>
                 <select
                   required
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 >
-                  <option value="">Select role</option>
+                  <option value="">{t('selectRole')}</option>
                   {roles.map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label>Phone number *</label>
+                <label>{t('phoneNumber')} *</label>
                 <input
                   type="text"
                   required
@@ -207,14 +211,16 @@ const UserAccountsPanel = () => {
                     checked={formData.is_active}
                     onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                   />
-                  Active (can log in)
+                  {t('activeCanLogin')}
                 </label>
               </div>
             </div>
             <div className="form-actions">
-              <button type="submit" className="btn-primary">Save</button>
+              <button type="submit" className="btn-primary">
+                {t('actions.save', { ns: 'common' })}
+              </button>
               <button type="button" className="btn-edit" onClick={() => setShowForm(false)}>
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -226,34 +232,39 @@ const UserAccountsPanel = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Login</th>
-                <th>Role</th>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Active</th>
-                {canManage && <th>Actions</th>}
+                <th>{t('colLogin')}</th>
+                <th>{t('role')}</th>
+                <th>{t('colName')}</th>
+                <th>{t('colPhone')}</th>
+                <th>{t('colActive')}</th>
+                {canManage && <th>{t('table.actions', { ns: 'common' })}</th>}
               </tr>
             </thead>
             <tbody>
               {users.length === 0 ? (
                 <tr>
                   <td colSpan={canManage ? 6 : 5} style={{ textAlign: 'center' }}>
-                    No login accounts yet
+                    {t('emptyAccounts')}
                   </td>
                 </tr>
               ) : (
                 users.map((u) => (
                   <tr key={u.id}>
-                    <td><strong>{u.username}</strong></td>
+                    <td>
+                      <strong>{u.username}</strong>
+                    </td>
                     <td>{u.role_name || u.role_code || '—'}</td>
                     <td>{[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'}</td>
                     <td>{u.phone || '—'}</td>
-                    <td>{u.is_active !== false ? 'Yes' : 'No'}</td>
+                    <td>{u.is_active !== false ? t('yes', { ns: 'common' }) : t('no', { ns: 'common' })}</td>
                     {canManage && (
                       <td>
-                        <button type="button" className="btn-edit" onClick={() => openEdit(u)}>Edit</button>
-                        {' '}
-                        <button type="button" className="btn-delete" onClick={() => handleDelete(u.id)}>Delete</button>
+                        <button type="button" className="btn-edit" onClick={() => openEdit(u)}>
+                          {t('actions.edit', { ns: 'common' })}
+                        </button>{' '}
+                        <button type="button" className="btn-delete" onClick={() => handleDelete(u.id)}>
+                          {t('actions.delete', { ns: 'common' })}
+                        </button>
                       </td>
                     )}
                   </tr>

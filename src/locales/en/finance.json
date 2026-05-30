@@ -1,0 +1,110 @@
+{
+  "title": "Other Financial Records",
+  "intro": "Manual other income and expenses only. Sales, inventory, receivables/payables, and Money Balance are tracked on their own tabs. Use <strong>Pay later</strong> to create a payable/receivable first; then settle here or from Receivables / Payables.",
+  "addIncome": "+ Add Income",
+  "addExpense": "+ Add Expense",
+  "expenseForm": {
+    "title": "Add New Expense",
+    "expenseType": "Expense Type",
+    "target": "Target",
+    "selectTarget": "— Select —",
+    "currency": "Currency",
+    "amount": "Amount",
+    "recipient": "Recipient *",
+    "selectRecipient": "Select recipient",
+    "notes": "Notes",
+    "notesRequiredOther": "Notes *",
+    "payImmediately": "Pay immediately (uncheck to create a payable first)",
+    "submit": "Add Expense",
+    "notesPlaceholderSalary": "e.g., Prepayment, Monthly salary, etc.",
+    "notesPlaceholderOther": "Describe this expense",
+    "notesPlaceholderDefault": "Optional unless type is Other"
+  },
+  "incomeForm": {
+    "title": "Add Other Income",
+    "currency": "Currency",
+    "amount": "Amount",
+    "notes": "Notes *",
+    "notesPlaceholder": "e.g. Service income, bonus, refund from supplier",
+    "receivedImmediately": "Received immediately (uncheck to create a receivable first)",
+    "submit": "Add Income"
+  },
+  "expenseTypes": {
+    "salary": "Salary",
+    "lunch": "Lunch",
+    "taxi": "Taxi",
+    "office_supplies": "Office Supplies",
+    "utilities": "Utilities",
+    "rent": "Rent",
+    "delivery": "Delivery",
+    "cargo": "Cargo",
+    "smm": "SMM",
+    "other": "Other"
+  },
+  "targets": {
+    "shop": "Shop",
+    "warehouse": "Warehouse",
+    "office": "Office",
+    "marketing": "Marketing",
+    "logistics": "Logistics",
+    "operations": "Operations",
+    "other": "Other"
+  },
+  "recordTypes": {
+    "income": "Income",
+    "expense": "Expense"
+  },
+  "metrics": {
+    "totalIncomeUsd": "Total Income (USD)",
+    "totalIncomeUzs": "Total Income (UZS)",
+    "totalExpenseUsd": "Total Expenses (USD)",
+    "totalExpenseUzs": "Total Expenses (UZS)",
+    "netOtherUsd": "Net other (USD)",
+    "netOtherUzs": "Net other (UZS)",
+    "netHint": "Completed rows only — see Profit / Loss for sales"
+  },
+  "filters": {
+    "title": "Filters",
+    "type": "Type",
+    "allTypes": "All Types",
+    "expenseType": "Expense Type",
+    "allExpenseTypes": "All Expense Types",
+    "status": "Status",
+    "allStatuses": "All Statuses",
+    "year": "Year",
+    "allYears": "All Years",
+    "month": "Month",
+    "allMonths": "All Months",
+    "clearAll": "Clear all"
+  },
+  "table": {
+    "id": "ID",
+    "type": "Type",
+    "expenseType": "Expense Type",
+    "status": "Status",
+    "relatedOrder": "Related Order",
+    "relatedSale": "Related Sale",
+    "relatedDispatch": "Related Dispatch",
+    "recipient": "Recipient",
+    "notes": "Notes",
+    "date": "Date",
+    "action": "Action",
+    "noRows": "No finance records found",
+    "orderRef": "Order #{{id}}",
+    "saleRef": "Sale #{{id}}",
+    "dispatchRef": "Dispatch #{{id}}",
+    "recordNotes": "Record #{{id}}",
+    "settle": "Settle",
+    "netCompleted": "Net (completed)",
+    "footerHint": "Net (completed): completed rows summed by currency (UZS vs USD); legacy income/expense splits by cash/card appear in their currency column."
+  },
+  "confirmSettle": "Mark this record as paid/received and update Money Balance?",
+  "notifications": {
+    "settled": "Settled.",
+    "settleFailed": "Could not settle record.",
+    "notesRequiredOther": "Please enter notes when expense type is Other.",
+    "createExpenseFailed": "Error creating expense",
+    "notesRequiredIncome": "Please enter notes describing this income.",
+    "createIncomeFailed": "Error creating income"
+  }
+}

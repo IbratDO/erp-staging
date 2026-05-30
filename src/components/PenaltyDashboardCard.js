@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
 
 export default function PenaltyDashboardCard() {
+  const { t } = useAppTranslation(['penalties', 'common']);
   const { hasPermission, isAdmin } = usePermissions();
   const canViewOwn = hasPermission('penalties.view_own') && !isAdmin;
   const [data, setData] = useState(null);
@@ -24,7 +26,7 @@ export default function PenaltyDashboardCard() {
   if (loading) {
     return (
       <div className="dash-kpi-card" style={{ marginBottom: 16 }}>
-        <div className="dash-kpi-label">Jarimalar (penalties)</div>
+        <div className="dash-kpi-label">{t('title')}</div>
         <div className="dash-kpi-value">…</div>
       </div>
     );
@@ -33,18 +35,20 @@ export default function PenaltyDashboardCard() {
 
   return (
     <div className="table-card" style={{ marginBottom: 20 }}>
-      <h3 style={{ marginTop: 0 }}>Jarimalar — your penalties</h3>
+      <h3 style={{ marginTop: 0 }}>
+        {t('title')} — {t('yourPenalties')}
+      </h3>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: '0.85em', color: '#666' }}>Total points</div>
+          <div style={{ fontSize: '0.85em', color: '#666' }}>{t('totalPoints')}</div>
           <strong>{Number(data.total_points || 0).toLocaleString()}</strong>
         </div>
         <div>
-          <div style={{ fontSize: '0.85em', color: '#666' }}>Total amount</div>
+          <div style={{ fontSize: '0.85em', color: '#666' }}>{t('totalAmount')}</div>
           <strong>{Number(data.total_amount || 0).toLocaleString()}</strong>
         </div>
         <div>
-          <div style={{ fontSize: '0.85em', color: '#666' }}>Records</div>
+          <div style={{ fontSize: '0.85em', color: '#666' }}>{t('records')}</div>
           <strong>{data.count ?? 0}</strong>
         </div>
       </div>
@@ -52,10 +56,10 @@ export default function PenaltyDashboardCard() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Points</th>
-              <th>Amount</th>
-              <th>Reason</th>
+              <th>{t('table.date', { ns: 'common' })}</th>
+              <th>{t('points', { ns: 'common' })}</th>
+              <th>{t('totalAmount')}</th>
+              <th>{t('reason')}</th>
             </tr>
           </thead>
           <tbody>
@@ -72,7 +76,7 @@ export default function PenaltyDashboardCard() {
           </tbody>
         </table>
       ) : (
-        <p style={{ color: '#666', margin: 0 }}>No penalties on record.</p>
+        <p style={{ color: '#666', margin: 0 }}>{t('noPenalties')}</p>
       )}
     </div>
   );

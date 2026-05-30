@@ -1,16 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { getRoleDisplayName } from '../utils/permissions';
+import { translateMenuItems } from '../utils/i18nMenu';
 import './Layout.css';
 
 const Layout = () => {
   const { user, logout } = useAuth();
   const { menuItems } = usePermissions();
+  const { t } = useTranslation('common');
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [inventoryOpen, setInventoryOpen] = useState(false);
+
+  const translatedMenu = useMemo(
+    () => translateMenuItems(menuItems, t),
+    [menuItems, t],
+  );
 
   useEffect(() => {
     if (location.pathname.startsWith('/inventory')) {
@@ -21,23 +29,24 @@ const Layout = () => {
   const isActive = (path) => location.pathname === path;
   const isInventoryActive = () => location.pathname.startsWith('/inventory');
 
-  const displayRole = getRoleDisplayName(user);
+  const displayRole = getRoleDisplayName(user, t);
 
   return (
     <div className="layout">
       <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
         <div className="sidebar-header">
-          <h2>ERP System</h2>
+          <h2>{t('app.title')}</h2>
           <button
             className="sidebar-toggle"
             onClick={() => setSidebarOpen(!sidebarOpen)}
             type="button"
+            aria-label={sidebarOpen ? t('actions.close') : t('actions.view')}
           >
             {sidebarOpen ? '◀' : '▶'}
           </button>
         </div>
         <nav className="sidebar-nav">
-          {menuItems.map((item, index) =>
+          {translatedMenu.map((item, index) =>
             item.isDropdown ? (
               <div key={index} className="nav-dropdown">
                 <div
@@ -80,7 +89,7 @@ const Layout = () => {
                 <span className="nav-icon">{item.icon}</span>
                 {sidebarOpen && <span className="nav-label">{item.label}</span>}
               </Link>
-            )
+            ),
           )}
         </nav>
         <div className="sidebar-footer">
@@ -93,7 +102,7 @@ const Layout = () => {
             )}
           </div>
           <button className="logout-btn" type="button" onClick={logout}>
-            {sidebarOpen ? 'Logout' : '🚪'}
+            {sidebarOpen ? t('auth.logout') : '🚪'}
           </button>
         </div>
       </aside>

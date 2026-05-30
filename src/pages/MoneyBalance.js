@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import CurrencyConversionForm from '../components/CurrencyConversionForm';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
 import './TablePage.css';
 
 /** Table columns: one per currency (legacy *_cash and *_card ledger buckets roll up here). */
@@ -149,8 +151,11 @@ function buildTransactionDateRange({ year, month, day }) {
 }
 
 const MoneyBalance = () => {
+  const { t, tTxType, tOp, monthOptions } = useAppTranslation(['moneyBalance', 'common', 'status']);
   const { hasPermission } = useAuth();
-  const isAdmin = hasPermission('cash.adjust');
+  const canAdjustBalance = hasPermission('cash.adjust');
+  const canConvertCurrency =
+    hasPermission('cash.convert') || hasPermission('cash.adjust');
   const [balances, setBalances] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -250,13 +255,13 @@ const MoneyBalance = () => {
   const handleAdjust = async (e) => {
     e.preventDefault();
     if (!String(adjustFormData.notes || '').trim()) {
-      alert('Please enter a note for this balance adjustment.');
+      alert(t('errNoteRequired'));
       return;
     }
     try {
       const balance = balances.find((b) => b.balance_type === adjustFormData.balance_type);
       if (!balance) {
-        alert('Balance not found');
+        alert(t('errBalanceNotFound'));
         return;
       }
 
@@ -277,7 +282,7 @@ const MoneyBalance = () => {
       await Promise.all([fetchBalances(), fetchTransactions()]);
     } catch (error) {
       console.error('Error adjusting balance:', error);
-      alert(error.response?.data?.error || 'Error adjusting balance');
+      alert(error.response?.data?.error || t('errAdjust'));
     }
   };
 
@@ -288,36 +293,40 @@ const MoneyBalance = () => {
   );
 
   if (loading) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Money Balance</h1>
-        {isAdmin && (
+        <PageTitle ns="moneyBalance" />
+        {(canAdjustBalance || canConvertCurrency) && (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => {
-                setShowConversionForm(false);
-                setShowAdjustForm(!showAdjustForm);
-              }}
-            >
-              {showAdjustForm ? 'Cancel' : '+ Adjust Balance'}
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              style={{ background: '#0d6efd' }}
-              onClick={() => {
-                setShowAdjustForm(false);
-                setShowConversionForm(!showConversionForm);
-              }}
-            >
-              {showConversionForm ? 'Cancel' : 'Currency Conversion'}
-            </button>
+            {canAdjustBalance && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  setShowConversionForm(false);
+                  setShowAdjustForm(!showAdjustForm);
+                }}
+              >
+                {showAdjustForm ? t('actions.cancel', { ns: 'common' }) : `+ ${t('adjustBalance')}`}
+              </button>
+            )}
+            {canConvertCurrency && (
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ background: '#0d6efd' }}
+                onClick={() => {
+                  setShowAdjustForm(false);
+                  setShowConversionForm(!showConversionForm);
+                }}
+              >
+                {showConversionForm ? t('actions.cancel', { ns: 'common' }) : t('currencyConversion')}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -332,7 +341,7 @@ const MoneyBalance = () => {
               border: `2px solid ${col.key === 'usd' ? '#28a745' : '#20c997'}`,
             }}
           >
-            <div className="metric-label">{col.label} (total)</div>
+            <div className="metric-label">{t('totalLabel', { currency: col.label })}</div>
             <div
               className="metric-value"
               style={{ color: col.key === 'usd' ? '#28a745' : '#20c997', fontSize: '2em' }}
@@ -348,7 +357,7 @@ const MoneyBalance = () => {
         ))}
       </div>
 
-      {showConversionForm && isAdmin && (
+      {showConversionForm && canConvertCurrency && (
         <CurrencyConversionForm
           onSuccess={async () => {
             setShowConversionForm(false);
@@ -358,16 +367,14 @@ const MoneyBalance = () => {
         />
       )}
 
-      {showAdjustForm && isAdmin && (
+      {showAdjustForm && canAdjustBalance && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>Adjust Balance</h2>
-          <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '12px' }}>
-            New entries post to the cash ledger bucket for that currency (card buckets are legacy-only).
-          </p>
+          <h2>{t('adjustTitle')}</h2>
+          <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '12px' }}>{t('adjustIntro')}</p>
           <form onSubmit={handleAdjust}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Balance</label>
+                <label>{t('balance')}</label>
                 <select
                   value={adjustFormData.balance_type}
                   onChange={(e) => setAdjustFormData({ ...adjustFormData, balance_type: e.target.value })}
@@ -378,18 +385,18 @@ const MoneyBalance = () => {
                 </select>
               </div>
               <div className="form-group">
-                <label>Operation</label>
+                <label>{t('operation')}</label>
                 <select
                   value={adjustFormData.operation}
                   onChange={(e) => setAdjustFormData({ ...adjustFormData, operation: e.target.value })}
                   required
                 >
-                  <option value="add">Add Money</option>
-                  <option value="subtract">Subtract Money</option>
+                  <option value="add">{t('addMoney')}</option>
+                  <option value="subtract">{t('subtractMoney')}</option>
                 </select>
               </div>
               <div className="form-group">
-                <label>Amount</label>
+                <label>{t('amount')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -400,7 +407,7 @@ const MoneyBalance = () => {
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes *</label>
+                <label>{t('notesRequired')}</label>
                 <textarea
                   value={adjustFormData.notes}
                   onChange={(e) => setAdjustFormData({ ...adjustFormData, notes: e.target.value })}
@@ -411,7 +418,7 @@ const MoneyBalance = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Adjust Balance
+                {t('adjustBalance')}
               </button>
             </div>
           </form>
@@ -419,23 +426,23 @@ const MoneyBalance = () => {
       )}
 
       <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
-        <h3 className="filter-card__title">Filters</h3>
+        <h3 className="filter-card__title">{t('filters.title', { ns: 'common' })}</h3>
         <div className="filter-toolbar">
           <div className="filter-field">
-            <label>Ledger bucket</label>
+            <label>{t('ledgerBucket')}</label>
             <select
               value={filter.balance_type}
               onChange={(e) => setFilter({ ...filter, balance_type: e.target.value })}
             >
-              <option value="">All buckets</option>
-              <option value="usd_cash">USD (cash)</option>
-              <option value="uzs_cash">UZS (cash)</option>
-              <option value="usd_card">USD (legacy card)</option>
-              <option value="uzs_card">UZS (legacy card)</option>
+              <option value="">{t('allBuckets')}</option>
+              <option value="usd_cash">{t('usdCash')}</option>
+              <option value="uzs_cash">{t('uzsCash')}</option>
+              <option value="usd_card">{t('usdCardLegacy')}</option>
+              <option value="uzs_card">{t('uzsCardLegacy')}</option>
             </select>
           </div>
           <div className="filter-field">
-            <label>Currency (view)</label>
+            <label>{t('currencyView')}</label>
             <select
               value={filter.currency}
               onChange={(e) => {
@@ -446,35 +453,41 @@ const MoneyBalance = () => {
                 });
               }}
             >
-              <option value="">All</option>
-              <option value="USD">USD</option>
-              <option value="UZS">UZS</option>
+              <option value="">{t('filters.all', { ns: 'common' })}</option>
+              <option value="USD">{t('currency.usd', { ns: 'common' })}</option>
+              <option value="UZS">{t('currency.uzs', { ns: 'common' })}</option>
             </select>
           </div>
           <div className="filter-field">
-            <label>Transaction type</label>
+            <label>{t('transactionType')}</label>
             <select
               value={filter.transaction_type}
               onChange={(e) => setFilter({ ...filter, transaction_type: e.target.value })}
             >
-              <option value="">All Types</option>
-              <option value="manual_adjustment">Manual Adjustment</option>
-              <option value="sale_income">Sale Income</option>
-              <option value="order_expense">Order Expense</option>
-              <option value="cargo_expense">Cargo Expense</option>
-              <option value="delivery_expense">Delivery Expense</option>
-              <option value="other_expense">Other Expense</option>
-              <option value="other_income">Other Income</option>
-              <option value="currency_conversion">Currency Conversion</option>
+              <option value="">{t('filters.allTypes', { ns: 'common' })}</option>
+              {[
+                'manual_adjustment',
+                'sale_income',
+                'order_expense',
+                'cargo_expense',
+                'delivery_expense',
+                'other_expense',
+                'other_income',
+                'currency_conversion',
+              ].map((txType) => (
+                <option key={txType} value={txType}>
+                  {tTxType(txType)}
+                </option>
+              ))}
             </select>
           </div>
           <div className="filter-field">
-            <label>Year</label>
+            <label>{t('filters.year', { ns: 'common' })}</label>
             <select
               value={filter.year}
               onChange={(e) => setFilter({ ...filter, year: e.target.value })}
             >
-              <option value="">All Years</option>
+              <option value="">{t('filters.allYears', { ns: 'common' })}</option>
               {Array.from({ length: 10 }, (_, i) => {
                 const year = new Date().getFullYear() - i;
                 return (
@@ -486,33 +499,25 @@ const MoneyBalance = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Month</label>
+            <label>{t('filters.month', { ns: 'common' })}</label>
             <select
               value={filter.month}
               onChange={(e) => setFilter({ ...filter, month: e.target.value })}
             >
-              <option value="">All Months</option>
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
+              {monthOptions.map((o) => (
+                <option key={o.value || 'all'} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="filter-field">
-            <label>Day</label>
+            <label>{t('filters.day', { ns: 'common' })}</label>
             <select
               value={filter.day}
               onChange={(e) => setFilter({ ...filter, day: e.target.value })}
             >
-              <option value="">All Days</option>
+              <option value="">{t('filters.allDays', { ns: 'common' })}</option>
               {Array.from({ length: 31 }, (_, i) => (
                 <option key={i + 1} value={String(i + 1)}>
                   {i + 1}
@@ -535,29 +540,29 @@ const MoneyBalance = () => {
                 })
               }
             >
-              Clear all
+              {t('actions.clearAll', { ns: 'common' })}
             </button>
           </div>
         </div>
       </div>
 
       <div className="table-card">
-        <h2>Transaction History</h2>
+        <h2>{t('transactionHistory')}</h2>
         <div className="data-table-scroll">
           <table className="data-table">
             <thead>
               <tr>
                 <SortableTh columnId="timestamp" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
-                  Date
+                  {t('table.date', { ns: 'common' })}
                 </SortableTh>
                 <SortableTh columnId="transaction_type" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
-                  Transaction type
+                  {t('transactionType')}
                 </SortableTh>
                 <SortableTh columnId="bucket" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
-                  Bucket
+                  {t('bucket')}
                 </SortableTh>
                 <SortableTh columnId="operation" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
-                  Op
+                  {t('operation')}
                 </SortableTh>
                 {CURRENCY_COLS.map((col) => (
                   <SortableTh
@@ -573,16 +578,16 @@ const MoneyBalance = () => {
                   </SortableTh>
                 ))}
                 <SortableTh columnId="related_sale" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
-                  Related sale
+                  {t('relatedSale')}
                 </SortableTh>
                 <SortableTh columnId="related_order" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
-                  Related order
+                  {t('relatedOrder')}
                 </SortableTh>
                 <SortableTh columnId="created_by" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
-                  Created by
+                  {t('table.createdBy', { ns: 'common' })}
                 </SortableTh>
                 <SortableTh columnId="notes" sortCol={mbSort.sortCol} sortDir={mbSort.sortDir} onSort={mbSort.onHeaderClick}>
-                  Notes
+                  {t('table.notes', { ns: 'common' })}
                 </SortableTh>
               </tr>
             </thead>
@@ -590,7 +595,7 @@ const MoneyBalance = () => {
               {transactions.length === 0 ? (
                 <tr>
                   <td colSpan={4 + CURRENCY_COLS.length + 4} style={{ textAlign: 'center' }}>
-                    No transactions found
+                    {t('noTransactions')}
                   </td>
                 </tr>
               ) : (
@@ -598,9 +603,7 @@ const MoneyBalance = () => {
                   <tr key={transaction.id}>
                     <td>{new Date(transaction.timestamp).toLocaleString()}</td>
                     <td>
-                      {transaction.transaction_type === 'currency_conversion'
-                        ? 'Currency conversion'
-                        : transaction.transaction_type.replace(/_/g, ' ')}
+                      {tTxType(transaction.transaction_type)}
                     </td>
                     <td style={{ fontSize: '0.85em', color: '#555' }}>
                       {transaction.balance_detail?.balance_type?.replace(/_/g, ' ') || '—'}
@@ -612,7 +615,7 @@ const MoneyBalance = () => {
                           fontWeight: 600,
                         }}
                       >
-                        {transaction.operation === 'add' ? 'Add' : 'Sub'}
+                        {tOp(transaction.operation)}
                       </span>
                     </td>
                     {CURRENCY_COLS.map((col) => (
@@ -620,8 +623,16 @@ const MoneyBalance = () => {
                         <CurrencyAmountCell transaction={transaction} col={col} />
                       </td>
                     ))}
-                    <td>{transaction.related_sale ? `Sale #${transaction.related_sale}` : '—'}</td>
-                    <td>{transaction.related_order ? `Order #${transaction.related_order}` : '—'}</td>
+                    <td>
+                      {transaction.related_sale
+                        ? t('saleRef', { id: transaction.related_sale })
+                        : '—'}
+                    </td>
+                    <td>
+                      {transaction.related_order
+                        ? t('orderRef', { id: transaction.related_order })
+                        : '—'}
+                    </td>
                     <td>{transaction.created_by_detail?.username || '—'}</td>
                     <td style={{ maxWidth: 320, fontSize: '0.85em' }}>
                       {transaction.conversion_detail ? (
@@ -649,7 +660,7 @@ const MoneyBalance = () => {
                   }}
                 >
                   <td colSpan={4} style={{ textAlign: 'right', fontWeight: 700, padding: '10px 12px' }}>
-                    Net (this view)
+                    {t('table.netThisView', { ns: 'common' })}
                   </td>
                   {CURRENCY_COLS.map((col) => (
                     <td key={col.key} style={{ textAlign: 'right', padding: '10px 12px' }}>
@@ -657,7 +668,7 @@ const MoneyBalance = () => {
                     </td>
                   ))}
                   <td colSpan={4} style={{ fontSize: '0.85em', color: '#666' }}>
-                    Amounts roll up by currency; bucket column shows the underlying ledger row.
+                    {t('footerHint')}
                   </td>
                 </tr>
               </tfoot>

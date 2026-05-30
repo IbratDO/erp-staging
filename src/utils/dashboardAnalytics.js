@@ -35,6 +35,54 @@ export function filterFacts(facts, { year, month, crossFilter }) {
   });
 }
 
+export function filterReturnFacts(returnFacts, { year, month, crossFilter }) {
+  return filterFacts(returnFacts, { year, month, crossFilter });
+}
+
+/** Monthly stacked units with returns subtracted (by return_date month). */
+export function buildNetMonthlyStacked(saleFacts, returnFacts, dimensionField) {
+  const sale = buildMonthlyStacked(saleFacts, dimensionField);
+  if (!returnFacts?.length) return sale;
+
+  const retStack = buildMonthlyStacked(returnFacts, dimensionField);
+  const retKeys = new Set(retStack.keys);
+  const keys = [...new Set([...sale.keys, ...retKeys])].sort();
+
+  const data = sale.data.map((row) => {
+    const retRow = retStack.data.find((r) => r.month_key === row.month_key) || {};
+    const next = { ...row };
+    for (const k of keys) {
+      const sold = row[k] || 0;
+      const returned = retRow[k] || 0;
+      next[k] = Math.max(sold - returned, 0);
+    }
+    return next;
+  });
+
+  return { data, keys };
+}
+
+/** Weekday averages with returns subtracted per slice. */
+export function buildNetWeekdayAverages(saleFacts, returnFacts, dimensionField) {
+  const sale = buildWeekdayAveragesFixed(saleFacts, dimensionField);
+  if (!returnFacts?.length) return sale;
+
+  const ret = buildWeekdayAveragesFixed(returnFacts, dimensionField);
+  const keys = [...new Set([...sale.keys, ...ret.keys])].sort();
+
+  const retByLabel = Object.fromEntries(ret.data.map((r) => [r.weekday_label, r]));
+  const data = sale.data.map((row) => {
+    const retRow = retByLabel[row.weekday_label] || {};
+    const next = { ...row };
+    for (const k of keys) {
+      next[k] = Math.max((row[k] || 0) - (retRow[k] || 0), 0);
+    }
+    return next;
+  });
+
+  return { data, keys };
+}
+
 function uniqueKeys(facts, field) {
   return [...new Set(facts.map((f) => f[field]).filter(Boolean))].sort();
 }

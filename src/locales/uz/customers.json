@@ -1,0 +1,102 @@
+{
+  "title": "Mijozlar",
+  "newCustomer": "+ Yangi mijoz",
+  "addCustomer": "Mijoz qo‘shish",
+  "name": "Ism",
+  "phone": "Telefon",
+  "region": "Hudud",
+  "instagram": "Instagram",
+  "notes": "Izoh",
+  "form": {
+    "newTitle": "Yangi mijoz",
+    "editTitle": "Mijozni tahrirlash",
+    "create": "Mijoz yaratish",
+    "update": "Mijozni yangilash"
+  },
+  "filters": {
+    "title": "Filtrlar",
+    "name": "Ism",
+    "searchPlaceholder": "Ism bo‘yicha qidirish"
+  },
+  "table": {
+    "name": "Ism",
+    "telephone": "Telefon",
+    "instagram": "Instagram",
+    "region": "Hudud",
+    "totalSales": "Jami sotuvlar",
+    "onCredit": "Kreditda (qarz)",
+    "actions": "Amallar",
+    "noCustomers": "Mijozlar topilmadi",
+    "salesCount": "{{count}} ta sotuv",
+    "total": "Jami"
+  },
+  "history": {
+    "title": "{{name}} — xaridlar tarixi",
+    "summary": "Xulosa",
+    "totalSales": "Jami sotuvlar:",
+    "completedSales": "Yakunlangan sotuvlar:",
+    "reservedSales": "Band qilingan sotuvlar:",
+    "reservedAmountHint": "Sotuv jami yig‘indisi; UZS va USD aralash bo‘lishi mumkin",
+    "pendingSales": "Kutilayotgan sotuvlar:",
+    "cancelledSales": "Bekor qilingan sotuvlar:",
+    "totalOrders": "Jami buyurtmalar:",
+    "totalAdvances": "Jami oldindan to‘lovlar:",
+    "advancesHint": "Ochiq buyurtma oldindan to‘lovlari; UZS va USD aralash bo‘lishi mumkin",
+    "totalCompleted": "Jami summa (yakunlangan):",
+    "completedHint": "Yakunlangan sotuv jami; UZS va USD aralash bo‘lishi mumkin",
+    "totalPaid": "Jami to‘langan:",
+    "paidHint": "Balans harakatlari; batafsil Pul balansida",
+    "onCreditOutstanding": "Kreditda (qarz):",
+    "receivablesTitle": "Ochiq kredit (debitorlar)",
+    "saleNum": "Sotuv №",
+    "product": "Mahsulot",
+    "amount": "Summa",
+    "ordersTitle": "Buyurtmalar",
+    "quantity": "Miqdor",
+    "type": "Turi",
+    "status": "Holat",
+    "advancePayment": "Oldindan to‘lov",
+    "purchasesTitle": "Xaridlar",
+    "price": "Narx",
+    "total": "Jami",
+    "noPurchases": "Xaridlar topilmadi",
+    "transactionsTitle": "Tranzaksiyalar tarixi",
+    "transactionType": "Tranzaksiya turi",
+    "currency": "Valyuta",
+    "noTransactions": "Tranzaksiyalar topilmadi",
+    "productFallback": "Mahsulot #{{id}}",
+    "productLine": "{{brand}} {{model}} — {{size}} ({{color}})",
+    "sizeLabel": "O‘lcham {{size}}"
+  },
+  "saleTypes": {
+    "shop": "Do‘kon",
+    "from_order": "Buyurtmadan",
+    "delivery": "Yetkazib berish"
+  },
+  "orderTypes": {
+    "on_demand": "Buyurtma asosida",
+    "stock": "Ombor"
+  },
+  "txTypes": {
+    "advance_payment": "Oldindan to‘lov",
+    "order_payment": "Buyurtma to‘lovi",
+    "sale_payment": "Sotuv to‘lovi",
+    "sale_completion": "Sotuvni yakunlash"
+  },
+  "select": {
+    "placeholder": "Mijozni tanlang…",
+    "emptyLabel": "Barcha mijozlar",
+    "searchPlaceholder": "Mijozlarni qidirish…",
+    "searchAria": "Mijozlarni qidirish",
+    "noMatches": "Mos keluvchi yo‘q",
+    "noCustomers": "Mijozlar topilmadi",
+    "ariaLabel": "Mijozlar"
+  },
+  "notifications": {
+    "notesRequired": "Izoh kiriting.",
+    "saveError": "Mijozni saqlashda xatolik",
+    "deleteConfirm": "Ushbu mijozni o‘chirmoqchimisiz?",
+    "deleteError": "Mijozni o‘chirishda xatolik",
+    "historyError": "Mijoz tarixini yuklashda xatolik"
+  }
+}

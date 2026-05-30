@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { useAuth } from '../contexts/AuthContext';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppDateTime, formatAppNumber } from '../utils/localeFormat';
 import './TablePage.css';
 
 const Equity = () => {
+  const { t } = useAppTranslation(['equity', 'common']);
+  const uzsLabel = t('currency.uzs', { ns: 'common' });
   const { hasPermission } = useAuth();
   const isAdmin = hasPermission('equity.create');
   const [rows, setRows] = useState([]);
@@ -50,7 +55,7 @@ const Equity = () => {
       });
       fetchRows();
     } catch (err) {
-      alert(err.response?.data?.detail || err.response?.data?.error || 'Failed to save');
+      alert(err.response?.data?.detail || err.response?.data?.error || t('notifications.saveFailed'));
     }
   };
 
@@ -64,55 +69,57 @@ const Equity = () => {
     { in: 0, out: 0 },
   );
 
-  if (loading) return <div className="page-container">Loading…</div>;
+  const equityTypeLabel = (type) =>
+    type === 'contribution' ? t('types.contribution') : t('types.withdrawal');
+
+  if (loading) return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Equity</h1>
+        <PageTitle ns="equity" />
         {isAdmin && (
           <button type="button" className="btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : '+ Owner transaction'}
+            {showForm ? t('actions.cancel', { ns: 'common' }) : t('newTransaction')}
           </button>
         )}
       </div>
       <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em', maxWidth: 720 }}>
-        Owner capital and withdrawals update Money Balance and the Balance Sheet equity section.
-        Operating profit flows via Profit / Loss into retained earnings.
+        {t('intro')}
       </p>
 
       <div className="metrics-grid" style={{ marginBottom: 16 }}>
         <div className="metric-card">
-          <div className="metric-label">Contributions (listed)</div>
+          <div className="metric-label">{t('metrics.contributions')}</div>
           <div className="metric-value" style={{ color: '#28a745' }}>
-            {totals.in.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {formatAppNumber(totals.in, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
         <div className="metric-card">
-          <div className="metric-label">Withdrawals (listed)</div>
+          <div className="metric-label">{t('metrics.withdrawals')}</div>
           <div className="metric-value" style={{ color: '#dc3545' }}>
-            {totals.out.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {formatAppNumber(totals.out, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
         </div>
       </div>
 
       {showForm && isAdmin && (
         <div className="form-card" style={{ marginBottom: 16 }}>
-          <h2>Record owner transaction</h2>
+          <h2>{t('form.title')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Type</label>
+                <label>{t('form.type')}</label>
                 <select
                   value={form.equity_type}
                   onChange={(e) => setForm({ ...form, equity_type: e.target.value })}
                 >
-                  <option value="contribution">Contribution (cash in)</option>
-                  <option value="withdrawal">Withdrawal (cash out)</option>
+                  <option value="contribution">{t('form.contributionOption')}</option>
+                  <option value="withdrawal">{t('form.withdrawalOption')}</option>
                 </select>
               </div>
               <div className="form-group">
-                <label>Currency</label>
+                <label>{t('form.currency')}</label>
                 <select
                   value={form.currency}
                   onChange={(e) =>
@@ -123,12 +130,12 @@ const Equity = () => {
                     })
                   }
                 >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
+                  <option value="USD">{t('currency.usd', { ns: 'common' })}</option>
+                  <option value="UZS">{uzsLabel}</option>
                 </select>
               </div>
               <div className="form-group">
-                <label>Amount</label>
+                <label>{t('form.amount')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -139,7 +146,7 @@ const Equity = () => {
                 />
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes</label>
+                <label>{t('form.notes')}</label>
                 <textarea
                   rows={2}
                   value={form.notes}
@@ -148,7 +155,7 @@ const Equity = () => {
               </div>
             </div>
             <div className="form-actions">
-              <button type="submit" className="btn-primary">Save</button>
+              <button type="submit" className="btn-primary">{t('actions.save', { ns: 'common' })}</button>
             </div>
           </form>
         </div>
@@ -158,30 +165,30 @@ const Equity = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Type</th>
-              <th>Amount</th>
-              <th>Currency</th>
-              <th>Date</th>
-              <th>Notes</th>
-              <th>By</th>
+              <th>{t('table.id')}</th>
+              <th>{t('table.type')}</th>
+              <th>{t('table.amount')}</th>
+              <th>{t('table.currency')}</th>
+              <th>{t('table.date')}</th>
+              <th>{t('table.notes')}</th>
+              <th>{t('table.by')}</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} style={{ textAlign: 'center' }}>
-                  No equity transactions yet
+                  {t('table.noRows')}
                 </td>
               </tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id}>
                   <td>#{r.id}</td>
-                  <td>{r.equity_type}</td>
-                  <td>{parseFloat(r.amount).toLocaleString()}</td>
-                  <td>{r.currency}</td>
-                  <td>{new Date(r.transaction_date).toLocaleString()}</td>
+                  <td>{equityTypeLabel(r.equity_type)}</td>
+                  <td>{formatAppNumber(r.amount)}</td>
+                  <td>{r.currency === 'UZS' ? uzsLabel : t('currency.usd', { ns: 'common' })}</td>
+                  <td>{formatAppDateTime(r.transaction_date)}</td>
                   <td>{r.notes || '—'}</td>
                   <td>{r.created_by_username || '—'}</td>
                 </tr>

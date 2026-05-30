@@ -1,0 +1,108 @@
+{
+  "title": "Dispatchers",
+  "myDeliveries": "My deliveries",
+  "intro": "Delivery partners are managed in the Users tab (Dispatcher role). The BTS row can still be edited here.",
+  "form": {
+    "editTitle": "Edit dispatcher",
+    "name": "Name",
+    "telephone": "Telephone",
+    "notes": "Notes",
+    "active": "Active"
+  },
+  "partners": {
+    "title": "Delivery partners",
+    "columns": {
+      "name": "Name",
+      "login": "Login",
+      "phone": "Phone",
+      "loads": "Loads",
+      "active": "Active",
+      "actions": "Actions"
+    },
+    "btsCompany": "(company delivery)",
+    "btsRowRemoved": "(company — row removed)",
+    "restoreBts": "Restore BTS",
+    "noPartnersWithBts": "No named (Dostavshik) partners yet — add a Dispatcher login in Users.",
+    "noPartnersNoBts": "No named (Dostavshik) partners yet — or restore the BTS row with the button above.",
+    "usersTab": "Users tab"
+  },
+  "detail": {
+    "btsTitle": "BTS — company delivery",
+    "assignmentsTitle": "{{name}} — assignments & history",
+    "contact": "Contact",
+    "phone": "Phone:",
+    "notes": "Notes:",
+    "summary": "Summary",
+    "totalLoads": "Total loads",
+    "deliveryCostUzs": "Delivery cost (UZS)",
+    "deliveryCostUsd": "Delivery cost (USD)",
+    "shipments": "Shipments",
+    "timeline": "Status change timeline",
+    "noDispatches": "No dispatches assigned yet.",
+    "noStatusChanges": "No status changes logged yet.",
+    "total": "Total"
+  },
+  "shipments": {
+    "columns": {
+      "sale": "Sale",
+      "product": "Product",
+      "customer": "Customer",
+      "saleStatus": "Sale status",
+      "dispatchDate": "Dispatch date",
+      "type": "Type",
+      "deliveryCost": "Delivery cost",
+      "paid": "Paid",
+      "delivered": "Delivered",
+      "tracking": "Tracking",
+      "notes": "Notes",
+      "dispatchStatus": "Dispatch status",
+      "actions": "Actions"
+    }
+  },
+  "timeline": {
+    "columns": {
+      "time": "Time",
+      "dispatchNum": "Dispatch #",
+      "from": "From",
+      "to": "To",
+      "by": "By",
+      "notes": "Notes"
+    }
+  },
+  "workspace": {
+    "assignedDeliveries": "Assigned deliveries",
+    "allDeliveries": "All deliveries (workspace)",
+    "noMatch": "No dispatches match filters.",
+    "totalFiltered": "Total (filtered)",
+    "unassigned": "— Unassigned —"
+  },
+  "filters": {
+    "status": "Status",
+    "service": "Service",
+    "dispatcher": "Dispatcher",
+    "allStatuses": "All statuses"
+  },
+  "serviceTypes": {
+    "bts": "BTS",
+    "dostavshik": "Dostavshik"
+  },
+  "notifications": {
+    "btsRestored": "BTS partner row restored.",
+    "restoreBtsFailed": "Could not restore BTS row",
+    "nameRequired": "Please enter the dispatcher name.",
+    "telephoneRequired": "Please enter the dispatcher telephone.",
+    "saveFailed": "Error saving dispatcher",
+    "statusUpdateFailed": "Could not update status",
+    "loadSaleFailed": "Could not load sale",
+    "logisticsNotesRequired": "Please enter logistics notes before saving."
+  },
+  "errors": {
+    "loadHistoryFailed": "Could not load dispatcher history",
+    "loadBtsFailed": "Could not load BTS deliveries",
+    "deleteFailed": "Cannot delete (may be in use). Try deactivating instead."
+  },
+  "confirm": {
+    "deleteBts": "Delete the BTS partner line? BTS (company) dispatches stay in the system; you can add this row back with “Restore BTS” in the Actions column.",
+    "deleteDispatcher": "Delete this dispatcher? Assigned dispatches will be unassigned."
+  }
+}

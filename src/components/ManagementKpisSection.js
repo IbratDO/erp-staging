@@ -13,13 +13,7 @@ import {
   YAxis,
 } from 'recharts';
 import { CHART_PALETTE } from '../utils/dashboardAnalytics';
-
-const MONTH_OPTIONS = [
-  { value: '', label: 'All months' },
-  ...['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(
-    (label, i) => ({ value: String(i + 1), label }),
-  ),
-];
+import useAppTranslation from '../hooks/useAppTranslation';
 
 function fmtUsd(n) {
   return `$${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -81,6 +75,7 @@ function productLabel(p) {
 }
 
 export default function ManagementKpisSection({ roleCode, availableYears, active }) {
+  const { t, monthOptions } = useAppTranslation(['dashboard', 'common']);
   const show = roleCode === 'admin' || roleCode === 'ceo' || roleCode === 'investor';
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -128,11 +123,11 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
         .finally(() => setTurnoverLoading(false));
     } catch (e) {
       console.error(e);
-      setError('Failed to load management KPIs');
+      setError(t('mgmt.loadError'));
       setLoading(false);
       setTurnoverLoading(false);
     }
-  }, [year, month, expensesGranularity, marketingGranularity, show, active]);
+  }, [year, month, expensesGranularity, marketingGranularity, show, active, t]);
 
   useEffect(() => {
     if (show && active) load();
@@ -161,7 +156,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
   if (loading && !data) {
     return (
       <section className="mgmt-section">
-        <p className="mgmt-loading">Loading management KPIs…</p>
+        <p className="mgmt-loading">{t('mgmt.loading')}</p>
       </section>
     );
   }
@@ -179,7 +174,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
       <div className="mgmt-section-header">
         <div className="mgmt-filters">
           <label>
-            Year
+            {t('filters.year', { ns: 'common' })}
             <select value={year} onChange={(e) => setYear(parseInt(e.target.value, 10))}>
               {(availableYears || [year]).map((y) => (
                 <option key={y} value={y}>
@@ -189,9 +184,9 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
             </select>
           </label>
           <label>
-            Month
+            {t('filters.month', { ns: 'common' })}
             <select value={month} onChange={(e) => setMonth(e.target.value)}>
-              {MONTH_OPTIONS.map((o) => (
+              {monthOptions.map((o) => (
                 <option key={o.value || 'all'} value={o.value}>
                   {o.label}
                 </option>
@@ -203,22 +198,22 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
 
       <div className="mgmt-cards-row">
         <MgmtCard
-          label="Total USD balance"
+          label={t('mgmt.totalUsdBalance')}
           value={fmtUsd(data?.money_balance?.total_usd)}
-          sub="Same as Money Balance tab"
+          sub={t('mgmt.sameAsMoneyBalance')}
         />
         <MgmtCard
-          label="Total UZS balance"
+          label={t('mgmt.totalUzsBalance')}
           value={(data?.money_balance?.total_uzs ?? 0).toLocaleString()}
-          sub="Native UZS ledger total"
+          sub={t('mgmt.nativeUzsTotal')}
         />
         <MgmtCard
-          label="Paid, not received"
+          label={t('mgmt.paidNotReceived')}
           value={(data?.paid_not_received_units ?? 0).toLocaleString()}
-          sub="Prepaid order units awaiting stock"
+          sub={t('mgmt.paidNotReceivedSub')}
         />
         <MgmtCard
-          label="Capital turnover"
+          label={t('mgmt.capitalTurnover')}
           value={
             turnoverLoading || data?.turnover_pending
               ? '…'
@@ -228,12 +223,12 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
           }
           sub={
             turnoverLoading || data?.turnover_pending
-              ? 'Loading asset-based metrics…'
-              : snapshot?.capital_turnover?.month_label || 'Latest month'
+              ? t('mgmt.loadingAssets')
+              : snapshot?.capital_turnover?.month_label || t('mgmt.latestMonth')
           }
         />
         <MgmtCard
-          label="ROI"
+          label={t('mgmt.roi')}
           value={
             turnoverLoading || data?.turnover_pending
               ? '…'
@@ -243,14 +238,14 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
           }
           sub={
             turnoverLoading || data?.turnover_pending
-              ? 'Loading asset-based metrics…'
-              : snapshot?.roi?.month_label || 'Latest month'
+              ? t('mgmt.loadingAssets')
+              : snapshot?.roi?.month_label || t('mgmt.latestMonth')
           }
         />
       </div>
 
       <div className="mgmt-grid">
-        <MgmtChart title="Monthly net profit (USD)">
+        <MgmtChart title={t('mgmt.netProfitMonthly')}>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={data?.net_profit_monthly || []}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -260,7 +255,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
               <Line
                 type="monotone"
                 dataKey="net_profit_usd"
-                name="Net profit"
+                name={t('mgmt.netProfit')}
                 stroke="#2563eb"
                 strokeWidth={2}
                 dot={{ r: 3 }}
@@ -269,7 +264,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
           </ResponsiveContainer>
         </MgmtChart>
 
-        <MgmtChart title="Sales manager gross margin (USD)">
+        <MgmtChart title={t('mgmt.managerMargin')}>
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={managerChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -292,15 +287,15 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
         </MgmtChart>
 
         <MgmtChart
-          title="Other financial expenses (USD equiv.)"
+          title={t('mgmt.otherExpenses')}
           controls={
             <ToggleGroup
               value={expensesGranularity}
               onChange={setExpensesGranularity}
               options={[
-                { value: 'daily', label: 'Daily' },
-                { value: 'weekly', label: 'Weekly' },
-                { value: 'monthly', label: 'Monthly' },
+                { value: 'daily', label: t('mgmt.daily') },
+                { value: 'weekly', label: t('mgmt.weekly') },
+                { value: 'monthly', label: t('mgmt.monthly') },
               ]}
             />
           }
@@ -320,13 +315,17 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
                       <div>
                         <strong>{label}</strong>
                       </div>
-                      <div>Total (USD equiv.): {fmtUsd(p?.total_usd)}</div>
+                      <div>
+                        {t('mgmt.tooltipTotalUsd')} {fmtUsd(p?.total_usd)}
+                      </div>
                       {(p?.usd_native ?? 0) > 0 && (
-                        <div>USD expenses: {fmtUsd(p.usd_native)}</div>
+                        <div>
+                          {t('mgmt.tooltipUsdExpenses')} {fmtUsd(p.usd_native)}
+                        </div>
                       )}
                       {(p?.uzs_native ?? 0) > 0 && (
                         <div>
-                          UZS expenses: {p.uzs_native.toLocaleString()} UZS
+                          {t('mgmt.tooltipUzsExpenses')} {p.uzs_native.toLocaleString()} UZS
                         </div>
                       )}
                     </div>
@@ -336,7 +335,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
               <Line
                 type="monotone"
                 dataKey="total_usd"
-                name="Total USD"
+                name={t('mgmt.totalUsd')}
                 stroke="#dc2626"
                 strokeWidth={2}
                 dot={{ r: 2 }}
@@ -345,7 +344,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
           </ResponsiveContainer>
         </MgmtChart>
 
-        <MgmtChart title="Shop vs delivery (units sold)">
+        <MgmtChart title={t('mgmt.shopVsDelivery')}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={data?.shop_vs_delivery_monthly || []}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -353,13 +352,48 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
               <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
               <Tooltip contentStyle={tooltipStyle} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="shop" name="Shop" stackId="a" fill="#0ea5e9" />
-              <Bar dataKey="delivery" name="Delivery" stackId="a" fill="#8b5cf6" />
+              <Bar dataKey="shop" name={t('mgmt.shop')} stackId="a" fill="#0ea5e9" />
+              <Bar dataKey="delivery" name={t('mgmt.delivery')} stackId="a" fill="#8b5cf6" />
             </BarChart>
           </ResponsiveContainer>
         </MgmtChart>
 
-        <MgmtChart title="Slow-moving inventory (units)">
+        <MgmtChart title={t('mgmt.returnsMonthly')}>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={data?.returns_monthly || []}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="month_label" tick={{ fontSize: 12 }} />
+              <YAxis yAxisId="units" tick={{ fontSize: 12 }} allowDecimals={false} />
+              <YAxis
+                yAxisId="usd"
+                orientation="right"
+                tick={{ fontSize: 12 }}
+                tickFormatter={(v) => `$${v}`}
+              />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                formatter={(value, name) =>
+                  name === t('mgmt.refundsUsd') ? fmtUsd(value) : value
+                }
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar
+                yAxisId="units"
+                dataKey="returned_units"
+                name={t('mgmt.returnedUnits')}
+                fill="#f59e0b"
+              />
+              <Bar
+                yAxisId="usd"
+                dataKey="refunds_usd"
+                name={t('mgmt.refundsUsd')}
+                fill="#dc2626"
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </MgmtChart>
+
+        <MgmtChart title={t('mgmt.slowInventory')}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={data?.inventory_aging_monthly || []}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -367,22 +401,22 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
               <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
               <Tooltip contentStyle={tooltipStyle} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="age_3_5" name="3–5 mo" stackId="age" fill="#f59e0b" />
-              <Bar dataKey="age_5_8" name="5–8 mo" stackId="age" fill="#ea580c" />
-              <Bar dataKey="age_8_plus" name="8+ mo" stackId="age" fill="#b91c1c" />
+              <Bar dataKey="age_3_5" name={t('mgmt.age3_5')} stackId="age" fill="#f59e0b" />
+              <Bar dataKey="age_5_8" name={t('mgmt.age5_8')} stackId="age" fill="#ea580c" />
+              <Bar dataKey="age_8_plus" name={t('mgmt.age8plus')} stackId="age" fill="#b91c1c" />
             </BarChart>
           </ResponsiveContainer>
         </MgmtChart>
 
         <MgmtChart
-          title="Marketing expense per sold item"
+          title={t('mgmt.marketingPerItem')}
           controls={
             <ToggleGroup
               value={marketingGranularity}
               onChange={setMarketingGranularity}
               options={[
-                { value: 'weekly', label: 'Weekly' },
-                { value: 'monthly', label: 'Monthly' },
+                { value: 'weekly', label: t('mgmt.weekly') },
+                { value: 'monthly', label: t('mgmt.monthly') },
               ]}
             />
           }
@@ -402,22 +436,26 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
                       <div>
                         <strong>{label}</strong>
                       </div>
-                      <div>Marketing: {fmtUsd(p?.marketing_expenses_usd)}</div>
-                      <div>Sold units: {p?.sold_units}</div>
                       <div>
-                        Per item:{' '}
+                        {t('mgmt.marketing')} {fmtUsd(p?.marketing_expenses_usd)}
+                      </div>
+                      <div>
+                        {t('mgmt.soldUnits')} {p?.sold_units}
+                      </div>
+                      <div>
+                        {t('mgmt.perItem')}{' '}
                         {p?.value_na ? 'N/A' : fmtUsd(p?.value)}
                       </div>
                     </div>
                   );
                 }}
               />
-              <Bar dataKey="value" name="USD / unit" fill="#10b981" />
+              <Bar dataKey="value" name={t('mgmt.usdPerUnit')} fill="#10b981" />
             </BarChart>
           </ResponsiveContainer>
         </MgmtChart>
 
-        <MgmtChart title="Marketing expense per new customer (weekly)">
+        <MgmtChart title={t('mgmt.marketingPerCustomer')}>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={data?.marketing_per_new_customer_weekly || []}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -433,19 +471,25 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
                       <div>
                         <strong>{label}</strong>
                       </div>
-                      <div>Marketing: {fmtUsd(p?.marketing_expenses_usd)}</div>
-                      <div>New customers: {p?.new_customers}</div>
-                      <div>Per customer: {p?.value_na ? 'N/A' : fmtUsd(p?.value)}</div>
+                      <div>
+                        {t('mgmt.marketing')} {fmtUsd(p?.marketing_expenses_usd)}
+                      </div>
+                      <div>
+                        {t('mgmt.newCustomers')} {p?.new_customers}
+                      </div>
+                      <div>
+                        {t('mgmt.perCustomer')} {p?.value_na ? 'N/A' : fmtUsd(p?.value)}
+                      </div>
                     </div>
                   );
                 }}
               />
-              <Bar dataKey="value" name="USD / customer" fill="#6366f1" />
+              <Bar dataKey="value" name={t('mgmt.usdPerCustomer')} fill="#6366f1" />
             </BarChart>
           </ResponsiveContainer>
         </MgmtChart>
 
-        <MgmtChart title="Capital turnover (monthly)">
+        <MgmtChart title={t('mgmt.capitalTurnoverMonthly')}>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={data?.capital_turnover_monthly || []}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -455,7 +499,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
               <Line
                 type="monotone"
                 dataKey="value"
-                name="Turnover"
+                name={t('mgmt.turnover')}
                 stroke="#0891b2"
                 strokeWidth={2}
               />
@@ -463,7 +507,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
           </ResponsiveContainer>
         </MgmtChart>
 
-        <MgmtChart title="ROI % (monthly)">
+        <MgmtChart title={t('mgmt.roiMonthly')}>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={data?.roi_monthly || []}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -479,29 +523,35 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
                       <div>
                         <strong>{label}</strong>
                       </div>
-                      <div>Net profit: {fmtUsd(p?.net_profit_usd)}</div>
-                      <div>Beginning assets: {fmtUsd(p?.beginning_assets_usd)}</div>
-                      <div>ROI: {p?.value_na ? 'N/A' : fmtPct(p?.value)}</div>
+                      <div>
+                        {t('mgmt.netProfitTooltip')} {fmtUsd(p?.net_profit_usd)}
+                      </div>
+                      <div>
+                        {t('mgmt.beginningAssets')} {fmtUsd(p?.beginning_assets_usd)}
+                      </div>
+                      <div>
+                        {t('mgmt.roiLabel')} {p?.value_na ? 'N/A' : fmtPct(p?.value)}
+                      </div>
                     </div>
                   );
                 }}
               />
-              <Line type="monotone" dataKey="value" name="ROI %" stroke="#7c3aed" strokeWidth={2} />
+              <Line type="monotone" dataKey="value" name={t('mgmt.roiMonthly')} stroke="#7c3aed" strokeWidth={2} />
             </LineChart>
           </ResponsiveContainer>
         </MgmtChart>
 
         <div className="mgmt-chart-card mgmt-top-products mgmt-top-products-wide">
-          <h4>Top 5 products (selected period)</h4>
+          <h4>{t('mgmt.top5Products')}</h4>
           {!(data?.top_products_by_month?.length) ? (
-            <p className="mgmt-empty">No sales in period</p>
+            <p className="mgmt-empty">{t('mgmt.noSalesInPeriod')}</p>
           ) : (
             <div className="mgmt-top-products-grid">
               {data.top_products_by_month.map((block) => (
                 <div key={`${block.year}-${block.month}`} className="mgmt-top-products-month">
                   <h5>{block.month_label}</h5>
                   {!block.products?.length ? (
-                    <p className="mgmt-empty mgmt-empty-compact">No sales</p>
+                    <p className="mgmt-empty mgmt-empty-compact">{t('mgmt.noSales')}</p>
                   ) : (
                     <ol className="mgmt-product-list mgmt-product-list-compact">
                       {block.products.map((p, i) => (

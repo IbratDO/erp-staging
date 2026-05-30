@@ -5,15 +5,14 @@ import { plannedSellingSummary } from '../utils/orderPlannedPricing';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
 import './TablePage.css';
 
-const PRODUCT_CATEGORY_TYPES = [
-  { value: 'sports', label: 'Sports' },
-  { value: 'casual', label: 'Casual' },
-];
+const PRODUCT_CATEGORY_TYPE_VALUES = ['sports', 'casual'];
 
-const categoryTypeLabel = (value) =>
-  PRODUCT_CATEGORY_TYPES.find((t) => t.value === value)?.label ?? '';
+const categoryTypeLabel = (value, t) =>
+  value ? t(`categoryTypes.${value}`, { defaultValue: '' }) : '';
 
 /** Landed unit cost for one FIFO layer row (supplier + cargo per unit). */
 function layerLandedCostCells(layer) {
@@ -79,7 +78,12 @@ const INVENTORY_SORT_ACCESSORS = {
 };
 
 const Inventory = () => {
+  const { t, tStatus, monthOptions } = useAppTranslation(['inventory', 'common', 'status']);
   const { hasPermission } = usePermissions();
+  const productCategoryTypes = useMemo(
+    () => PRODUCT_CATEGORY_TYPE_VALUES.map((value) => ({ value, label: t(`categoryTypes.${value}`) })),
+    [t],
+  );
   const canAddInventory = hasPermission('inventory.create');
   const [inventory, setInventory] = useState([]);
   const [filteredInventory, setFilteredInventory] = useState([]);
@@ -229,15 +233,15 @@ const Inventory = () => {
     const usd = parseFloat(formData.unit_supplier_cost_usd) || 0;
     const sellingUsd = parseFloat(formData.selling_usd_per_unit) || 0;
     if (qty < 1) {
-      alert('Please enter a valid quantity (at least 1).');
+      alert(t('notifications.errQuantity'));
       return;
     }
     if (!(sellingUsd > 0)) {
-      alert('Enter a selling price per unit in USD.');
+      alert(t('notifications.errSellingPrice'));
       return;
     }
     if (!(usd > 0)) {
-      alert('Enter a unit supplier cost in USD.');
+      alert(t('notifications.errSupplierCost'));
       return;
     }
     try {
@@ -274,35 +278,37 @@ const Inventory = () => {
               .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
               .join('\n')
           : null) ||
-        'Error saving inventory item';
+        t('notifications.errSave');
       alert(msg);
     }
   };
 
   if (loading) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Inventory</h1>
+        <PageTitle ns="inventory" />
         {canAddInventory && (
           <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : '+ Add Inventory Item'}
+            {showForm ? t('actions.cancel', { ns: 'common' }) : `+ ${t('addItem')}`}
           </button>
         )}
       </div>
 
       {showForm && canAddInventory && (
         <div className="form-card">
-          <h2>New Inventory Item</h2>
+          <h2>{t('newItem')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               <div className="form-group">
                 <label>
-                  Category type{' '}
-                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span>
+                  {t('form.categoryType')}{' '}
+                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>
+                    {t('filters.filterProductsHint')}
+                  </span>
                 </label>
                 <select
                   value={formCategoryType}
@@ -312,21 +318,26 @@ const Inventory = () => {
                     setFormData({ ...formData, product: '' });
                   }}
                 >
-                  <option value="">All types</option>
-                  {PRODUCT_CATEGORY_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
+                  <option value="">{t('filters.allTypes')}</option>
+                  {productCategoryTypes.map((ct) => (
+                    <option key={ct.value} value={ct.value}>
+                      {ct.label}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
+                <label>
+                  {t('form.category')}{' '}
+                  <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>
+                    {t('filters.filterProductsHint')}
+                  </span>
+                </label>
                 <select
                   value={formCategory}
                   onChange={(e) => { setFormCategory(e.target.value); setFormData({ ...formData, product: '' }); }}
                 >
-                  <option value="">All Categories</option>
+                  <option value="">{t('filters.allCategories')}</option>
                   {[...new Set(
                     products
                       .filter((p) => !formCategoryType || p.category_type === formCategoryType)
@@ -342,7 +353,7 @@ const Inventory = () => {
                 </select>
               </div>
               <div className="form-group">
-                <label>Product</label>
+                <label>{t('form.product')}</label>
                 <select
                   value={formData.product}
                   onChange={(e) => {
@@ -358,7 +369,7 @@ const Inventory = () => {
                   }}
                   required
                 >
-                  <option value="">Select a product</option>
+                  <option value="">{t('form.selectProduct')}</option>
                   {products
                     .filter(
                       (p) =>
@@ -375,7 +386,7 @@ const Inventory = () => {
                 </select>
               </div>
               <div className="form-group">
-                <label>Quantity</label>
+                <label>{t('quantity')}</label>
                 <input
                   type="number"
                   min="1"
@@ -386,34 +397,36 @@ const Inventory = () => {
               </div>
               <div className="form-group">
                 <label>
-                  Selling price per unit (USD){' '}
+                  {t('form.sellingPriceUsd')}{' '}
                   <span style={{ color: '#e53e3e' }}>*</span>
                 </label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  placeholder="USD / unit"
+                  placeholder={t('form.usdPerUnit')}
                   value={formData.selling_usd_per_unit}
                   onChange={(e) => setFormData({ ...formData, selling_usd_per_unit: e.target.value })}
                   required
                 />
                 {parseFloat(formData.selling_usd_per_unit) > 0 && parseInt(formData.quantity, 10) > 0 && (
                   <span className="orders-field-hint">
-                    = ${(parseFloat(formData.selling_usd_per_unit) * parseInt(formData.quantity, 10)).toFixed(2)} line total
+                    {t('form.lineTotalUsd', {
+                      amount: (parseFloat(formData.selling_usd_per_unit) * parseInt(formData.quantity, 10)).toFixed(2),
+                    })}
                   </span>
                 )}
               </div>
               <div className="form-group">
                 <label>
-                  Cost per unit (USD){' '}
+                  {t('form.costPerUnitUsd')}{' '}
                   <span style={{ color: '#e53e3e' }}>*</span>
                 </label>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
-                  placeholder="USD / unit"
+                  placeholder={t('form.usdPerUnit')}
                   value={formData.unit_supplier_cost_usd}
                   onChange={(e) =>
                     setFormData({ ...formData, unit_supplier_cost_usd: e.target.value })
@@ -422,25 +435,28 @@ const Inventory = () => {
                 />
                 {parseFloat(formData.unit_supplier_cost_usd) > 0 && parseInt(formData.quantity, 10) > 0 && (
                   <span className="orders-field-hint">
-                    = ${(parseFloat(formData.unit_supplier_cost_usd) * parseInt(formData.quantity, 10)).toFixed(2)} line total
+                    {t('form.lineTotalUsd', {
+                      amount: (parseFloat(formData.unit_supplier_cost_usd) * parseInt(formData.quantity, 10)).toFixed(2),
+                    })}
                   </span>
                 )}
               </div>
               <div className="form-group">
-                <label>Status</label>
+                <label>{t('form.status')}</label>
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   required
                 >
-                  <option value="in_inventory">In Inventory</option>
-                  <option value="reserved">Reserved</option>
-                  <option value="sold">Sold</option>
-                  <option value="returned">Returned</option>
+                  {['in_inventory', 'reserved', 'sold', 'returned'].map((st) => (
+                    <option key={st} value={st}>
+                      {tStatus(st, 'inventory')}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">
-                <label>Location (Optional)</label>
+                <label>{t('form.locationOptional')}</label>
                 <input
                   type="text"
                   value={formData.location}
@@ -450,7 +466,7 @@ const Inventory = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Create
+                {t('form.create')}
               </button>
             </div>
           </form>
@@ -460,29 +476,29 @@ const Inventory = () => {
       {/* Filters */}
       {!showForm && (
         <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
-          <h3 className="filter-card__title">Filters</h3>
+          <h3 className="filter-card__title">{t('filters.title', { ns: 'common' })}</h3>
         <div className="filter-toolbar">
           <div className="filter-field">
-            <label>Category type</label>
+            <label>{t('form.categoryType')}</label>
             <select
               value={filters.category_type}
               onChange={(e) => setFilters({ ...filters, category_type: e.target.value })}
             >
-              <option value="">All types</option>
-              {PRODUCT_CATEGORY_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
+              <option value="">{t('filters.allTypes')}</option>
+              {productCategoryTypes.map((ct) => (
+                <option key={ct.value} value={ct.value}>
+                  {ct.label}
                 </option>
               ))}
             </select>
           </div>
           <div className="filter-field">
-            <label>Category</label>
+            <label>{t('form.category')}</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             >
-              <option value="">All Categories</option>
+              <option value="">{t('filters.allCategories')}</option>
               {[...new Set(
                 inventory
                   .filter(
@@ -502,12 +518,12 @@ const Inventory = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Brand</label>
+            <label>{t('table.brand')}</label>
             <select
               value={filters.brand}
               onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
             >
-              <option value="">All Brands</option>
+              <option value="">{t('filters.allBrands')}</option>
               {getUniqueValues(inventory, 'brand').map((brand) => (
                 <option key={brand} value={brand}>
                   {brand}
@@ -516,12 +532,12 @@ const Inventory = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Model</label>
+            <label>{t('table.model')}</label>
             <select
               value={filters.model}
               onChange={(e) => setFilters({ ...filters, model: e.target.value })}
             >
-              <option value="">All Models</option>
+              <option value="">{t('filters.allModels')}</option>
               {getUniqueValues(inventory, 'model').map((model) => (
                 <option key={model} value={model}>
                   {model}
@@ -530,12 +546,12 @@ const Inventory = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Size</label>
+            <label>{t('table.size')}</label>
             <select
               value={filters.size}
               onChange={(e) => setFilters({ ...filters, size: e.target.value })}
             >
-              <option value="">All Sizes</option>
+              <option value="">{t('filters.allSizes')}</option>
               {getUniqueValues(inventory, 'size').map((size) => (
                 <option key={size} value={size}>
                   {size}
@@ -544,12 +560,12 @@ const Inventory = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Color</label>
+            <label>{t('table.color')}</label>
             <select
               value={filters.color}
               onChange={(e) => setFilters({ ...filters, color: e.target.value })}
             >
-              <option value="">All Colors</option>
+              <option value="">{t('filters.allColors')}</option>
               {getUniqueValues(inventory, 'color').map((color) => (
                 <option key={color} value={color}>
                   {color}
@@ -558,25 +574,26 @@ const Inventory = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Status</label>
+            <label>{t('form.status')}</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
             >
-              <option value="">All Statuses</option>
-              <option value="in_inventory">In Inventory</option>
-              <option value="reserved">Reserved</option>
-              <option value="sold">Sold</option>
-              <option value="returned">Returned</option>
+              <option value="">{t('filters.allStatuses')}</option>
+              {['in_inventory', 'reserved', 'sold', 'returned'].map((st) => (
+                <option key={st} value={st}>
+                  {tStatus(st, 'inventory')}
+                </option>
+              ))}
             </select>
           </div>
           <div className="filter-field">
-            <label>Year</label>
+            <label>{t('filters.year', { ns: 'common' })}</label>
             <select
               value={filters.year}
               onChange={(e) => setFilters({ ...filters, year: e.target.value })}
             >
-              <option value="">All Years</option>
+              <option value="">{t('filters.allYears', { ns: 'common' })}</option>
               {Array.from({ length: 10 }, (_, i) => {
                 const year = new Date().getFullYear() - i;
                 return (
@@ -588,24 +605,16 @@ const Inventory = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Month</label>
+            <label>{t('filters.month', { ns: 'common' })}</label>
             <select
               value={filters.month}
               onChange={(e) => setFilters({ ...filters, month: e.target.value })}
             >
-              <option value="">All Months</option>
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
+              {monthOptions.map((o) => (
+                <option key={o.value || 'all'} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="filter-toolbar__actions">
@@ -626,7 +635,7 @@ const Inventory = () => {
                 })
               }
             >
-              Clear all
+              {t('actions.clearAll', { ns: 'common' })}
             </button>
           </div>
         </div>
@@ -639,49 +648,49 @@ const Inventory = () => {
           <thead>
             <tr>
               <SortableTh columnId="category_type" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Category type
+                {t('table.categoryType')}
               </SortableTh>
               <SortableTh columnId="category" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Category
+                {t('table.category')}
               </SortableTh>
               <SortableTh columnId="rec_no" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Rec #
+                {t('table.recNo')}
               </SortableTh>
               <SortableTh columnId="brand" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Brand
+                {t('table.brand')}
               </SortableTh>
               <SortableTh columnId="model" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Model
+                {t('table.model')}
               </SortableTh>
               <SortableTh columnId="size" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Size
+                {t('table.size')}
               </SortableTh>
               <SortableTh columnId="color" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Color
+                {t('table.color')}
               </SortableTh>
               <SortableTh columnId="layer" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Layer #
+                {t('table.layerNo')}
               </SortableTh>
               <SortableTh columnId="cost_uzs" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Landed cost (UZS) / unit
+                {t('table.landedCostUzs')}
               </SortableTh>
               <SortableTh columnId="cost_usd" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Landed cost (USD) / unit
+                {t('table.landedCostUsd')}
               </SortableTh>
               <SortableTh columnId="selling" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Selling price / unit
+                {t('table.sellingPerUnit')}
               </SortableTh>
               <SortableTh columnId="quantity" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Quantity
+                {t('quantity')}
               </SortableTh>
               <SortableTh columnId="status" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Status
+                {t('form.status')}
               </SortableTh>
               <SortableTh columnId="location" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Location
+                {t('table.location')}
               </SortableTh>
               <SortableTh columnId="updated_at" sortCol={invSort.sortCol} sortDir={invSort.sortDir} onSort={invSort.onHeaderClick}>
-                Updated
+                {t('table.updated')}
               </SortableTh>
             </tr>
           </thead>
@@ -689,7 +698,7 @@ const Inventory = () => {
             {filteredInventory.length === 0 ? (
               <tr>
                 <td colSpan="15" style={{ textAlign: 'center' }}>
-                  No inventory in stock
+                  {t('noStock')}
                 </td>
               </tr>
             ) : (
@@ -700,7 +709,7 @@ const Inventory = () => {
                 return (
                 <tr key={item.batch_id}>
                   <td>
-                    {categoryTypeLabel(item.product_detail?.category_type) || (
+                    {categoryTypeLabel(item.product_detail?.category_type, t) || (
                       <span style={{ color: '#999' }}>—</span>
                     )}
                   </td>
@@ -719,7 +728,7 @@ const Inventory = () => {
                   <td>{item.quantity}</td>
                   <td>
                     <span className={`status-badge ${item.status}`}>
-                      {item.status.replace('_', ' ')}
+                      {tStatus(item.status, 'inventory')}
                     </span>
                   </td>
                   <td>{item.location || '-'}</td>
@@ -732,7 +741,7 @@ const Inventory = () => {
           <tfoot>
             <tr>
               <td colSpan="8" style={{ textAlign: 'right' }}>
-                Total
+                {t('table.total')}
               </td>
               <td style={{ fontWeight: 600, fontSize: '0.9em' }}>
                 {inventoryColumnTotals.uzsTotal > 0
@@ -746,7 +755,7 @@ const Inventory = () => {
               </td>
               <td style={{ fontWeight: 600, fontSize: '0.9em', color: '#999' }}>—</td>
               <td style={{ fontWeight: 600 }}>{inventoryColumnTotals.quantity.toLocaleString()}</td>
-              <td colSpan="4">—</td>
+              <td colSpan="3">—</td>
             </tr>
           </tfoot>
         </table>

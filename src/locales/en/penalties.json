@@ -1,0 +1,54 @@
+{
+  "title": "Penalties",
+  "yourPenalties": "Your penalties",
+  "totalPoints": "Total points",
+  "totalAmount": "Total amount",
+  "records": "Records",
+  "reason": "Reason",
+  "noPenalties": "No penalties",
+  "addPenalty": "+ Add penalty",
+  "form": {
+    "editTitle": "Edit penalty",
+    "newTitle": "New penalty",
+    "manager": "Manager",
+    "selectManager": "Select manager",
+    "date": "Date",
+    "points": "Points",
+    "amount": "Amount",
+    "currency": "Currency",
+    "reason": "Reason"
+  },
+  "filters": {
+    "title": "Filters",
+    "manager": "Manager",
+    "allManagers": "All managers",
+    "currency": "Currency",
+    "allCurrencies": "All currencies",
+    "assignedBy": "Assigned by",
+    "allAssigners": "All assigners",
+    "year": "Year",
+    "allYears": "All years",
+    "month": "Month",
+    "allMonths": "All months",
+    "clearAll": "Clear all"
+  },
+  "table": {
+    "date": "Date",
+    "manager": "Manager",
+    "points": "Points",
+    "amount": "Amount",
+    "reason": "Reason",
+    "assignedBy": "Assigned by",
+    "actions": "Actions",
+    "noRows": "No penalties yet",
+    "noMatch": "No penalties match these filters",
+    "total": "Total ({{count}})"
+  },
+  "accessDenied": "You do not have access to Penalties.",
+  "userFallback": "User #{{id}}",
+  "confirmDelete": "Delete this penalty record?",
+  "notifications": {
+    "saveFailed": "Could not save penalty",
+    "deleteFailed": "Could not delete"
+  }
+}

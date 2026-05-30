@@ -1,0 +1,54 @@
+{
+  "title": "Jarimalar",
+  "yourPenalties": "Sizning jarimalaringiz",
+  "totalPoints": "Jami ball",
+  "totalAmount": "Jami summa",
+  "records": "Yozuvlar",
+  "reason": "Sabab",
+  "noPenalties": "Jarimalar yo‘q",
+  "addPenalty": "+ Jarima qo‘shish",
+  "form": {
+    "editTitle": "Jarimani tahrirlash",
+    "newTitle": "Yangi jarima",
+    "manager": "Menejer",
+    "selectManager": "Menejerni tanlang",
+    "date": "Sana",
+    "points": "Ball",
+    "amount": "Summa",
+    "currency": "Valyuta",
+    "reason": "Sabab"
+  },
+  "filters": {
+    "title": "Filtrlar",
+    "manager": "Menejer",
+    "allManagers": "Barcha menejerlar",
+    "currency": "Valyuta",
+    "allCurrencies": "Barcha valyutalar",
+    "assignedBy": "Kim belgilagan",
+    "allAssigners": "Barcha belgilovchilar",
+    "year": "Yil",
+    "allYears": "Barcha yillar",
+    "month": "Oy",
+    "allMonths": "Barcha oylar",
+    "clearAll": "Hammasini tozalash"
+  },
+  "table": {
+    "date": "Sana",
+    "manager": "Menejer",
+    "points": "Ball",
+    "amount": "Summa",
+    "reason": "Sabab",
+    "assignedBy": "Kim belgilagan",
+    "actions": "Harakatlar",
+    "noRows": "Jarimalar hali yo‘q",
+    "noMatch": "Filtrga mos jarimalar yo‘q",
+    "total": "Jami ({{count}})"
+  },
+  "accessDenied": "Jarimalar bo‘limiga kirish huquqingiz yo‘q.",
+  "userFallback": "Foydalanuvchi #{{id}}",
+  "confirmDelete": "Ushbu jarima yozuvini o‘chirasizmi?",
+  "notifications": {
+    "saveFailed": "Jarimani saqlab bo‘lmadi",
+    "deleteFailed": "O‘chirib bo‘lmadi"
+  }
+}

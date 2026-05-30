@@ -13,9 +13,10 @@ import {
   YAxis,
 } from 'recharts';
 import {
-  buildMonthlyStacked,
-  buildWeekdayAveragesFixed,
+  buildNetMonthlyStacked,
+  buildNetWeekdayAverages,
   CHART_PALETTE,
+  filterReturnFacts,
   crossFilterSummary,
   EMPTY_CROSS_FILTER,
   filterFacts,
@@ -24,14 +25,8 @@ import {
 import ManagementKpisSection from '../components/ManagementKpisSection';
 import PenaltyDashboardCard from '../components/PenaltyDashboardCard';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
 import './Dashboard.css';
-
-const MONTH_OPTIONS = [
-  { value: '', label: 'All months' },
-  ...['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(
-    (label, i) => ({ value: String(i + 1), label }),
-  ),
-];
 
 function KpiCard({ label, value, sub }) {
   return (
@@ -51,6 +46,7 @@ function ChartPanel({
   chartType,
   onLegendClick,
   activeCross,
+  emptyLabel = '',
 }) {
   const height = 280;
 
@@ -74,7 +70,7 @@ function ChartPanel({
     return (
       <div className="dash-chart-card">
         <h3>{title}</h3>
-        <p className="dash-empty">No data for current filters</p>
+        <p className="dash-empty">{emptyLabel}</p>
       </div>
     );
   }
@@ -131,6 +127,8 @@ const DASH_TAB_MANAGEMENT = 'management';
 
 const Dashboard = () => {
   const { hasPermission } = usePermissions();
+  const { t, monthOptions } = useAppTranslation(['common', 'dashboard']);
+  const td = (key, opts) => t(key, { ns: 'dashboard', ...opts });
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -168,30 +166,39 @@ const Dashboard = () => {
     });
   }, [analytics, monthNum, crossFilter]);
 
+  const filteredReturnFacts = useMemo(() => {
+    if (!analytics?.return_facts) return [];
+    return filterReturnFacts(analytics.return_facts, {
+      year: analytics.year,
+      month: monthNum,
+      crossFilter,
+    });
+  }, [analytics, monthNum, crossFilter]);
+
   const monthlyUsers = useMemo(
-    () => buildMonthlyStacked(filteredFacts, 'salesman_name'),
-    [filteredFacts],
+    () => buildNetMonthlyStacked(filteredFacts, filteredReturnFacts, 'salesman_name'),
+    [filteredFacts, filteredReturnFacts],
   );
   const monthlyCategories = useMemo(
-    () => buildMonthlyStacked(filteredFacts, 'category'),
-    [filteredFacts],
+    () => buildNetMonthlyStacked(filteredFacts, filteredReturnFacts, 'category'),
+    [filteredFacts, filteredReturnFacts],
   );
   const monthlyCustomers = useMemo(
-    () => buildMonthlyStacked(filteredFacts, 'customer_type'),
-    [filteredFacts],
+    () => buildNetMonthlyStacked(filteredFacts, filteredReturnFacts, 'customer_type'),
+    [filteredFacts, filteredReturnFacts],
   );
 
   const weekdayUsers = useMemo(
-    () => buildWeekdayAveragesFixed(filteredFacts, 'salesman_name'),
-    [filteredFacts],
+    () => buildNetWeekdayAverages(filteredFacts, filteredReturnFacts, 'salesman_name'),
+    [filteredFacts, filteredReturnFacts],
   );
   const weekdayCategories = useMemo(
-    () => buildWeekdayAveragesFixed(filteredFacts, 'category'),
-    [filteredFacts],
+    () => buildNetWeekdayAverages(filteredFacts, filteredReturnFacts, 'category'),
+    [filteredFacts, filteredReturnFacts],
   );
   const weekdayCustomers = useMemo(
-    () => buildWeekdayAveragesFixed(filteredFacts, 'customer_type'),
-    [filteredFacts],
+    () => buildNetWeekdayAverages(filteredFacts, filteredReturnFacts, 'customer_type'),
+    [filteredFacts, filteredReturnFacts],
   );
 
   const handleLegendUser = (name) => {
@@ -212,30 +219,47 @@ const Dashboard = () => {
   const isExecutiveView = canToggleDashboardTabs || Boolean(analytics?.company_wide);
 
   if (loading) {
-    return <div className="page-container">Loading dashboard…</div>;
+    return <div className="page-container">{td('loading')}</div>;
   }
   if (error) {
     return <div className="page-container error">{error}</div>;
   }
 
+  const chartEmpty = td('noChartData');
+
+  const formatRefundSummary = (usd, uzs) => {
+    const parts = [];
+    if ((usd ?? 0) > 0) {
+      parts.push(
+        `$${usd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      );
+    }
+    if ((uzs ?? 0) > 0) {
+      parts.push(`${uzs.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`);
+    }
+    return parts.join(' · ');
+  };
+
   return (
     <div className="dashboard dash-bi">
       <header className="dash-header dash-header-page">
         <div>
-          <h1>Dashboard</h1>
+          <h1>{td('title')}</h1>
           <p className="dash-subtitle">
             {isExecutiveView
-              ? 'Executive overview'
+              ? td('subtitleExecutive')
               : analytics?.company_wide
-                ? 'Company-wide insights'
-                : 'Your performance · today'}
-            {activeTab === DASH_TAB_SALES && filterHint ? ` · Filtered: ${filterHint}` : ''}
+                ? td('subtitleCompany')
+                : td('subtitleOwn')}
+            {activeTab === DASH_TAB_SALES && filterHint
+              ? ` · ${td('filtered')}: ${filterHint}`
+              : ''}
           </p>
         </div>
       </header>
 
       {canToggleDashboardTabs ? (
-        <div className="dash-tab-bar" role="tablist" aria-label="Dashboard views">
+        <div className="dash-tab-bar" role="tablist" aria-label={td('title')}>
           <button
             type="button"
             role="tab"
@@ -245,7 +269,7 @@ const Dashboard = () => {
             }
             onClick={() => setActiveTab(DASH_TAB_MANAGEMENT)}
           >
-            Management KPIs
+            {td('tabManagement')}
           </button>
           <button
             type="button"
@@ -254,7 +278,7 @@ const Dashboard = () => {
             className={activeTab === DASH_TAB_SALES ? 'dash-tab active' : 'dash-tab'}
             onClick={() => setActiveTab(DASH_TAB_SALES)}
           >
-            Sales analytics
+            {td('tabSales')}
           </button>
         </div>
       ) : null}
@@ -272,12 +296,12 @@ const Dashboard = () => {
       <header className="dash-header">
         <div>
           <p className="dash-subtitle dash-subtitle-section">
-            Today&apos;s KPIs and chart filters
+            {td('kpisToday')}
           </p>
         </div>
         <div className="dash-filters">
           <label>
-            Year
+            {t('filters.year', { ns: 'common' })}
             <select
               value={year}
               onChange={(e) => setYear(parseInt(e.target.value, 10))}
@@ -290,9 +314,9 @@ const Dashboard = () => {
             </select>
           </label>
           <label>
-            Month
+            {t('filters.month', { ns: 'common' })}
             <select value={month} onChange={(e) => setMonth(e.target.value)}>
-              {MONTH_OPTIONS.map((o) => (
+              {monthOptions.map((o) => (
                 <option key={o.value || 'all'} value={o.value}>
                   {o.label}
                 </option>
@@ -301,7 +325,7 @@ const Dashboard = () => {
           </label>
           {filterHint ? (
             <button type="button" className="dash-clear-filter" onClick={clearCrossFilter}>
-              Clear chart filters
+              {td('clearChartFilters')}
             </button>
           ) : null}
         </div>
@@ -309,41 +333,60 @@ const Dashboard = () => {
 
       <section className="dash-kpi-row">
         <KpiCard
-          label="Sold units (today)"
-          value={(kpis?.sold_units ?? 0).toLocaleString()}
-          sub={kpis?.scope === 'own' ? 'Your sales only' : 'All users'}
+          label={td('soldUnitsToday')}
+          value={(kpis?.net_sold_units ?? kpis?.sold_units ?? 0).toLocaleString()}
+          sub={
+            (kpis?.total_returns ?? 0) > 0
+              ? td('netUnitsSub', {
+                  gross: (kpis?.sold_units ?? 0).toLocaleString(),
+                  returned: (kpis?.total_returns ?? 0).toLocaleString(),
+                })
+              : kpis?.scope === 'own'
+                ? td('scopeOwn')
+                : td('scopeAll')
+          }
         />
         <KpiCard
-          label="Sales revenue (today)"
-          value={`$${(kpis?.revenue_usd ?? 0).toLocaleString(undefined, {
+          label={td('salesRevenueToday')}
+          value={`$${(kpis?.net_revenue_usd ?? kpis?.revenue_usd ?? 0).toLocaleString(undefined, {
             minimumFractionDigits: 0,
             maximumFractionDigits: 0,
           })}`}
           sub={
-            (kpis?.revenue_uzs ?? 0) > 0
-              ? `${kpis.revenue_uzs.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
-              : null
+            (kpis?.refunds_usd ?? 0) > 0 || (kpis?.refunds_uzs ?? 0) > 0
+              ? td('netRevenueSub', {
+                  refunds: formatRefundSummary(kpis?.refunds_usd, kpis?.refunds_uzs),
+                })
+              : (kpis?.net_revenue_uzs ?? kpis?.revenue_uzs ?? 0) > 0
+                ? `${(kpis.net_revenue_uzs ?? kpis.revenue_uzs).toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
+                : null
           }
         />
         <KpiCard
-          label="Orders (today)"
+          label={td('ordersToday')}
           value={(kpis?.total_orders ?? 0).toLocaleString()}
         />
         <KpiCard
-          label="Returns (today)"
+          label={td('returnsToday')}
           value={(kpis?.total_returns ?? 0).toLocaleString()}
-          sub="Returned units"
+          sub={
+            (kpis?.refunds_usd ?? 0) > 0 || (kpis?.refunds_uzs ?? 0) > 0
+              ? td('returnsRefundSub', {
+                  refunds: formatRefundSummary(kpis?.refunds_usd, kpis?.refunds_uzs),
+                })
+              : td('returnedUnits')
+          }
         />
       </section>
 
       <section className="dash-section">
-        <h2 className="dash-section-title">Monthly performance</h2>
-        <p className="dash-section-hint">
-          Click a legend item to cross-filter all charts. Month/year filters apply here only.
-        </p>
+        <h2 className="dash-section-title">{td('monthlyPerformance')}</h2>
+        <p className="dash-section-hint">{td('monthlyHint')}</p>
+        <p className="dash-section-hint">{td('returnsChartHint')}</p>
         <div className="dash-charts-row">
           <ChartPanel
-            title="Units sold by user"
+            emptyLabel={chartEmpty}
+            title={td('chartUnitsByUser')}
             data={monthlyUsers.data}
             seriesKeys={monthlyUsers.keys}
             xKey="monthLabel"
@@ -352,7 +395,8 @@ const Dashboard = () => {
             activeCross={crossFilter.salesman}
           />
           <ChartPanel
-            title="Units sold by category"
+            emptyLabel={chartEmpty}
+            title={td('chartUnitsByCategory')}
             data={monthlyCategories.data}
             seriesKeys={monthlyCategories.keys}
             xKey="monthLabel"
@@ -361,7 +405,8 @@ const Dashboard = () => {
             activeCross={crossFilter.category}
           />
           <ChartPanel
-            title="New vs existing customers"
+            emptyLabel={chartEmpty}
+            title={td('chartNewVsExisting')}
             data={monthlyCustomers.data}
             seriesKeys={monthlyCustomers.keys}
             xKey="monthLabel"
@@ -373,13 +418,12 @@ const Dashboard = () => {
       </section>
 
       <section className="dash-section">
-        <h2 className="dash-section-title">Weekday averages</h2>
-        <p className="dash-section-hint">
-          Average units per weekday within the selected period (respects cross-filters).
-        </p>
+        <h2 className="dash-section-title">{td('weekdayAverages')}</h2>
+        <p className="dash-section-hint">{td('weekdayHint')}</p>
         <div className="dash-charts-row">
           <ChartPanel
-            title="Avg units by user"
+            emptyLabel={chartEmpty}
+            title={td('chartAvgByUser')}
             data={weekdayUsers.data}
             seriesKeys={weekdayUsers.keys}
             xKey="weekday_label"
@@ -388,7 +432,8 @@ const Dashboard = () => {
             activeCross={crossFilter.salesman}
           />
           <ChartPanel
-            title="Avg units by category"
+            emptyLabel={chartEmpty}
+            title={td('chartAvgByCategory')}
             data={weekdayCategories.data}
             seriesKeys={weekdayCategories.keys}
             xKey="weekday_label"
@@ -397,7 +442,8 @@ const Dashboard = () => {
             activeCross={crossFilter.category}
           />
           <ChartPanel
-            title="Avg units · customer type"
+            emptyLabel={chartEmpty}
+            title={td('chartAvgByCustomer')}
             data={weekdayCustomers.data}
             seriesKeys={weekdayCustomers.keys}
             xKey="weekday_label"

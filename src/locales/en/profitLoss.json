@@ -1,0 +1,66 @@
+{
+  "title": "Profit / Loss",
+  "filters": {
+    "title": "Filters",
+    "year": "Year",
+    "allYears": "All Years",
+    "month": "Month",
+    "allMonths": "All Months"
+  },
+  "intro": "All amounts are reported in USD. UZS entries are converted using the CBU exchange rate for each transaction date.",
+  "metrics": {
+    "netRevenue": "Net revenue",
+    "netCogs": "Net COGS",
+    "operatingExpenses": "Operating expenses",
+    "otherIncome": "Other income",
+    "netProfitLoss": "Net profit / loss"
+  },
+  "sales": {
+    "title": "Sales (USD, UZS converted at transaction-date rate)",
+    "hint": "Click a row to see how net profit was calculated for that sale.",
+    "saleId": "Sale ID",
+    "product": "Product",
+    "qty": "Qty",
+    "completed": "Completed",
+    "incomeUsd": "Income (USD)",
+    "cogsUsd": "COGS (USD)",
+    "profitUsd": "Profit (USD)",
+    "noRows": "No sales completed in this period",
+    "returned": "({{count}} returned)",
+    "rowTitle": "Click to show profit calculation",
+    "breakdownTitle": "Net profit breakdown (USD)",
+    "grossRevenue": "Gross sale revenue",
+    "refundsPaid": "− Refunds paid (actual)",
+    "netRevenue": "Net revenue",
+    "cogsRestored": "+ COGS restored (returns)",
+    "otherProfit": "Other profit (refund < attributed)",
+    "otherLoss": "Other loss (refund > attributed)",
+    "purchaseCogs": "− Purchase COGS (supplier + cargo)",
+    "supplier": "Supplier",
+    "allocatedCargo": "Allocated cargo",
+    "packageCogs": "− Package COGS",
+    "deliveryCogs": "− Delivery COGS",
+    "netProfitSale": "= Net profit (this sale)",
+    "opexNote": "Operating expenses are not allocated per sale; see the summary cards and operating expenses table.",
+    "totals": "Totals"
+  },
+  "operating": {
+    "title": "Operating expenses",
+    "type": "Type",
+    "amountUsd": "Amount (USD)",
+    "date": "Date",
+    "noRows": "No operating expenses in this period",
+    "totalOperating": "Total operating"
+  },
+  "otherIncome": {
+    "title": "Other income",
+    "hint": "Non-sale income (e.g. gain on fixed-asset sale). Cash proceeds are in Money Balance; only the profit portion is shown here.",
+    "type": "Type",
+    "description": "Description",
+    "amountUsd": "Amount (USD)",
+    "date": "Date",
+    "noRows": "No other income in this period",
+    "total": "Total other income"
+  },
+  "noData": "No data available"
+}

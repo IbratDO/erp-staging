@@ -1,0 +1,108 @@
+{
+  "title": "Dostavkalar",
+  "myDeliveries": "Mening yetkazib berishlarim",
+  "intro": "Yetkazib berish hamkorlari Foydalanuvchilar bo‘limida boshqariladi (Dostavshik roli). BTS qatorini shu yerda ham tahrirlash mumkin.",
+  "form": {
+    "editTitle": "Dostavshikni tahrirlash",
+    "name": "Ism",
+    "telephone": "Telefon",
+    "notes": "Izoh",
+    "active": "Faol"
+  },
+  "partners": {
+    "title": "Yetkazib berish hamkorlari",
+    "columns": {
+      "name": "Ism",
+      "login": "Login",
+      "phone": "Telefon",
+      "loads": "Yuklar",
+      "active": "Faol",
+      "actions": "Amallar"
+    },
+    "btsCompany": "(kompaniya yetkazib berishi)",
+    "btsRowRemoved": "(kompaniya — qator o‘chirilgan)",
+    "restoreBts": "BTS ni tiklash",
+    "noPartnersWithBts": "Nomli (Dostavshik) hamkorlar hali yo‘q — Foydalanuvchilarda Dostavshik login qo‘shing.",
+    "noPartnersNoBts": "Nomli (Dostavshik) hamkorlar hali yo‘q — yoki yuqoridagi tugma bilan BTS qatorini tiklang.",
+    "usersTab": "Foydalanuvchilar bo‘limi"
+  },
+  "detail": {
+    "btsTitle": "BTS — kompaniya yetkazib berishi",
+    "assignmentsTitle": "{{name}} — topshiriqlar va tarix",
+    "contact": "Aloqa",
+    "phone": "Telefon:",
+    "notes": "Izoh:",
+    "summary": "Xulosa",
+    "totalLoads": "Jami yuklar",
+    "deliveryCostUzs": "Yetkazish narxi (UZS)",
+    "deliveryCostUsd": "Yetkazish narxi (USD)",
+    "shipments": "Yuk tashishlar",
+    "timeline": "Holat o‘zgarishlari tarixi",
+    "noDispatches": "Hali yuk tashishlar tayinlanmagan.",
+    "noStatusChanges": "Holat o‘zgarishlari hali qayd etilmagan.",
+    "total": "Jami"
+  },
+  "shipments": {
+    "columns": {
+      "sale": "Sotuv",
+      "product": "Mahsulot",
+      "customer": "Mijoz",
+      "saleStatus": "Sotuv holati",
+      "dispatchDate": "Jo‘natish sanasi",
+      "type": "Turi",
+      "deliveryCost": "Yetkazish narxi",
+      "paid": "To‘langan",
+      "delivered": "Yetkazilgan",
+      "tracking": "Kuzatuv",
+      "notes": "Izoh",
+      "dispatchStatus": "Yuk tashish holati",
+      "actions": "Amallar"
+    }
+  },
+  "timeline": {
+    "columns": {
+      "time": "Vaqt",
+      "dispatchNum": "Yuk tashish №",
+      "from": "Dan",
+      "to": "Ga",
+      "by": "Kim",
+      "notes": "Izoh"
+    }
+  },
+  "workspace": {
+    "assignedDeliveries": "Tayinlangan yetkazib berishlar",
+    "allDeliveries": "Barcha yetkazib berishlar (ish maydoni)",
+    "noMatch": "Filtrga mos yuk tashishlar yo‘q.",
+    "totalFiltered": "Jami (filtrlangan)",
+    "unassigned": "— Tayinlanmagan —"
+  },
+  "filters": {
+    "status": "Holat",
+    "service": "Xizmat",
+    "dispatcher": "Dostavshik",
+    "allStatuses": "Barcha holatlar"
+  },
+  "serviceTypes": {
+    "bts": "BTS",
+    "dostavshik": "Dostavshik"
+  },
+  "notifications": {
+    "btsRestored": "BTS hamkor qatori tiklandi.",
+    "restoreBtsFailed": "BTS qatorini tiklab bo‘lmadi",
+    "nameRequired": "Dostavshik ismini kiriting.",
+    "telephoneRequired": "Dostavshik telefonini kiriting.",
+    "saveFailed": "Dostavshikni saqlab bo‘lmadi",
+    "statusUpdateFailed": "Holatni yangilab bo‘lmadi",
+    "loadSaleFailed": "Sotuvni yuklab bo‘lmadi",
+    "logisticsNotesRequired": "Saqlashdan oldin logistika izohini kiriting."
+  },
+  "errors": {
+    "loadHistoryFailed": "Dostavshik tarixini yuklab bo‘lmadi",
+    "loadBtsFailed": "BTS yetkazib berishlarini yuklab bo‘lmadi",
+    "deleteFailed": "O‘chirib bo‘lmadi (ishlatilmoqda bo‘lishi mumkin). Faolsizlantirishni sinab ko‘ring."
+  },
+  "confirm": {
+    "deleteBts": "BTS hamkor qatorini o‘chirasizmi? BTS (kompaniya) yuk tashishlari tizimda qoladi; Amallar ustunidagi «BTS ni tiklash» tugmasi bilan qatorni qayta qo‘shishingiz mumkin.",
+    "deleteDispatcher": "Ushbu dostavshikni o‘chirasizmi? Tayinlangan yuk tashishlar bo‘sh qoladi."
+  }
+}

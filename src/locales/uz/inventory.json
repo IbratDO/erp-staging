@@ -1,0 +1,59 @@
+{
+  "title": "Ombor — mahsulotlar",
+  "layers": "Qatlamlar",
+  "quantity": "Miqdor",
+  "cost": "Tannarx",
+  "addItem": "Ombor yozuvi qo‘shish",
+  "newItem": "Yangi ombor yozuvi",
+  "noStock": "Omborda mahsulot yo‘q",
+  "rowCount": "{{count}} ta qator",
+  "categoryTypes": {
+    "sports": "Sport",
+    "casual": "Kundalik"
+  },
+  "filters": {
+    "filterProductsHint": "(mahsulotlarni filtrlash)",
+    "allTypes": "Barcha turlar",
+    "allCategories": "Barcha kategoriyalar",
+    "allBrands": "Barcha brendlar",
+    "allModels": "Barcha modellar",
+    "allSizes": "Barcha o‘lchamlar",
+    "allColors": "Barcha ranglar",
+    "allStatuses": "Barcha holatlar"
+  },
+  "form": {
+    "categoryType": "Kategoriya turi",
+    "category": "Kategoriya",
+    "product": "Mahsulot",
+    "selectProduct": "Mahsulotni tanlang",
+    "sellingPriceUsd": "Sotuv narxi (dona, USD)",
+    "costPerUnitUsd": "Tannarx (dona, USD)",
+    "usdPerUnit": "USD / dona",
+    "lineTotalUsd": "= ${{amount}} qator jami",
+    "status": "Holat",
+    "locationOptional": "Joylashuv (ixtiyoriy)",
+    "create": "Yaratish"
+  },
+  "table": {
+    "categoryType": "Kategoriya turi",
+    "category": "Kategoriya",
+    "recNo": "Yozuv №",
+    "brand": "Brend",
+    "model": "Model",
+    "size": "O‘lcham",
+    "color": "Rang",
+    "layerNo": "Qatlam №",
+    "landedCostUzs": "Yetkazilgan tannarx (UZS) / dona",
+    "landedCostUsd": "Yetkazilgan tannarx (USD) / dona",
+    "sellingPerUnit": "Sotuv narxi / dona",
+    "location": "Joylashuv",
+    "updated": "Yangilangan",
+    "total": "Jami"
+  },
+  "notifications": {
+    "errQuantity": "To‘g‘ri miqdorni kiriting (kamida 1).",
+    "errSellingPrice": "Sotuv narxini (dona, USD) kiriting.",
+    "errSupplierCost": "Yetkazib beruvchi tannarxini (dona, USD) kiriting.",
+    "errSave": "Ombor yozuvini saqlashda xatolik"
+  }
+}

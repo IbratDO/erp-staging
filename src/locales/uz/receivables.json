@@ -1,0 +1,122 @@
+{
+  "title": "Debitor / kreditor",
+  "intro": "Faqat ochiq qoldiqlar. Yakunlanganlar Pul balansida aks etadi va shu ro‘yxatdan olib tashlanadi.",
+  "tabs": {
+    "receivables": "Debitorlik",
+    "payables": "Kreditorlik"
+  },
+  "metrics": {
+    "recvPendingUsd": "Debitorlik — kutilmoqda (USD)",
+    "recvPendingUzs": "Debitorlik — kutilmoqda (UZS)",
+    "recvAllUsd": "Debitorlik — jami (USD)",
+    "recvAllUzs": "Debitorlik — jami (UZS)",
+    "payPendingUsd": "Kreditorlik — kutilmoqda (USD)",
+    "payPendingUzs": "Kreditorlik — kutilmoqda (UZS)",
+    "payAllUsd": "Kreditorlik — jami (USD)",
+    "payAllUzs": "Kreditorlik — jami (UZS)"
+  },
+  "filters": {
+    "title": "Filtrlar",
+    "status": "Holat",
+    "pendingDefault": "Faqat kutilmoqda (standart)",
+    "year": "Yil",
+    "allYears": "Barcha yillar",
+    "month": "Oy",
+    "allMonths": "Barcha oylar",
+    "clearAll": "Hammasini tozalash"
+  },
+  "collect": {
+    "title": "To‘lovni qabul qilish — debitor #{{id}}",
+    "saleRef": "(Sotuv #{{sale}})",
+    "hint": "Ushbu ochiq qoldiq bo‘yicha mijoz hozir qancha to‘laganini kiriting. Qolgan <strong>{{amount}} {{currency}}</strong> — qisman to‘lovlarga ruxsat beriladi.",
+    "amount": "Summa ({{currency}})",
+    "notesOptional": "Izoh (ixtiyoriy)",
+    "record": "To‘lovni qayd etish"
+  },
+  "receivablesTable": {
+    "title": "Mijoz debitorligi",
+    "hint": "Yakunlangan sotuvlardagi qoldiq (buyurtma avansidan keyin). Sotuvdan oldingi mijoz oldindan to‘lovlari Kreditorlik bo‘limida.",
+    "id": "ID",
+    "customer": "Mijoz",
+    "sale": "Sotuv",
+    "product": "Mahsulot",
+    "saleType": "Sotuv turi",
+    "fromOrder": "Buyurtmadan",
+    "delivery": "Yetkazish (BTS / Dostavshik)",
+    "amount": "Summa",
+    "currency": "Valyuta",
+    "status": "Holat",
+    "created": "Yaratilgan",
+    "paidDate": "To‘langan sana",
+    "action": "Harakat",
+    "noRows": "Debitorlik topilmadi",
+    "orderRef": "Buyurtma #{{id}}",
+    "saleRef": "#{{id}}",
+    "financeRef": "Moliya #{{id}}",
+    "collect": "Qabul qilish",
+    "footerPending": "Kutilayotgan qoldiq"
+  },
+  "payablesTable": {
+    "title": "Kreditorlik",
+    "hint": "Yetkazuvchi, kuryer va qadoq majburiyatlari, shuningdek on-demand buyurtmalarda mijoz oldindan to‘lovlari (sotuvda avans qo‘llanguncha depozit qatorlari yo‘qoladi).",
+    "payableType": "Kreditor turi",
+    "ref": "Havola",
+    "customer": "Mijoz",
+    "product": "Mahsulot",
+    "context": "Kontekst",
+    "amount": "Summa",
+    "currency": "Valyuta",
+    "status": "Holat",
+    "created": "Yaratilgan",
+    "paidDate": "To‘langan sana",
+    "action": "Harakat",
+    "noRows": "Kreditorlik topilmadi",
+    "packagesType": "Qadoqlar · turi {{type}}",
+    "prepaidByCustomer": "Mijoz oldindan to‘lagan",
+    "prepaidStatus": "oldindan to‘langan",
+    "pay": "To‘lash",
+    "footerSupplier": "Yetkazuvchi / kuryer / qadoq (kutilmoqda)",
+    "footerDeposits": "Mijoz depozitlari (on-demand, hali sotilmagan)"
+  },
+  "saleTypes": {
+    "bought_from_shop": "Do‘kon",
+    "delivery": "Yetkazib berish",
+    "from_order": "Buyurtmadan",
+    "reserved": "Band qilingan"
+  },
+  "dispatch": {
+    "bts": "BTS",
+    "btsNamed": "BTS · {{name}}",
+    "dostavshik": "Dostavshik",
+    "dostavshikNamed": "Dostavshik · {{name}}"
+  },
+  "payableKinds": {
+    "customerDeposit": "Mijoz depoziti",
+    "supplier": "Yetkazuvchi",
+    "dispatch": "Yetkazish",
+    "package": "Qadoq",
+    "otherExpense": "Boshqa xarajat"
+  },
+  "payableRefs": {
+    "order": "Buyurtma #{{id}}",
+    "dispatch": "#{{dispatch}} (Sotuv #{{sale}})",
+    "packageHistory": "Tarix #{{id}}",
+    "finance": "Moliya #{{id}}"
+  },
+  "payableContext": {
+    "customerDeposit": "Talab bo‘yicha oldindan to‘lov — buyurtmadan sotganda yopiladi",
+    "onDemandSupplier": "Talab bo‘yicha yetkazuvchi narxi",
+    "stockOrder": "Zaxira buyurtmasi (ombor)",
+    "packageType": "Qadoq turi {{type}}",
+    "packagePurchase": "Qadoq xaridi"
+  },
+  "notifications": {
+    "amountRequired": "Yig‘ilgan summani kiriting (noldan katta).",
+    "amountExceeds": "Yig‘ilgan summa qolgan balansdan oshmasligi kerak ({{balance}}).",
+    "paymentRecorded": "To‘lov qayd etildi.",
+    "paymentFailed": "To‘lovni qayd etib bo‘lmadi",
+    "confirmSettlePayable": "Ushbu kreditor to‘langan deb belgilansinmi va Pul balansidan yechilsinmi?",
+    "paid": "To‘landi.",
+    "settleFailed": "Kreditorni yakunlab bo‘lmadi."
+  }
+}

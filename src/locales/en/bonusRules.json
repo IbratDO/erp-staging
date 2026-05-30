@@ -1,0 +1,55 @@
+{
+  "title": "Bonus Rules",
+  "newRule": "+ New rule",
+  "form": {
+    "editTitle": "Edit rule",
+    "newTitle": "New bonus rule",
+    "salesManager": "Sales manager *",
+    "selectUser": "Select user",
+    "productOptional": "Product (optional)",
+    "anyProduct": "Any product",
+    "categoryOptional": "Category (optional)",
+    "categoryPlaceholder": "e.g. sneakers",
+    "saleTypeOptional": "Sale type (optional)",
+    "any": "Any",
+    "bonusType": "Bonus type",
+    "fixedPerUnit": "Fixed per unit",
+    "percentRevenue": "Percent of revenue",
+    "amountPerUnit": "Amount per unit",
+    "percent": "Percent",
+    "active": "Active"
+  },
+  "saleTypes": {
+    "bought_from_shop": "Shop",
+    "delivery": "Delivery",
+    "from_order": "From order",
+    "reserved": "Reserved"
+  },
+  "rulesTable": {
+    "title": "Rules",
+    "manager": "Manager",
+    "target": "Target",
+    "type": "Type",
+    "value": "Value",
+    "active": "Active",
+    "actions": "Actions",
+    "noRows": "No bonus rules",
+    "allSales": "All sales",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "transactionsTable": {
+    "title": "Bonus transactions",
+    "date": "Date",
+    "manager": "Manager",
+    "sale": "Sale",
+    "amount": "Amount",
+    "notes": "Notes",
+    "noRows": "No transactions yet"
+  },
+  "confirmDelete": "Delete this bonus rule?",
+  "notifications": {
+    "saveFailed": "Could not save rule",
+    "deleteFailed": "Could not delete rule"
+  }
+}

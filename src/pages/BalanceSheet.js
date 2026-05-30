@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppNumber } from '../utils/localeFormat';
 import './TablePage.css';
 
-function fmtUsd(n) {
+function fmtUsd(n, formatAppNumberFn) {
   const v = parseFloat(n) || 0;
-  return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${formatAppNumberFn(v, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function SectionHeader({ number, title }) {
@@ -36,6 +39,7 @@ function TotalRow({ label, value }) {
 }
 
 const BalanceSheet = () => {
+  const { t, monthOptions } = useAppTranslation(['balanceSheet', 'common']);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({
@@ -43,6 +47,8 @@ const BalanceSheet = () => {
     year: '',
     month: '',
   });
+
+  const formatUsd = useCallback((n) => fmtUsd(n, formatAppNumber), []);
 
   const fetchBalanceSheet = async () => {
     setLoading(true);
@@ -113,25 +119,27 @@ const BalanceSheet = () => {
   const totalLiabEquity =
     (parseFloat(liabilities?.total_usd) || 0) + (parseFloat(equity?.total_equity_usd) || 0);
 
+  const packageLabel = inv?.package_units
+    ? t('assets.packagesWithUnits', { units: inv.package_units })
+    : t('assets.packages');
+
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Balance Sheet</h1>
+        <PageTitle ns="balanceSheet" />
       </div>
 
       <p style={{ color: '#666', marginBottom: 12, fontSize: '0.9em', maxWidth: 720 }}>
-        Financial position at a point in time (USD). Net profit for the selected month flows into equity
-        and links to the Profit / Loss report for the same period. Past dates are recalculated from
-        transactions recorded on or before that date.
+        {t('intro')}
       </p>
 
       <div className="form-card filter-card" style={{ marginBottom: 16 }}>
         <h3 className="filter-card__title" style={{ marginBottom: 8 }}>
-          As-of date / period
+          {t('filters.title')}
         </h3>
         <div className="filter-toolbar">
           <div className="filter-field">
-            <label>As of (date)</label>
+            <label>{t('filters.asOf')}</label>
             <input
               type="date"
               value={filter.as_of}
@@ -141,12 +149,12 @@ const BalanceSheet = () => {
             />
           </div>
           <div className="filter-field">
-            <label>Year</label>
+            <label>{t('filters.year')}</label>
             <select
               value={filter.year}
               onChange={(e) => setFilter({ ...filter, year: e.target.value, as_of: '' })}
             >
-              <option value="">—</option>
+              <option value="">{t('filters.emptyOption')}</option>
               {Array.from({ length: 10 }, (_, i) => {
                 const y = new Date().getFullYear() - i;
                 return (
@@ -158,35 +166,32 @@ const BalanceSheet = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Month</label>
+            <label>{t('filters.month')}</label>
             <select
               value={filter.month}
               onChange={(e) => setFilter({ ...filter, month: e.target.value, as_of: '' })}
             >
-              <option value="">—</option>
-              {Array.from({ length: 12 }, (_, i) => {
-                const m = String(i + 1).padStart(2, '0');
-                return (
-                  <option key={m} value={m}>
-                    {new Date(2000, i, 1).toLocaleString('default', { month: 'long' })}
-                  </option>
-                );
-              })}
+              <option value="">{t('filters.emptyOption')}</option>
+              {monthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
         {data?.as_of && (
           <p style={{ margin: '8px 0 0', fontSize: '0.85em', color: '#888' }}>
-            Position as of <strong>{data.as_of}</strong>
-            {data.period?.label ? ` · P&L period: ${data.period.label}` : ''}
+            {t('positionAsOf', { date: data.as_of })}
+            {data.period?.label ? t('plPeriod', { label: data.period.label }) : ''}
           </p>
         )}
       </div>
 
       {loading ? (
-        <p style={{ textAlign: 'center', padding: 40 }}>Loading…</p>
+        <p style={{ textAlign: 'center', padding: 40 }}>{t('loading')}</p>
       ) : !data ? (
-        <p style={{ textAlign: 'center', padding: 40 }}>Could not load balance sheet.</p>
+        <p style={{ textAlign: 'center', padding: 40 }}>{t('loadFailed')}</p>
       ) : (
         <>
           {eqn && !eqn.balanced && (
@@ -199,9 +204,7 @@ const BalanceSheet = () => {
                 borderRadius: 6,
               }}
             >
-              <strong>Balance check:</strong> Assets and liabilities + equity differ by{' '}
-              {fmtUsd(Math.abs(eqn.difference_usd))}. This can happen when accrual P&amp;L and
-              point-in-time ledger positions use different timing; review notes below.
+              {t('balanceCheck.unbalanced', { diff: formatUsd(Math.abs(eqn.difference_usd)) })}
             </div>
           )}
 
@@ -215,21 +218,21 @@ const BalanceSheet = () => {
                 borderRadius: 6,
               }}
             >
-              <strong>Balanced:</strong> Assets = Liabilities + Equity ({fmtUsd(eqn.total_assets_usd)})
+              {t('balanceCheck.balanced', { total: formatUsd(eqn.total_assets_usd) })}
             </div>
           )}
 
           <div className="metrics-grid metrics-grid--balance-sheet-summary">
             <div className="metric-card" style={{ border: '2px solid #007bff' }}>
-              <div className="metric-label">Total assets</div>
+              <div className="metric-label">{t('metrics.totalAssets')}</div>
               <div className="metric-value" style={{ color: '#007bff', fontSize: '1.4em' }}>
-                {fmtUsd(assets?.total_usd)}
+                {formatUsd(assets?.total_usd)}
               </div>
             </div>
             <div className="metric-card" style={{ border: '2px solid #6f42c1' }}>
-              <div className="metric-label">Equity + liabilities</div>
+              <div className="metric-label">{t('metrics.equityLiabilities')}</div>
               <div className="metric-value" style={{ color: '#6f42c1', fontSize: '1.4em' }}>
-                {fmtUsd(totalLiabEquity)}
+                {formatUsd(totalLiabEquity)}
               </div>
             </div>
           </div>
@@ -238,55 +241,47 @@ const BalanceSheet = () => {
             <div className="balance-sheet-panel balance-sheet-panel--assets">
               <div className="table-card balance-sheet-card balance-sheet-card--fill">
                 <h3 style={{ borderBottom: '3px solid #007bff', paddingBottom: 8, marginTop: 0 }}>
-                  Assets
+                  {t('assets.title')}
                 </h3>
                 <table className="data-table balance-sheet-table">
                   <tbody>
-                    <SectionHeader number={1} title="Money" />
-                    <LineRow label="Cash" value={fmtUsd(cashUsd)} indent={1} />
-                    <LineRow label="Bank" value={fmtUsd(bankUsd)} indent={1} />
+                    <SectionHeader number={1} title={t('assets.sections.money')} />
+                    <LineRow label={t('assets.cash')} value={formatUsd(cashUsd)} indent={1} />
+                    <LineRow label={t('assets.bank')} value={formatUsd(bankUsd)} indent={1} />
 
-                    <SectionHeader number={2} title="Receivables" />
+                    <SectionHeader number={2} title={t('assets.sections.receivables')} />
                     <LineRow
-                      label="Customer receivables (unpaid sales)"
-                      value={fmtUsd(customerRecv)}
+                      label={t('assets.customerReceivables')}
+                      value={formatUsd(customerRecv)}
                       indent={1}
                     />
                     <LineRow
-                      label="Product receivables (prepaid orders, goods in transit)"
-                      value={fmtUsd(productRecv)}
+                      label={t('assets.productReceivables')}
+                      value={formatUsd(productRecv)}
                       indent={1}
                     />
                     <LineRow
-                      label="Fixed asset receivables (paid, not yet received)"
-                      value={fmtUsd(fixedAssetRecv)}
+                      label={t('assets.fixedAssetReceivables')}
+                      value={formatUsd(fixedAssetRecv)}
                       indent={1}
                     />
 
-                    <SectionHeader number={3} title="Inventory" />
-                    <LineRow label="Products" value={fmtUsd(productInvUsd)} indent={1} />
-                    <LineRow
-                      label={
-                        inv?.package_units
-                          ? `Packages (${inv.package_units} units)`
-                          : 'Packages'
-                      }
-                      value={fmtUsd(packageUsd)}
-                      indent={1}
-                    />
+                    <SectionHeader number={3} title={t('assets.sections.inventory')} />
+                    <LineRow label={t('assets.products')} value={formatUsd(productInvUsd)} indent={1} />
+                    <LineRow label={packageLabel} value={formatUsd(packageUsd)} indent={1} />
 
                     {prepaid > 0.005 && (
-                      <LineRow label="Prepaid expenses" value={fmtUsd(prepaid)} indent={1} />
+                      <LineRow label={t('assets.prepaidExpenses')} value={formatUsd(prepaid)} indent={1} />
                     )}
 
-                    <SectionHeader number={4} title="Fixed assets" />
+                    <SectionHeader number={4} title={t('assets.sections.fixedAssets')} />
                     <LineRow
-                      label="Fixed assets (on the books)"
-                      value={fmtUsd(faNonCurrent)}
+                      label={t('assets.fixedAssetsOnBooks')}
+                      value={formatUsd(faNonCurrent)}
                       indent={1}
                     />
 
-                    <TotalRow label="TOTAL ASSETS" value={fmtUsd(assets?.total_usd)} />
+                    <TotalRow label={t('assets.total')} value={formatUsd(assets?.total_usd)} />
                   </tbody>
                 </table>
               </div>
@@ -295,20 +290,20 @@ const BalanceSheet = () => {
             <div className="balance-sheet-panel balance-sheet-panel--right">
               <div className="table-card balance-sheet-card">
                 <h3 style={{ borderBottom: '3px solid #dc3545', paddingBottom: 8, marginTop: 0 }}>
-                  Liabilities
+                  {t('liabilities.title')}
                 </h3>
                 <table className="data-table balance-sheet-table">
                   <tbody>
-                    <SectionHeader number={1} title="Payables" />
-                    <LineRow label="Payable expenses" value={fmtUsd(payableExpenses)} indent={1} />
+                    <SectionHeader number={1} title={t('liabilities.sections.payables')} />
+                    <LineRow label={t('liabilities.payableExpenses')} value={formatUsd(payableExpenses)} indent={1} />
                     <LineRow
-                      label="Customer advances (deposits)"
-                      value={fmtUsd(customerAdvances)}
+                      label={t('liabilities.customerAdvances')}
+                      value={formatUsd(customerAdvances)}
                       indent={1}
                     />
                     <TotalRow
-                      label="TOTAL LIABILITIES"
-                      value={fmtUsd(liabilities?.total_usd)}
+                      label={t('liabilities.total')}
+                      value={formatUsd(liabilities?.total_usd)}
                     />
                   </tbody>
                 </table>
@@ -316,25 +311,25 @@ const BalanceSheet = () => {
 
               <div className="table-card balance-sheet-card balance-sheet-card--fill">
                 <h3 style={{ borderBottom: '3px solid #6f42c1', paddingBottom: 8, marginTop: 0 }}>
-                  Equity
+                  {t('equity.title')}
                 </h3>
                 <table className="data-table balance-sheet-table">
                   <tbody>
                     <LineRow
-                      label="Owner capital (net contributions)"
-                      value={fmtUsd(equity?.owner_capital_net_usd)}
+                      label={t('equity.ownerCapital')}
+                      value={formatUsd(equity?.owner_capital_net_usd)}
                     />
                     <LineRow
-                      label="Retained earnings (prior periods)"
-                      value={fmtUsd(equity?.retained_earnings_usd)}
+                      label={t('equity.retainedEarnings')}
+                      value={formatUsd(equity?.retained_earnings_usd)}
                       indent={1}
                     />
                     <LineRow
-                      label="Current period profit / loss (P&L)"
-                      value={fmtUsd(equity?.current_period_profit_usd)}
+                      label={t('equity.currentPeriodPl')}
+                      value={formatUsd(equity?.current_period_profit_usd)}
                       indent={1}
                     />
-                    <TotalRow label="TOTAL EQUITY" value={fmtUsd(equity?.total_equity_usd)} />
+                    <TotalRow label={t('equity.total')} value={formatUsd(equity?.total_equity_usd)} />
                   </tbody>
                 </table>
               </div>
@@ -343,7 +338,7 @@ const BalanceSheet = () => {
 
           {data.notes?.length > 0 && (
             <div className="form-card">
-              <h3 style={{ marginTop: 0 }}>Notes</h3>
+              <h3 style={{ marginTop: 0 }}>{t('notes')}</h3>
               <ul style={{ margin: 0, paddingLeft: 20, color: '#555', fontSize: '0.9em' }}>
                 {data.notes.map((n, i) => (
                   <li key={i} style={{ marginBottom: 6 }}>

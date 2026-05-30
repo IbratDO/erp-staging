@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import api from '../utils/api';
 import useCbuExchangeRate from '../hooks/useCbuExchangeRate';
+import useAppTranslation from '../hooks/useAppTranslation';
 import { usdToUzs, uzsToUsd } from '../utils/saleCompletePayHelpers';
 
 const PL_TOLERANCE_USD = 0.005;
@@ -39,6 +40,7 @@ function computeConversionPreview(direction, sourceAmount, targetAmount, rate) {
 }
 
 export default function CurrencyConversionForm({ onSuccess, onCancel }) {
+  const { t } = useAppTranslation(['moneyBalance', 'common']);
   const { exchangeRate, exchangeRateError, cbuRate: latestCbuRate } = useCbuExchangeRate();
   const [form, setForm] = useState({
     direction: 'usd_to_uzs',
@@ -56,7 +58,6 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
   const effectiveRate = rateForDate?.rate ?? latestCbuRate;
   const rateDateLabel = rateForDate?.rate_date ?? exchangeRate?.rate_date;
 
-  // Load CB rate for selected date when it differs from the latest stored rate (once per date change).
   useEffect(() => {
     const convDate = form.conversion_date || todayIso();
     if (!convDate) return undefined;
@@ -94,7 +95,6 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
     };
   }, [form.conversion_date, exchangeRate?.rate_date]);
 
-  // Auto-fill converted amount from CB rate (no API — local math only).
   useEffect(() => {
     if (targetManual || !effectiveRate) return;
     const src = parseFloat(form.source_amount);
@@ -124,11 +124,11 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
     const src = parseFloat(form.source_amount);
     const tgt = parseFloat(form.target_amount);
     if (!src || src <= 0 || !tgt || tgt <= 0) {
-      alert('Enter valid source and converted amounts.');
+      alert(t('conversion.errAmounts'));
       return;
     }
     if (!effectiveRate) {
-      alert('Exchange rate is not available. Try again in a moment.');
+      alert(t('conversion.errRate'));
       return;
     }
     setSubmitting(true);
@@ -143,7 +143,7 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
       });
       onSuccess?.();
     } catch (err) {
-      alert(err.response?.data?.error || 'Conversion failed');
+      alert(err.response?.data?.error || t('conversion.errFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -155,28 +155,25 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
 
   return (
     <div className="form-card" style={{ marginBottom: '20px' }}>
-      <h2>Currency Conversion</h2>
-      <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '12px' }}>
-        Convert between USD and UZS cash buckets. Central Bank rate is used for the expected amount;
-        you may adjust the received amount — any difference is recorded as conversion profit or loss in P&amp;L.
-      </p>
+      <h2>{t('conversion.title')}</h2>
+      <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '12px' }}>{t('conversion.intro')}</p>
       {exchangeRateError ? (
         <p style={{ fontSize: '0.85rem', color: '#dc3545', marginBottom: '12px' }}>{exchangeRateError}</p>
       ) : rateBusy ? (
-        <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '12px' }}>Loading rate for selected date…</p>
+        <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '12px' }}>{t('conversion.loadingRate')}</p>
       ) : exchangeRate?.label && !rateForDate ? (
         <p style={{ fontSize: '0.85rem', color: '#0d6efd', marginBottom: '12px' }}>{exchangeRate.label}</p>
       ) : effectiveRate ? (
         <p style={{ fontSize: '0.85rem', color: '#0d6efd', marginBottom: '12px' }}>
-          1 USD = {Number(effectiveRate).toLocaleString()} UZS
-          {rateDateLabel ? ` (rate as of ${rateDateLabel})` : ''}
+          {t('conversion.rateLine', { rate: Number(effectiveRate).toLocaleString() })}
+          {rateDateLabel ? ` ${t('conversion.rateAsOf', { date: rateDateLabel })}` : ''}
         </p>
       ) : null}
 
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           <div className="form-group">
-            <label>Direction</label>
+            <label>{t('conversion.direction')}</label>
             <select
               value={form.direction}
               onChange={(e) => {
@@ -190,12 +187,12 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
               }}
               required
             >
-              <option value="usd_to_uzs">USD → UZS</option>
-              <option value="uzs_to_usd">UZS → USD</option>
+              <option value="usd_to_uzs">{t('conversion.usdToUzs')}</option>
+              <option value="uzs_to_usd">{t('conversion.uzsToUsd')}</option>
             </select>
           </div>
           <div className="form-group">
-            <label>Conversion date</label>
+            <label>{t('conversion.conversionDate')}</label>
             <input
               type="date"
               value={form.conversion_date}
@@ -204,7 +201,7 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
             />
           </div>
           <div className="form-group">
-            <label>Source amount ({srcCur})</label>
+            <label>{t('conversion.sourceAmount', { currency: srcCur })}</label>
             <input
               type="number"
               step={form.direction === 'usd_to_uzs' ? '0.01' : '1'}
@@ -218,7 +215,7 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
             />
           </div>
           <div className="form-group">
-            <label>Converted amount ({tgtCur})</label>
+            <label>{t('conversion.convertedAmount', { currency: tgtCur })}</label>
             <input
               type="number"
               step={form.direction === 'usd_to_uzs' ? '1' : '0.01'}
@@ -232,12 +229,15 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
             />
             {preview?.expected_target_amount != null ? (
               <small style={{ color: '#666' }}>
-                CB expected: {Number(preview.expected_target_amount).toLocaleString()} {tgtCur}
+                {t('conversion.cbExpected', {
+                  amount: Number(preview.expected_target_amount).toLocaleString(),
+                  currency: tgtCur,
+                })}
               </small>
             ) : null}
           </div>
           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label>Notes (optional)</label>
+            <label>{t('conversion.notesOptional')}</label>
             <textarea
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -256,7 +256,7 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
               fontSize: '0.9rem',
             }}
           >
-            {preview.pl_effect_usd > 0 ? 'Conversion profit' : 'Conversion loss'}:{' '}
+            {preview.pl_effect_usd > 0 ? t('conversion.profit') : t('conversion.loss')}:{' '}
             <strong>
               $
               {Math.abs(preview.pl_effect_usd).toLocaleString(undefined, {
@@ -264,20 +264,18 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
                 maximumFractionDigits: 2,
               })}
             </strong>{' '}
-            (recorded in Profit/Loss)
+            {t('conversion.recordedInPl')}
           </p>
         ) : preview?.source_amount ? (
-          <p style={{ margin: '12px 0', fontSize: '0.9rem', color: '#666' }}>
-            No P&amp;L effect — converted amount matches CB rate.
-          </p>
+          <p style={{ margin: '12px 0', fontSize: '0.9rem', color: '#666' }}>{t('conversion.noPlEffect')}</p>
         ) : null}
 
         <div className="form-actions">
           <button type="button" className="btn-edit" onClick={onCancel} disabled={submitting}>
-            Cancel
+            {t('actions.cancel', { ns: 'common' })}
           </button>
           <button type="submit" className="btn-primary" disabled={submitting || rateBusy || !effectiveRate}>
-            {submitting ? 'Converting…' : 'Convert'}
+            {submitting ? t('conversion.converting') : t('conversion.convert')}
           </button>
         </div>
       </form>

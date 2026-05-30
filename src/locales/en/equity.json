@@ -1,0 +1,37 @@
+{
+  "title": "Equity",
+  "contribution": "Owner contribution",
+  "withdrawal": "Owner withdrawal",
+  "newTransaction": "+ Owner transaction",
+  "intro": "Owner capital and withdrawals update Money Balance and the Balance Sheet equity section. Operating profit flows via Profit / Loss into retained earnings.",
+  "metrics": {
+    "contributions": "Contributions (listed)",
+    "withdrawals": "Withdrawals (listed)"
+  },
+  "form": {
+    "title": "Record owner transaction",
+    "type": "Type",
+    "contributionOption": "Contribution (cash in)",
+    "withdrawalOption": "Withdrawal (cash out)",
+    "currency": "Currency",
+    "amount": "Amount",
+    "notes": "Notes"
+  },
+  "table": {
+    "id": "ID",
+    "type": "Type",
+    "amount": "Amount",
+    "currency": "Currency",
+    "date": "Date",
+    "notes": "Notes",
+    "by": "By",
+    "noRows": "No equity transactions yet"
+  },
+  "types": {
+    "contribution": "Contribution",
+    "withdrawal": "Withdrawal"
+  },
+  "notifications": {
+    "saveFailed": "Failed to save"
+  }
+}

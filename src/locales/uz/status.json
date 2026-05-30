@@ -1,0 +1,85 @@
+{
+  "generic": {
+    "pending": "Kutilmoqda",
+    "completed": "Yakunlandi",
+    "cancelled": "Bekor qilindi",
+    "paid": "To‘langan",
+    "unpaid": "To‘lanmagan",
+    "partial": "Qisman to‘langan",
+    "active": "Faol",
+    "inactive": "Nofaol"
+  },
+  "order": {
+    "ordered": "Buyurtma berildi",
+    "order_paid": "Buyurtma to‘langan",
+    "received": "Qabul qilindi",
+    "in_inventory": "Omborda",
+    "sold": "Sotildi",
+    "cancelled": "Bekor qilindi"
+  },
+  "sale": {
+    "reserved": "Band qilingan",
+    "pending": "Kutilmoqda",
+    "confirmed": "Tasdiqlangan",
+    "completed": "Yakunlandi",
+    "cancelled": "Bekor qilindi",
+    "dispatched": "Jo‘natildi",
+    "delivered": "Yetkazildi",
+    "refunded": "Qaytarildi",
+    "mixed": "Aralash"
+  },
+  "dispatch": {
+    "pending": "Kutilmoqda",
+    "preparing": "Tayyorlanmoqda",
+    "dispatched": "Jo‘natildi",
+    "in_transit": "Yo‘lda",
+    "delivered": "Yetkazildi",
+    "returned": "Qaytarilgan",
+    "failed": "Yetkazib berish muvaffaqiyatsiz",
+    "cancelled": "Bekor qilindi",
+    "paid": "To‘langan"
+  },
+  "return": {
+    "pending": "Kutilmoqda",
+    "refunded": "Qaytarildi",
+    "cancelled": "Bekor qilindi"
+  },
+  "finance": {
+    "pending": "Kutilmoqda",
+    "completed": "Yakunlandi",
+    "cancelled": "Bekor qilindi"
+  },
+  "receivable": {
+    "pending": "Kutilmoqda",
+    "paid": "To‘langan",
+    "overdue": "Muddati o‘tgan",
+    "cancelled": "Bekor qilindi"
+  },
+  "payable": {
+    "pending": "Kutilmoqda",
+    "paid": "To‘langan",
+    "cancelled": "Bekor qilindi"
+  },
+  "inventory": {
+    "in_inventory": "Omborda",
+    "reserved": "Band qilingan",
+    "sold": "Sotildi",
+    "returned": "Qaytarilgan"
+  },
+  "operation": {
+    "add": "Kirim",
+    "subtract": "Chiqim"
+  },
+  "transactionType": {
+    "manual_adjustment": "Qo‘lda tuzatish",
+    "sale_income": "Sotuv tushumi",
+    "order_expense": "Buyurtma xarajati",
+    "cargo_expense": "Yuk tashish xarajati",
+    "delivery_expense": "Yetkazib berish xarajati",
+    "other_expense": "Boshqa xarajat",
+    "other_income": "Boshqa daromad",
+    "currency_conversion": "Valyuta konvertatsiyasi",
+    "owner_contribution": "Egasi hissasi",
+    "owner_withdrawal": "Egasi yechib olishi"
+  }
+}

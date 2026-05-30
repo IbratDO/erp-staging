@@ -51,37 +51,37 @@ export const ROLE_HIDDEN_MENU_PATHS = {
   sales_manager: ['/customers', '/inventory/packages'],
 };
 
-/** Sidebar menu definitions with required permission codes */
+/** Sidebar menu definitions — labelKey resolved via i18n (common.nav.*) */
 export const MENU_ITEMS = [
-  { path: '/dashboard', label: 'Dashboard', icon: '📊', permission: 'dashboard.view' },
-  { path: '/products', label: 'Products', icon: '👟', permission: 'products.view' },
+  { path: '/dashboard', labelKey: 'nav.dashboard', icon: '📊', permission: 'dashboard.view' },
+  { path: '/products', labelKey: 'nav.products', icon: '👟', permission: 'products.view' },
   {
-    label: 'Inventory',
+    labelKey: 'nav.inventory',
     icon: '📦',
     isDropdown: true,
     permissionAny: ['inventory.view', 'packages.view'],
     subItems: [
-      { path: '/inventory/products', label: 'Products', icon: '📦', permission: 'inventory.view' },
-      { path: '/inventory/packages', label: 'Packages', icon: '📮', permission: 'packages.view' },
+      { path: '/inventory/products', labelKey: 'nav.inventoryProducts', icon: '📦', permission: 'inventory.view' },
+      { path: '/inventory/packages', labelKey: 'nav.packages', icon: '📮', permission: 'packages.view' },
     ],
   },
-  { path: '/orders', label: 'Orders', icon: '🛒', permission: 'orders.view' },
-  { path: '/sales', label: 'Sales', icon: '💰', permission: 'sales.view' },
-  { path: '/returns', label: 'Returns', icon: '↩️', permission: 'returns.view' },
-  { path: '/dispatchers', label: 'Dispatchers', icon: '🚚', permission: 'dispatch.view' },
-  { path: '/receivables-payables', label: 'Receivables / Payables', icon: '📑', permission: 'receivables.view' },
-  { path: '/finance', label: 'Other Financial Records', icon: '💵', permission: 'finance.view' },
-  { path: '/equity', label: 'Equity', icon: '🏛️', permission: 'equity.view' },
-  { path: '/fixed-assets', label: 'Fixed Assets', icon: '🏢', permission: 'fixed_assets.view' },
-  { path: '/profit-loss', label: 'Profit / Loss', icon: '📈', permission: 'finance.profit_loss' },
-  { path: '/money-balance', label: 'Money Balance', icon: '💳', permission: 'cash.view' },
-  { path: '/balance-sheet', label: 'Balance Sheet', icon: '📊', permission: 'finance.balance_sheet' },
-  { path: '/customers', label: 'Customers', icon: '👥', permission: 'customers.view' },
-  { path: '/jarimalar', label: 'Jarimalar', icon: '⚠️', permission: 'penalties.manage' },
-  { path: '/workers', label: 'Workers', icon: '👷', permission: 'workers.view' },
-  { path: '/audit-logs', label: 'Audit Logs', icon: '📝', permission: 'audit_logs.view' },
-  { path: '/bonus-rules', label: 'Bonus Rules', icon: '🎁', permission: 'bonus.manage' },
-  { path: '/users', label: 'Users', icon: '👤', permission: 'users.view' },
+  { path: '/orders', labelKey: 'nav.orders', icon: '🛒', permission: 'orders.view' },
+  { path: '/sales', labelKey: 'nav.sales', icon: '💰', permission: 'sales.view' },
+  { path: '/returns', labelKey: 'nav.returns', icon: '↩️', permission: 'returns.view' },
+  { path: '/dispatchers', labelKey: 'nav.dispatchers', icon: '🚚', permission: 'dispatch.view' },
+  { path: '/receivables-payables', labelKey: 'nav.receivablesPayables', icon: '📑', permission: 'receivables.view' },
+  { path: '/finance', labelKey: 'nav.finance', icon: '💵', permission: 'finance.view' },
+  { path: '/equity', labelKey: 'nav.equity', icon: '🏛️', permission: 'equity.view' },
+  { path: '/fixed-assets', labelKey: 'nav.fixedAssets', icon: '🏢', permission: 'fixed_assets.view' },
+  { path: '/profit-loss', labelKey: 'nav.profitLoss', icon: '📈', permission: 'finance.profit_loss' },
+  { path: '/money-balance', labelKey: 'nav.moneyBalance', icon: '💳', permission: 'cash.view' },
+  { path: '/balance-sheet', labelKey: 'nav.balanceSheet', icon: '📊', permission: 'finance.balance_sheet' },
+  { path: '/customers', labelKey: 'nav.customers', icon: '👥', permission: 'customers.view' },
+  { path: '/jarimalar', labelKey: 'nav.jarimalar', icon: '⚠️', permission: 'penalties.manage' },
+  { path: '/workers', labelKey: 'nav.workers', icon: '👷', permission: 'workers.view' },
+  { path: '/audit-logs', labelKey: 'nav.auditLogs', icon: '📝', permission: 'audit_logs.view' },
+  { path: '/bonus-rules', labelKey: 'nav.bonusRules', icon: '🎁', permission: 'bonus.manage' },
+  { path: '/users', labelKey: 'nav.users', icon: '👤', permission: 'users.view' },
 ];
 
 export function normalizePermissions(user) {
@@ -125,10 +125,16 @@ export function isAdmin(user) {
   return getRoleCode(user) === 'admin';
 }
 
-/** Display label for role (Founder instead of Admin). */
-export function getRoleDisplayName(user) {
+/** Display label for role (Founder instead of Admin). Pass optional t from useTranslation('common'). */
+export function getRoleDisplayName(user, t) {
   if (!user) return '';
   const code = getRoleCode(user);
+  if (t) {
+    if (code === 'admin') return t('roles.founder');
+    const key = `roles.${code}`;
+    const translated = t(key, { defaultValue: '' });
+    if (translated) return translated;
+  }
   if (code === 'admin') return 'Founder';
   if (user.role_name) return user.role_name;
   return code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -170,6 +176,40 @@ export function canAccessRoute(user, path) {
   const permission = ROUTE_PERMISSIONS[path];
   if (!permission) return true;
   return hasPermission(user, permission);
+}
+
+/** First route after login / when a guarded page denies access. */
+export function getDefaultHomePath(user) {
+  if (!user) return '/dashboard';
+
+  const role = getRoleCode(user);
+  const roleHome = ROLE_VISIBLE_MENU_PATHS[role];
+  if (roleHome?.length === 1) {
+    return roleHome[0];
+  }
+
+  if (hasPermission(user, 'dashboard.view') && pathAllowedForRole(user, '/dashboard')) {
+    return '/dashboard';
+  }
+
+  const orderedPaths = [
+    '/dashboard',
+    '/products',
+    '/inventory/products',
+    '/inventory/packages',
+    '/orders',
+    '/sales',
+    '/returns',
+    '/dispatchers',
+    '/finance',
+    '/customers',
+    '/users',
+  ];
+  for (const path of orderedPaths) {
+    if (canAccessRoute(user, path)) return path;
+  }
+
+  return '/dashboard';
 }
 
 function itemPathAllowed(user, item) {

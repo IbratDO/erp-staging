@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount, formatPlainAmount } from '../utils/currencyFormat';
+import useAppTranslation from '../hooks/useAppTranslation';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
+import PageTitle from '../components/PageTitle';
+import { formatAppDateTime } from '../utils/localeFormat';
 import './TablePage.css';
 
 const WORKERS_SORT = {
@@ -36,6 +39,7 @@ const WORKER_TX_SORT = {
 };
 
 const Workers = () => {
+  const { t, tStatus, monthOptions } = useAppTranslation(['workers', 'common', 'status']);
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedWorker, setSelectedWorker] = useState(null);
@@ -69,7 +73,7 @@ const Workers = () => {
       setWorkerTransactions(null);
     } catch (error) {
       console.error('Error fetching worker performance:', error);
-      alert('Error fetching worker performance');
+      alert(t('notifications.performanceFailed'));
     }
   };
 
@@ -81,7 +85,7 @@ const Workers = () => {
       setWorkerPerformance(null);
     } catch (error) {
       console.error('Error fetching worker transactions:', error);
-      alert('Error fetching worker transactions');
+      alert(t('notifications.transactionsFailed'));
     }
   };
 
@@ -103,48 +107,47 @@ const Workers = () => {
   );
 
   if (loading) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Workers</h1>
+        <PageTitle ns="workers" />
       </div>
 
       <p style={{ color: '#666', marginBottom: 16, fontSize: '0.95em' }}>
-        Sales team members are managed in the Users tab (Sales Manager or Senior Sales Manager role).
+        {t('intro')}
       </p>
 
-      {/* Workers List */}
       <div className="table-card">
-        <h2>Sales Team</h2>
+        <h2>{t('salesTeam')}</h2>
         <table className="data-table">
           <thead>
             <tr>
               <SortableTh columnId="id" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
-                ID
+                {t('table.id')}
               </SortableTh>
               <SortableTh columnId="name" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
-                Name
+                {t('table.name')}
               </SortableTh>
               <SortableTh columnId="login" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
-                Login
+                {t('table.login')}
               </SortableTh>
               <SortableTh columnId="telephone" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
-                Telephone
+                {t('table.telephone')}
               </SortableTh>
               <SortableTh columnId="notes" sortCol={workerSort.sortCol} sortDir={workerSort.sortDir} onSort={workerSort.onHeaderClick}>
-                Notes
+                {t('table.notes')}
               </SortableTh>
-              <th>Actions</th>
+              <th>{t('table.actions')}</th>
             </tr>
           </thead>
           <tbody>
             {workers.length === 0 ? (
               <tr>
                 <td colSpan="6" style={{ textAlign: 'center' }}>
-                  No workers found
+                  {t('table.noRows')}
                 </td>
               </tr>
             ) : (
@@ -161,13 +164,13 @@ const Workers = () => {
                       onClick={() => handleViewPerformance(worker)}
                       style={{ marginRight: '10px' }}
                     >
-                      View Performance
+                      {t('actions.viewPerformance')}
                     </button>
                     <button
                       className="btn-primary"
                       onClick={() => handleViewTransactions(worker)}
                     >
-                      View Transactions
+                      {t('actions.viewTransactions')}
                     </button>
                   </td>
                 </tr>
@@ -177,10 +180,10 @@ const Workers = () => {
           <tfoot>
             <tr>
               <td colSpan="4" style={{ textAlign: 'right' }}>
-                Total
+                {t('table.total')}
               </td>
               <td colSpan="2" style={{ textAlign: 'right' }}>
-                {workers.length} {workers.length === 1 ? 'worker' : 'workers'}
+                {t('table.workerCount', { count: workers.length })}
               </td>
             </tr>
           </tfoot>
@@ -192,11 +195,11 @@ const Workers = () => {
         <div className="table-card" style={{ marginTop: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2>
-              Performance: {selectedWorker.name}
+              {t('performance.title', { name: selectedWorker.name })}
             </h2>
             <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
               <label>
-                Year:
+                {t('performance.year')}:
                 <select
                   value={selectedYear}
                   onChange={(e) => {
@@ -216,20 +219,22 @@ const Workers = () => {
                 </select>
               </label>
               <label>
-                Month:
+                {t('performance.month')}:
                 <select
                   value={selectedMonth}
                   onChange={(e) => {
-                    setSelectedMonth(parseInt(e.target.value));
+                    setSelectedMonth(parseInt(e.target.value, 10));
                     handleViewPerformance(selectedWorker);
                   }}
                   style={{ marginLeft: '5px', padding: '5px' }}
                 >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                    <option key={month} value={month}>
-                      {new Date(2000, month - 1, 1).toLocaleString('default', { month: 'long' })}
-                    </option>
-                  ))}
+                  {monthOptions
+                    .filter((opt) => opt.value)
+                    .map((opt) => (
+                      <option key={opt.value} value={parseInt(opt.value, 10)}>
+                        {opt.label}
+                      </option>
+                    ))}
                 </select>
               </label>
             </div>
@@ -240,47 +245,47 @@ const Workers = () => {
               {/* Performance Statistics */}
               <div className="metrics-grid" style={{ marginBottom: '20px' }}>
                 <div className="metric-card">
-                  <div className="metric-label">Period</div>
+                  <div className="metric-label">{t('performance.period')}</div>
                   <div className="metric-value">{workerPerformance.period.month_name}</div>
                 </div>
                 <div className="metric-card">
-                  <div className="metric-label">Total Sales</div>
+                  <div className="metric-label">{t('performance.totalSales')}</div>
                   <div className="metric-value" style={{ color: '#3498db' }}>
                     {workerPerformance.statistics.total_sales}
                   </div>
                 </div>
                 <div className="metric-card">
-                  <div className="metric-label">Completed Sales</div>
+                  <div className="metric-label">{t('performance.completedSales')}</div>
                   <div className="metric-value" style={{ color: '#27ae60' }}>
                     {workerPerformance.statistics.completed_sales}
                   </div>
                 </div>
                 <div className="metric-card">
-                  <div className="metric-label">Reserved Sales</div>
+                  <div className="metric-label">{t('performance.reservedSales')}</div>
                   <div className="metric-value" style={{ color: '#9b59b6' }}>
                     {workerPerformance.statistics.reserved_sales || 0}
                   </div>
                 </div>
                 <div className="metric-card">
-                  <div className="metric-label">Pending Sales</div>
+                  <div className="metric-label">{t('performance.pendingSales')}</div>
                   <div className="metric-value" style={{ color: '#f39c12' }}>
                     {workerPerformance.statistics.pending_sales || 0}
                   </div>
                 </div>
-                <div className="metric-card" title="May mix UZS and USD">
-                  <div className="metric-label">Total Amount (Completed)</div>
+                <div className="metric-card" title={t('performance.mixedCurrencyHint')}>
+                  <div className="metric-label">{t('performance.totalAmountCompleted')}</div>
                   <div className="metric-value" style={{ color: '#27ae60' }}>
                     {formatPlainAmount(workerPerformance.statistics.total_amount || 0)}
                   </div>
                 </div>
-                <div className="metric-card" title="May mix UZS and USD">
-                  <div className="metric-label">Reserved Amount</div>
+                <div className="metric-card" title={t('performance.mixedCurrencyHint')}>
+                  <div className="metric-label">{t('performance.reservedAmount')}</div>
                   <div className="metric-value" style={{ color: '#9b59b6' }}>
                     {formatPlainAmount(workerPerformance.statistics.reserved_amount || 0)}
                   </div>
                 </div>
-                <div className="metric-card" title="May mix UZS and USD">
-                  <div className="metric-label">Deposits Received</div>
+                <div className="metric-card" title={t('performance.mixedCurrencyHint')}>
+                  <div className="metric-label">{t('performance.depositsReceived')}</div>
                   <div className="metric-value" style={{ color: '#9b59b6' }}>
                     {formatPlainAmount(workerPerformance.statistics.reserved_deposits || 0)}
                   </div>
@@ -288,33 +293,33 @@ const Workers = () => {
               </div>
 
               {/* Sales List */}
-              <h3 style={{ marginTop: '20px', marginBottom: '10px' }}>Sales Details</h3>
+              <h3 style={{ marginTop: '20px', marginBottom: '10px' }}>{t('performance.salesDetails')}</h3>
               <table className="data-table">
                 <thead>
                   <tr>
                     <SortableTh columnId="date" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
-                      Date
+                      {t('tableCols.date')}
                     </SortableTh>
                     <SortableTh columnId="product" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
-                      Product
+                      {t('tableCols.product')}
                     </SortableTh>
                     <SortableTh columnId="quantity" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
-                      Quantity
+                      {t('tableCols.quantity')}
                     </SortableTh>
                     <SortableTh columnId="price" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
-                      Price
+                      {t('tableCols.price')}
                     </SortableTh>
                     <SortableTh columnId="total" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
-                      Total
+                      {t('tableCols.total')}
                     </SortableTh>
                     <SortableTh columnId="type" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
-                      Type
+                      {t('tableCols.type')}
                     </SortableTh>
                     <SortableTh columnId="status" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
-                      Status
+                      {t('tableCols.status')}
                     </SortableTh>
                     <SortableTh columnId="customer" sortCol={perfSaleSort.sortCol} sortDir={perfSaleSort.sortDir} onSort={perfSaleSort.onHeaderClick}>
-                      Customer
+                      {t('tableCols.customer')}
                     </SortableTh>
                   </tr>
                 </thead>
@@ -322,28 +327,30 @@ const Workers = () => {
                   {workerPerformance.sales.length === 0 ? (
                     <tr>
                       <td colSpan="8" style={{ textAlign: 'center' }}>
-                        No sales found for this period
+                        {t('performance.noSales')}
                       </td>
                     </tr>
                   ) : (
                     displayPerfSales.map((sale) => (
                       <tr key={sale.id}>
-                        <td>{new Date(sale.sale_date).toLocaleString()}</td>
+                        <td>{formatAppDateTime(sale.sale_date)}</td>
                         <td>
                           {sale.product_detail
-                            ? `${sale.product_detail.brand} ${sale.product_detail.model} - Size ${sale.product_detail.size} (${sale.product_detail.color})`
-                            : `Product #${sale.product}`}
+                            ? t('performance.productSize', {
+                                brand: sale.product_detail.brand,
+                                model: sale.product_detail.model,
+                                size: sale.product_detail.size,
+                                color: sale.product_detail.color,
+                              })
+                            : t('performance.productFallback', { id: sale.product })}
                         </td>
                         <td>{sale.quantity}</td>
                         <td>{formatDisplayAmount(sale.selling_price, sale.sale_currency || 'USD')}</td>
                         <td>{formatDisplayAmount(sale.total_amount, sale.sale_currency || 'USD')}</td>
-                        <td>
-                          {sale.sale_type === 'bought_from_shop' ? 'Shop' :
-                           sale.sale_type === 'from_order' ? 'From Order' : 'Delivery'}
-                        </td>
+                        <td>{t(`saleTypes.${sale.sale_type}`, { defaultValue: sale.sale_type })}</td>
                         <td>
                           <span className={`status-badge ${sale.status}`}>
-                            {sale.status}
+                            {tStatus(sale.status, 'sale')}
                           </span>
                         </td>
                         <td>
@@ -357,7 +364,7 @@ const Workers = () => {
             </>
           ) : (
             <div style={{ textAlign: 'center', padding: '20px', color: '#666' }}>
-              <p>No salesman found matching this worker name. Performance statistics are only available for salesmen.</p>
+              <p>{t('performance.noSalesman')}</p>
             </div>
           )}
         </div>
@@ -367,13 +374,13 @@ const Workers = () => {
       {workerTransactions && selectedWorker && (
         <div className="table-card" style={{ marginTop: '20px' }}>
           <h2>
-            Transactions: {selectedWorker.name}
+            {t('transactions.title', { name: selectedWorker.name })}
           </h2>
 
           {/* Transaction Summary */}
           <div className="metrics-grid" style={{ marginBottom: '20px' }}>
             <div className="metric-card">
-              <div className="metric-label">Total Salary</div>
+              <div className="metric-label">{t('transactions.totalSalary')}</div>
               <div className="metric-value" style={{ color: '#e74c3c' }}>
                 ${parseFloat(workerTransactions.summary.total_salary || 0).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
@@ -382,7 +389,7 @@ const Workers = () => {
               </div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Total Lunch Expenses</div>
+              <div className="metric-label">{t('transactions.totalLunch')}</div>
               <div className="metric-value" style={{ color: '#e74c3c' }}>
                 ${parseFloat(workerTransactions.summary.total_lunch || 0).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
@@ -391,7 +398,7 @@ const Workers = () => {
               </div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Total Prepayments</div>
+              <div className="metric-label">{t('transactions.totalPrepayments')}</div>
               <div className="metric-value" style={{ color: '#f39c12' }}>
                 ${parseFloat(workerTransactions.summary.total_prepayments || 0).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
@@ -400,7 +407,7 @@ const Workers = () => {
               </div>
             </div>
             <div className="metric-card">
-              <div className="metric-label">Total Transactions</div>
+              <div className="metric-label">{t('transactions.totalTransactions')}</div>
               <div className="metric-value">
                 {workerTransactions.summary.total_transactions}
               </div>
@@ -408,24 +415,24 @@ const Workers = () => {
           </div>
 
           {/* Transaction History */}
-          <h3 style={{ marginTop: '20px', marginBottom: '10px' }}>Transaction History</h3>
+          <h3 style={{ marginTop: '20px', marginBottom: '10px' }}>{t('transactions.history')}</h3>
           <table className="data-table">
             <thead>
               <tr>
                 <SortableTh columnId="date" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
-                  Date
+                  {t('tableCols.date')}
                 </SortableTh>
                 <SortableTh columnId="type" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
-                  Type
+                  {t('tableCols.type')}
                 </SortableTh>
                 <SortableTh columnId="amount" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
-                  Amount
+                  {t('tableCols.amount')}
                 </SortableTh>
                 <SortableTh columnId="currency" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
-                  Currency
+                  {t('tableCols.currency')}
                 </SortableTh>
                 <SortableTh columnId="notes" sortCol={workerTxSort.sortCol} sortDir={workerTxSort.sortDir} onSort={workerTxSort.onHeaderClick}>
-                  Notes
+                  {t('tableCols.notes')}
                 </SortableTh>
               </tr>
             </thead>
@@ -433,16 +440,16 @@ const Workers = () => {
               {workerTransactions.finance_records.length === 0 ? (
                 <tr>
                   <td colSpan="5" style={{ textAlign: 'center' }}>
-                    No transactions found
+                    {t('transactions.noRows')}
                   </td>
                 </tr>
               ) : (
                 displayWorkerTx.map((record) => (
                   <tr key={record.id}>
-                    <td>{new Date(record.transaction_date).toLocaleString()}</td>
+                    <td>{formatAppDateTime(record.transaction_date)}</td>
                     <td>
                       <span className={`status-badge ${record.expense_type === 'salary' ? 'confirmed' : 'pending'}`}>
-                        {record.expense_type === 'salary' ? 'Salary' : 'Lunch'}
+                        {record.expense_type === 'salary' ? t('transactions.salary') : t('transactions.lunch')}
                       </span>
                     </td>
                     <td style={{ fontWeight: '600', color: '#e74c3c' }}>

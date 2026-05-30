@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { canAccessRoute, getDefaultHomePath } from '../utils/permissions';
 import './Login.css';
 
 const Login = () => {
+  const { t } = useTranslation('common');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,9 +23,13 @@ const Login = () => {
     const result = await login(username, password);
 
     if (result.success) {
-      navigate('/dashboard');
+      const user = result.user;
+      const from = location.state?.from?.pathname;
+      const target =
+        from && canAccessRoute(user, from) ? from : getDefaultHomePath(user);
+      navigate(target, { replace: true });
     } else {
-      setError(result.error || 'Invalid credentials');
+      setError(result.error || t('auth.invalidCredentials'));
     }
 
     setLoading(false);
@@ -30,11 +38,11 @@ const Login = () => {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>ERP System</h1>
-        <h2>Sneaker Shop Management</h2>
+        <h1>{t('app.title')}</h1>
+        <h2>{t('app.subtitle')}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="username">Username</label>
+            <label htmlFor="username">{t('auth.username')}</label>
             <input
               type="text"
               id="username"
@@ -45,7 +53,7 @@ const Login = () => {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t('auth.password')}</label>
             <input
               type="password"
               id="password"
@@ -56,7 +64,7 @@ const Login = () => {
           </div>
           {error && <div className="error-message">{error}</div>}
           <button type="submit" disabled={loading} className="login-button">
-            {loading ? 'Logging in...' : 'Login'}
+            {loading ? t('auth.loggingIn') : t('auth.login')}
           </button>
         </form>
       </div>
@@ -65,4 +73,3 @@ const Login = () => {
 };
 
 export default Login;
-

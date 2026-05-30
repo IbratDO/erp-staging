@@ -1,0 +1,86 @@
+{
+  "title": "Packages",
+  "newOrder": "+ Order Package Stock",
+  "intro": "Each purchase at a different unit price is a separate FIFO layer. Default flow: order → pay (payable) → receive into inventory. Payables appear under Receivables / Payables. Package stock is included on the balance sheet; COGS on sales uses oldest layers first.",
+  "form": {
+    "orderTitle": "Order Package Stock",
+    "addStockTitle": "Add Stock — Package {{type}}",
+    "packageType": "Package Type",
+    "addNewType": "+ Add New Package Type",
+    "typePlaceholder": "Enter package type name (e.g., M, L, Small Box, etc.)",
+    "quantityOrder": "Quantity to order",
+    "quantityPlaceholder": "Units in this purchase",
+    "payImmediately": "Pay and receive immediately (skip payable; deduct cash now)",
+    "costUzs": "Cost per unit (UZS)",
+    "costUsd": "Cost per unit (USD)",
+    "submitPayReceive": "Pay, receive & add stock",
+    "submitCreateOrder": "Create purchase order",
+    "optionCost": "{{type}} (UZS {{uzs}} · ${{usd}})"
+  },
+  "paymentForm": {
+    "payTitle": "Pay package purchase #{{id}}",
+    "receiveTitle": "Receive stock — purchase #{{id}}",
+    "payReceiveTitle": "Pay & receive — purchase #{{id}}",
+    "quantityReceived": "Quantity Received",
+    "ordered": "Ordered: {{qty}}",
+    "uzsPayment": "UZS payment",
+    "usdPayment": "USD payment",
+    "recordPayment": "Record payment",
+    "receiveInventory": "Receive into inventory",
+    "payAndReceive": "Pay & receive"
+  },
+  "inventory": {
+    "title": "Package inventory (on hand by batch)",
+    "subtitle": "Current stock only — one row per purchase price layer. Purchases and payments are in the history table below.",
+    "packageType": "Package type",
+    "batchRef": "Batch / purchase #",
+    "qtyOnHand": "Qty on hand",
+    "costUzsUnit": "Cost / unit (UZS)",
+    "costUsdUnit": "Cost / unit (USD)",
+    "totalUzs": "Total (UZS)",
+    "totalUsd": "Total (USD)",
+    "received": "Received",
+    "noStock": "No package stock on hand",
+    "packageLabel": "Package {{type}}",
+    "layer": "Layer {{id}}",
+    "onHandTotal": "On hand total"
+  },
+  "history": {
+    "title": "Package Stock History",
+    "quantityAdded": "Quantity Added",
+    "costPerUnit": "Cost / unit",
+    "totalCost": "Total cost",
+    "status": "Status",
+    "uzsPaid": "UZS Paid",
+    "usdPaid": "USD Paid",
+    "addedBy": "Added By",
+    "date": "Date",
+    "noHistory": "No package history found",
+    "orderedQty": "ordered: {{qty}}",
+    "total": "Total",
+    "packageLabel": "Package {{type}}"
+  },
+  "status": {
+    "in_stock": "IN STOCK",
+    "order_paid": "PAID · AWAITING RECEIPT",
+    "ordered": "ORDERED",
+    "received": "IN STOCK",
+    "paid": "IN STOCK"
+  },
+  "statusTitle": {
+    "ordered": "Awaiting payment and receipt",
+    "order_paid": "Paid; receive when stock arrives",
+    "paid": "Paid and in inventory",
+    "default": "In stock"
+  },
+  "actions": {
+    "pay": "Pay",
+    "payAndReceive": "Pay & receive",
+    "receiveStock": "Receive stock"
+  },
+  "notifications": {
+    "paymentRequired": "Enter at least one payment amount (UZS or USD).",
+    "saveError": "Error saving package",
+    "paymentError": "Error marking package as received and paid"
+  }
+}

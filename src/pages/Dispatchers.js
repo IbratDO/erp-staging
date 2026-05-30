@@ -8,23 +8,23 @@ import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppNumber, formatAppDateTime } from '../utils/localeFormat';
 
 const saleReadyToComplete = (sale) => !!(sale && sale.status === 'dispatched');
 
 /** Synthetic “partner” row for BTS (company) dispatches — not a DB dispatcher id. */
 const BTS_ROW_ID = 'bts';
 
-const DISPATCH_STATUSES = [
-  { value: '', label: 'All statuses' },
-  { value: 'preparing', label: 'Preparing' },
-  { value: 'dispatched', label: 'Dispatched' },
-  { value: 'in_transit', label: 'In transit' },
-  { value: 'delivered', label: 'Delivered' },
-  { value: 'returned', label: 'Returned' },
-  { value: 'failed', label: 'Delivery failed' },
+const DISPATCH_STATUS_VALUES = [
+  'preparing',
+  'dispatched',
+  'in_transit',
+  'delivered',
+  'returned',
+  'failed',
 ];
-
-const statusOptionsRow = DISPATCH_STATUSES.filter((s) => s.value);
 
 const productLine = (sale) => {
   if (!sale?.product_detail) return '—';
@@ -89,11 +89,11 @@ const STATUS_TIMELINE_SORT_ACCESSORS = {
   notes: (log) => String(log.notes ?? '').toLowerCase(),
 };
 
-const formatCost = (d) => {
+const formatCost = (d, uzsLabel = 'UZS') => {
   const uzs = d.delivery_cost_uzs != null && parseFloat(d.delivery_cost_uzs) !== 0;
   const usd = d.delivery_cost != null && parseFloat(d.delivery_cost) !== 0;
   const parts = [];
-  if (uzs) parts.push(`${parseFloat(d.delivery_cost_uzs).toLocaleString()} UZS`);
+  if (uzs) parts.push(`${formatAppNumber(d.delivery_cost_uzs)} ${uzsLabel}`);
   if (usd) parts.push(`$${parseFloat(d.delivery_cost).toFixed(2)}`);
   return parts.length ? parts.join(' · ') : '—';
 };
@@ -101,6 +101,30 @@ const formatCost = (d) => {
 const DISPATCH_OPEN_STATUSES = new Set(['preparing', 'dispatched', 'in_transit']);
 
 const Dispatchers = () => {
+  const { t, tStatus } = useAppTranslation(['dispatchers', 'common', 'status', 'sales']);
+  const uzsLabel = t('currency.uzs', { ns: 'common' });
+
+  const dispatchStatusOptions = useMemo(
+    () => [
+      { value: '', label: t('filters.allStatuses') },
+      ...DISPATCH_STATUS_VALUES.map((value) => ({
+        value,
+        label: tStatus(value, 'dispatch'),
+      })),
+    ],
+    [t, tStatus],
+  );
+
+  const statusOptionsRow = useMemo(
+    () => dispatchStatusOptions.filter((s) => s.value),
+    [dispatchStatusOptions],
+  );
+
+  const dispatchTypeLabel = useCallback(
+    (type) => t(`serviceTypes.${type === 'bts' ? 'bts' : 'dostavshik'}`),
+    [t],
+  );
+
   const { hasPermission, hasAnyPermission, roleCode } = usePermissions();
   const isDispatcherRole = roleCode === 'dispatcher';
   const canManagePartners = hasPermission('dispatchers.manage');
@@ -201,11 +225,11 @@ const Dispatchers = () => {
       setDispatcherDetail(res.data);
     } catch (e) {
       console.error('Error loading dispatcher deliveries:', e);
-      alert('Could not load dispatcher history');
+      alert(t('errors.loadHistoryFailed'));
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const loadBtsDetail = useCallback(async () => {
     setDetailLoading(true);
@@ -218,11 +242,11 @@ const Dispatchers = () => {
       }
     } catch (e) {
       console.error('Error loading BTS deliveries:', e);
-      alert('Could not load BTS deliveries');
+      alert(t('errors.loadBtsFailed'));
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const fetchBtsCount = useCallback(async () => {
     try {
@@ -298,10 +322,10 @@ const Dispatchers = () => {
       await fetchDispatchers();
       await fetchActiveDispatchers();
       await fetchBtsCount();
-      showNotification('BTS partner row restored.', 'success');
+      showNotification(t('notifications.btsRestored'), 'success');
     } catch (e) {
       console.error(e);
-      showNotification(e.response?.data?.detail || 'Could not restore BTS row', 'error');
+      showNotification(e.response?.data?.detail || t('notifications.restoreBtsFailed'), 'error');
     }
   };
 
@@ -310,11 +334,11 @@ const Dispatchers = () => {
     const name = String(formData.name || '').trim();
     const telephone = String(formData.telephone || '').trim();
     if (!name) {
-      showNotification('Please enter the dispatcher name.', 'error');
+      showNotification(t('notifications.nameRequired'), 'error');
       return;
     }
     if (!telephone || telephone === '+998') {
-      showNotification('Please enter the dispatcher telephone.', 'error');
+      showNotification(t('notifications.telephoneRequired'), 'error');
       return;
     }
     try {
@@ -332,7 +356,7 @@ const Dispatchers = () => {
       fetchActiveDispatchers();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.detail || JSON.stringify(err.response?.data) || 'Error saving dispatcher');
+      alert(err.response?.data?.detail || JSON.stringify(err.response?.data) || t('notifications.saveFailed'));
     }
   };
 
@@ -350,8 +374,8 @@ const Dispatchers = () => {
   const handleDeleteDispatcher = async (id) => {
     const row = dispatchers.find((x) => x.id === id);
     const message = row?.is_bts_channel
-      ? 'Delete the BTS partner line? BTS (company) dispatches stay in the system; you can add this row back with “Restore BTS” in the Actions column.'
-      : 'Delete this dispatcher? Assigned dispatches will be unassigned.';
+      ? t('confirm.deleteBts')
+      : t('confirm.deleteDispatcher');
     if (!window.confirm(message)) return;
     try {
       await api.delete(`/dispatchers/${id}/`);
@@ -365,7 +389,7 @@ const Dispatchers = () => {
       fetchBtsCount();
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.detail || 'Cannot delete (may be in use). Try deactivating instead.');
+      alert(err.response?.data?.detail || t('errors.deleteFailed'));
     }
   };
 
@@ -388,7 +412,7 @@ const Dispatchers = () => {
     } catch (err) {
       console.error(err);
       showNotification(
-        err.response?.data?.detail || err.response?.data?.error || err.response?.data?.notes || 'Could not update status',
+        err.response?.data?.detail || err.response?.data?.error || err.response?.data?.notes || t('notifications.statusUpdateFailed'),
         'error',
       );
     }
@@ -401,8 +425,39 @@ const Dispatchers = () => {
       setCompletePaySale(res.data);
     } catch (e) {
       console.error(e);
-      showNotification(e.response?.data?.detail || e.response?.data?.error || 'Could not load sale', 'error');
+      showNotification(e.response?.data?.detail || e.response?.data?.error || t('notifications.loadSaleFailed'), 'error');
     }
+  };
+
+  const renderSaleActionsCell = (sale) => {
+    if (!sale) return null;
+    if (
+      isDispatcherRole &&
+      sale.status === 'completed' &&
+      sale.delivery_customer_paid_at
+    ) {
+      return (
+        <span style={{ fontSize: '0.82rem', color: '#059669', lineHeight: 1.3 }}>
+          {t('deliverySettlement.rowSaleCompleted', { ns: 'sales' })}
+        </span>
+      );
+    }
+    if (!saleReadyToComplete(sale) || !canShowCompleteActions) return null;
+    if (shopDeliverySettlementRequired(sale)) {
+      return (
+        <ShopDeliverySettlementButtons sale={sale} onOpenSettlement={openCompleteAndPay} />
+      );
+    }
+    if (isDispatcherRole) return null;
+    return (
+      <button
+        type="button"
+        className="btn-status"
+        onClick={() => openCompleteAndPay(sale.id)}
+      >
+        {t('rowActions.completePay', { ns: 'sales' })}
+      </button>
+    );
   };
 
   const detailDeliveriesCostTotals = useMemo(() => {
@@ -455,7 +510,7 @@ const Dispatchers = () => {
   );
 
   if (loading && dispatches.length === 0) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   return (
@@ -505,22 +560,22 @@ const Dispatchers = () => {
       )}
 
       <div className="page-header">
-        <h1>{isDispatcherRole ? 'My deliveries' : 'Dispatchers'}</h1>
+        <PageTitle ns="dispatchers" titleKey={isDispatcherRole ? 'myDeliveries' : 'title'} />
       </div>
 
       {!isDispatcherRole && (
         <p style={{ color: '#666', marginBottom: 16, fontSize: '0.95em' }}>
-          Delivery partners are managed in the Users tab (Dispatcher role). BTS row can still be edited here.
+          {t('intro')}
         </p>
       )}
 
       {showForm && canManagePartners && formData.id && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>Edit dispatcher</h2>
+          <h2>{t('form.editTitle')}</h2>
           <form onSubmit={handleDispatcherSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Name *</label>
+                <label>{t('form.name')} *</label>
                 <input
                   type="text"
                   value={formData.name}
@@ -529,7 +584,7 @@ const Dispatchers = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Telephone *</label>
+                <label>{t('form.telephone')} *</label>
                 <input
                   type="text"
                   value={formData.telephone}
@@ -539,8 +594,8 @@ const Dispatchers = () => {
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label>
-                  Notes{' '}
-                  <span style={{ fontWeight: 400, color: '#718096' }}>(optional)</span>
+                  {t('form.notes')}{' '}
+                  <span style={{ fontWeight: 400, color: '#718096' }}>({t('optional', { ns: 'common' })})</span>
                 </label>
                 <textarea
                   value={formData.notes}
@@ -555,13 +610,13 @@ const Dispatchers = () => {
                     checked={formData.is_active}
                     onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                   />{' '}
-                  Active
+                  {t('form.active')}
                 </label>
               </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                {formData.id ? 'Update' : 'Create'}
+                {t('actions.save', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -572,16 +627,16 @@ const Dispatchers = () => {
         {!isDispatcherRole && (
         <>
         <div className="table-card" style={{ flex: selectedDispatcher ? '0 0 42%' : '1', minWidth: 0 }}>
-          <h2>Delivery partners</h2>
+          <h2>{t('partners.title')}</h2>
           <table className="data-table">
             <thead>
               <tr>
-                <SortableTh columnId="name" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Name</SortableTh>
-                <SortableTh columnId="login" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Login</SortableTh>
-                <SortableTh columnId="telephone" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Phone</SortableTh>
-                <SortableTh columnId="loads" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Loads</SortableTh>
-                <SortableTh columnId="active" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>Active</SortableTh>
-                <th onClick={(e) => e.stopPropagation()}>Actions</th>
+                <SortableTh columnId="name" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>{t('partners.columns.name')}</SortableTh>
+                <SortableTh columnId="login" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>{t('partners.columns.login')}</SortableTh>
+                <SortableTh columnId="telephone" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>{t('partners.columns.phone')}</SortableTh>
+                <SortableTh columnId="loads" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>{t('partners.columns.loads')}</SortableTh>
+                <SortableTh columnId="active" sortCol={partnerSort.sortCol} sortDir={partnerSort.sortDir} onSort={partnerSort.onHeaderClick}>{t('partners.columns.active')}</SortableTh>
+                <th onClick={(e) => e.stopPropagation()}>{t('partners.columns.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -610,19 +665,19 @@ const Dispatchers = () => {
                   }}
                 >
                   <td>
-                    <strong>{btsFromApi.name || 'BTS'}</strong>{' '}
-                    <span style={{ fontSize: '0.85em', color: '#666', fontWeight: 400 }}>(company delivery)</span>
+                    <strong>{btsFromApi.name || t('serviceTypes.bts')}</strong>{' '}
+                    <span style={{ fontSize: '0.85em', color: '#666', fontWeight: 400 }}>{t('partners.btsCompany')}</span>
                   </td>
                   <td>—</td>
                   <td>{btsFromApi.telephone || '—'}</td>
                   <td>{btsLoadCount != null ? btsLoadCount : '—'}</td>
-                  <td>{btsFromApi.is_active ? 'Yes' : 'No'}</td>
+                  <td>{btsFromApi.is_active ? t('yes', { ns: 'common' }) : t('no', { ns: 'common' })}</td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <button type="button" className="btn-edit" onClick={() => handleEditDispatcher(btsFromApi)}>
-                      Edit
+                      {t('actions.edit', { ns: 'common' })}
                     </button>{' '}
                     <button type="button" className="btn-delete" onClick={() => handleDeleteDispatcher(btsFromApi.id)}>
-                      Delete
+                      {t('actions.delete', { ns: 'common' })}
                     </button>
                   </td>
                 </tr>
@@ -645,8 +700,8 @@ const Dispatchers = () => {
                   }}
                 >
                   <td>
-                    <strong>BTS</strong>{' '}
-                    <span style={{ fontSize: '0.85em', color: '#666', fontWeight: 400 }}>(company — row removed)</span>
+                    <strong>{t('serviceTypes.bts')}</strong>{' '}
+                    <span style={{ fontSize: '0.85em', color: '#666', fontWeight: 400 }}>{t('partners.btsRowRemoved')}</span>
                   </td>
                   <td>—</td>
                   <td>—</td>
@@ -660,7 +715,7 @@ const Dispatchers = () => {
                         onClick={handleRestoreBtsPartner}
                         style={{ fontSize: '0.9em' }}
                       >
-                        Restore BTS
+                        {t('partners.restoreBts')}
                       </button>
                     ) : (
                       '—'
@@ -672,8 +727,8 @@ const Dispatchers = () => {
                 <tr>
                   <td colSpan={6} style={{ textAlign: 'center' }}>
                     {btsFromApi
-                      ? 'No named (Dostavshik) partners yet — add a Dispatcher login in Users.'
-                      : 'No named (Dostavshik) partners yet — or restore the BTS row with the button above.'}
+                      ? t('partners.noPartnersWithBts')
+                      : t('partners.noPartnersNoBts')}
                   </td>
                 </tr>
               ) : (
@@ -703,17 +758,17 @@ const Dispatchers = () => {
                     <td>{d.login_username || '—'}</td>
                     <td>{d.telephone || '—'}</td>
                     <td>{d.dispatch_count != null ? d.dispatch_count : '—'}</td>
-                    <td>{d.is_active ? 'Yes' : 'No'}</td>
+                    <td>{d.is_active ? t('yes', { ns: 'common' }) : t('no', { ns: 'common' })}</td>
                     <td onClick={(e) => e.stopPropagation()}>
                       {d.user ? (
-                        <span style={{ color: '#888', fontSize: '0.9em' }}>Users tab</span>
+                        <span style={{ color: '#888', fontSize: '0.9em' }}>{t('partners.usersTab')}</span>
                       ) : (
                         <>
                           <button type="button" className="btn-edit" onClick={() => handleEditDispatcher(d)}>
-                            Edit
+                            {t('actions.edit', { ns: 'common' })}
                           </button>{' '}
                           <button type="button" className="btn-delete" onClick={() => handleDeleteDispatcher(d.id)}>
-                            Delete
+                            {t('actions.delete', { ns: 'common' })}
                           </button>
                         </>
                       )}
@@ -730,8 +785,8 @@ const Dispatchers = () => {
             <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ margin: 0 }}>
                 {selectedDispatcher.isBts
-                  ? 'BTS — company delivery'
-                  : `${selectedDispatcher.name} — assignments & history`}
+                  ? t('detail.btsTitle')
+                  : t('detail.assignmentsTitle', { name: selectedDispatcher.name })}
               </h2>
               <button
                 type="button"
@@ -741,26 +796,26 @@ const Dispatchers = () => {
                   setDispatcherDetail(null);
                 }}
               >
-                Close
+                {t('actions.close', { ns: 'common' })}
               </button>
             </div>
 
-            {detailLoading && <p>Loading…</p>}
+            {detailLoading && <p>{t('actions.loading', { ns: 'common' })}</p>}
 
             {!detailLoading && dispatcherDetail && (
               <>
                 <div className="form-card" style={{ marginBottom: '16px', backgroundColor: '#f9f9f9' }}>
-                  <h3 style={{ marginTop: 0 }}>Contact</h3>
+                  <h3 style={{ marginTop: 0 }}>{t('detail.contact')}</h3>
                   <p style={{ margin: '4px 0' }}>
-                    <strong>Phone:</strong> {dispatcherDetail.dispatcher.telephone || '—'}
+                    <strong>{t('detail.phone')}</strong> {dispatcherDetail.dispatcher.telephone || '—'}
                   </p>
                   <p style={{ margin: '4px 0' }}>
-                    <strong>Notes:</strong> {dispatcherDetail.dispatcher.notes || '—'}
+                    <strong>{t('detail.notes')}</strong> {dispatcherDetail.dispatcher.notes || '—'}
                   </p>
                 </div>
 
                 <div className="form-card" style={{ marginBottom: '16px', backgroundColor: '#f9f9f9' }}>
-                  <h3 style={{ marginTop: 0 }}>Summary</h3>
+                  <h3 style={{ marginTop: 0 }}>{t('detail.summary')}</h3>
                   <div
                     style={{
                       display: 'grid',
@@ -769,55 +824,55 @@ const Dispatchers = () => {
                     }}
                   >
                     <div>
-                      <strong>Total loads</strong>
+                      <strong>{t('detail.totalLoads')}</strong>
                       <div>{dispatcherDetail.summary.total_dispatches}</div>
                     </div>
                     <div>
-                      <strong>Delivery cost (UZS)</strong>
+                      <strong>{t('detail.deliveryCostUzs')}</strong>
                       <div>
-                        {parseFloat(dispatcherDetail.summary.total_delivery_cost_uzs || 0).toLocaleString()} UZS
+                        {formatAppNumber(dispatcherDetail.summary.total_delivery_cost_uzs || 0)} {uzsLabel}
                       </div>
                     </div>
                     <div>
-                      <strong>Delivery cost (USD)</strong>
+                      <strong>{t('detail.deliveryCostUsd')}</strong>
                       <div>${parseFloat(dispatcherDetail.summary.total_delivery_cost_usd || 0).toFixed(2)}</div>
                     </div>
                     {Object.entries(dispatcherDetail.summary.by_dispatch_status || {})
                       .filter(([, v]) => v > 0)
                       .map(([k, v]) => (
                         <div key={k}>
-                          <strong>{DISPATCH_STATUSES.find((s) => s.value === k)?.label || k}</strong>
+                          <strong>{tStatus(k, 'dispatch')}</strong>
                           <div>{v}</div>
                         </div>
                       ))}
                   </div>
                 </div>
 
-                <h3 style={{ marginBottom: '8px' }}>Shipments</h3>
+                <h3 style={{ marginBottom: '8px' }}>{t('detail.shipments')}</h3>
                 <div style={{ overflowX: 'auto', marginBottom: '24px' }}>
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <SortableTh columnId="sale_id" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Sale</SortableTh>
-                        <SortableTh columnId="product" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Product</SortableTh>
-                        <SortableTh columnId="customer" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Customer</SortableTh>
-                        <SortableTh columnId="sale_status" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Sale status</SortableTh>
-                        <SortableTh columnId="dispatch_date" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Dispatch date</SortableTh>
-                        <SortableTh columnId="dispatch_type_key" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Type</SortableTh>
-                        <SortableTh columnId="delivery_cost_key" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Delivery cost</SortableTh>
-                        <SortableTh columnId="is_paid" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Paid</SortableTh>
-                        <SortableTh columnId="delivered_at" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Delivered</SortableTh>
-                        <SortableTh columnId="tracking_number" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Tracking</SortableTh>
-                        <SortableTh columnId="logistics_notes" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Notes</SortableTh>
-                        <SortableTh columnId="status" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>Dispatch status</SortableTh>
-                        <th>Actions</th>
+                        <SortableTh columnId="sale_id" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.sale')}</SortableTh>
+                        <SortableTh columnId="product" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.product')}</SortableTh>
+                        <SortableTh columnId="customer" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.customer')}</SortableTh>
+                        <SortableTh columnId="sale_status" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.saleStatus')}</SortableTh>
+                        <SortableTh columnId="dispatch_date" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.dispatchDate')}</SortableTh>
+                        <SortableTh columnId="dispatch_type_key" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.type')}</SortableTh>
+                        <SortableTh columnId="delivery_cost_key" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.deliveryCost')}</SortableTh>
+                        <SortableTh columnId="is_paid" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.paid')}</SortableTh>
+                        <SortableTh columnId="delivered_at" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.delivered')}</SortableTh>
+                        <SortableTh columnId="tracking_number" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.tracking')}</SortableTh>
+                        <SortableTh columnId="logistics_notes" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.notes')}</SortableTh>
+                        <SortableTh columnId="status" sortCol={shipmentSort.sortCol} sortDir={shipmentSort.sortDir} onSort={shipmentSort.onHeaderClick}>{t('shipments.columns.dispatchStatus')}</SortableTh>
+                        <th>{t('shipments.columns.actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {sortedDetailDispatches.length === 0 ? (
                         <tr>
                           <td colSpan={13} style={{ textAlign: 'center' }}>
-                            No dispatches assigned yet.
+                            {t('detail.noDispatches')}
                           </td>
                         </tr>
                       ) : (
@@ -829,16 +884,16 @@ const Dispatchers = () => {
                               <td style={{ minWidth: '140px' }}>{productLine(sale)}</td>
                               <td>{sale?.customer_detail?.name || '—'}</td>
                               <td>
-                                <span className={`status-badge ${sale?.status || ''}`}>{sale?.status || '—'}</span>
+                                <span className={`status-badge ${sale?.status || ''}`}>{sale?.status ? tStatus(sale.status, 'sale') : '—'}</span>
                               </td>
                               <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
-                                {row.dispatch_date ? new Date(row.dispatch_date).toLocaleString() : '—'}
+                                {row.dispatch_date ? formatAppDateTime(row.dispatch_date) : '—'}
                               </td>
-                              <td>{row.dispatch_type === 'bts' ? 'BTS' : 'Dostavshik'}</td>
-                              <td style={{ whiteSpace: 'nowrap', fontSize: '0.9rem' }}>{formatCost(row)}</td>
-                              <td>{row.is_paid ? 'Yes' : 'No'}</td>
+                              <td>{dispatchTypeLabel(row.dispatch_type)}</td>
+                              <td style={{ whiteSpace: 'nowrap', fontSize: '0.9rem' }}>{formatCost(row, uzsLabel)}</td>
+                              <td>{row.is_paid ? t('yes', { ns: 'common' }) : t('no', { ns: 'common' })}</td>
                               <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
-                                {row.delivered_at ? new Date(row.delivered_at).toLocaleString() : '—'}
+                                {row.delivered_at ? formatAppDateTime(row.delivered_at) : '—'}
                               </td>
                               <td>{row.tracking_number || '—'}</td>
                               <td>
@@ -861,18 +916,7 @@ const Dispatchers = () => {
                                 </select>
                               </td>
                               <td onClick={(e) => e.stopPropagation()}>
-                                {saleReadyToComplete(sale) && canShowCompleteActions &&
-                                  (shopDeliverySettlementRequired(sale) ? (
-                                    <ShopDeliverySettlementButtons sale={sale} onOpenSettlement={openCompleteAndPay} />
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="btn-status"
-                                      onClick={() => openCompleteAndPay(sale.id)}
-                                    >
-                                      Complete & Pay
-                                    </button>
-                                  ))}
+                                {renderSaleActionsCell(sale)}
                               </td>
                             </tr>
                           );
@@ -882,13 +926,13 @@ const Dispatchers = () => {
                     <tfoot>
                       <tr>
                         <td colSpan="6" style={{ textAlign: 'right' }}>
-                          Total
+                          {t('detail.total')}
                         </td>
                         <td style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                           {detailDeliveriesCostTotals.uzs > 0 || detailDeliveriesCostTotals.usd > 0
                             ? [
                                 detailDeliveriesCostTotals.uzs > 0
-                                  ? `${detailDeliveriesCostTotals.uzs.toLocaleString()} UZS`
+                                  ? `${formatAppNumber(detailDeliveriesCostTotals.uzs)} ${uzsLabel}`
                                   : null,
                                 detailDeliveriesCostTotals.usd > 0
                                   ? `$${detailDeliveriesCostTotals.usd.toFixed(2)}`
@@ -905,35 +949,35 @@ const Dispatchers = () => {
                   </table>
                 </div>
 
-                <h3 style={{ marginBottom: '8px' }}>Status change timeline</h3>
+                <h3 style={{ marginBottom: '8px' }}>{t('detail.timeline')}</h3>
                 <div style={{ overflowX: 'auto' }}>
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <SortableTh columnId="timestamp" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>Time</SortableTh>
-                        <SortableTh columnId="dispatch_num" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>Dispatch #</SortableTh>
-                        <SortableTh columnId="previous_status" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>From</SortableTh>
-                        <SortableTh columnId="new_status" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>To</SortableTh>
-                        <SortableTh columnId="changed_by" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>By</SortableTh>
-                        <SortableTh columnId="notes" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>Notes</SortableTh>
+                        <SortableTh columnId="timestamp" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>{t('timeline.columns.time')}</SortableTh>
+                        <SortableTh columnId="dispatch_num" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>{t('timeline.columns.dispatchNum')}</SortableTh>
+                        <SortableTh columnId="previous_status" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>{t('timeline.columns.from')}</SortableTh>
+                        <SortableTh columnId="new_status" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>{t('timeline.columns.to')}</SortableTh>
+                        <SortableTh columnId="changed_by" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>{t('timeline.columns.by')}</SortableTh>
+                        <SortableTh columnId="notes" sortCol={statusTimelineSort.sortCol} sortDir={statusTimelineSort.sortDir} onSort={statusTimelineSort.onHeaderClick}>{t('timeline.columns.notes')}</SortableTh>
                       </tr>
                     </thead>
                     <tbody>
                       {!dispatcherDetail.status_change_logs?.length ? (
                         <tr>
                           <td colSpan={6} style={{ textAlign: 'center' }}>
-                            No status changes logged yet.
+                            {t('detail.noStatusChanges')}
                           </td>
                         </tr>
                       ) : (
                         sortedStatusChangeLogs.map((log) => (
                           <tr key={log.id}>
                             <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
-                              {log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}
+                              {log.timestamp ? formatAppDateTime(log.timestamp) : '—'}
                             </td>
                             <td>#{log.object_id}</td>
-                            <td>{log.previous_status || '—'}</td>
-                            <td>{log.new_status}</td>
+                            <td>{log.previous_status ? tStatus(log.previous_status, 'dispatch') : '—'}</td>
+                            <td>{tStatus(log.new_status, 'dispatch')}</td>
                             <td>{log.changed_by_detail?.username || '—'}</td>
                             <td>{log.notes || '—'}</td>
                           </tr>
@@ -951,15 +995,15 @@ const Dispatchers = () => {
       </div>
 
       <div className="table-card" style={{ marginTop: isDispatcherRole ? 0 : '24px' }}>
-        <h2>{isDispatcherRole ? 'Assigned deliveries' : 'All deliveries (workspace)'}</h2>
+        <h2>{isDispatcherRole ? t('workspace.assignedDeliveries') : t('workspace.allDeliveries')}</h2>
         <div className="filter-toolbar filter-toolbar--tight filter-toolbar--bleed">
           <div className="filter-field">
-            <label>Status</label>
+            <label>{t('filters.status')}</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
             >
-              {DISPATCH_STATUSES.map((s) => (
+              {dispatchStatusOptions.map((s) => (
                 <option key={s.value || 'all'} value={s.value}>
                   {s.label}
                 </option>
@@ -967,24 +1011,24 @@ const Dispatchers = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Service</label>
+            <label>{t('filters.service')}</label>
             <select
               value={filters.serviceType}
               onChange={(e) => setFilters({ ...filters, serviceType: e.target.value })}
             >
-              <option value="">All</option>
-              <option value="bts">BTS</option>
-              <option value="dostavshik">Dostavshik</option>
+              <option value="">{t('filters.all', { ns: 'common' })}</option>
+              <option value="bts">{t('serviceTypes.bts')}</option>
+              <option value="dostavshik">{t('serviceTypes.dostavshik')}</option>
             </select>
           </div>
           {!isDispatcherRole && (
           <div className="filter-field">
-            <label>Dispatcher</label>
+            <label>{t('filters.dispatcher')}</label>
             <select
               value={filters.dispatcher}
               onChange={(e) => setFilters({ ...filters, dispatcher: e.target.value })}
             >
-              <option value="">All</option>
+              <option value="">{t('filters.all', { ns: 'common' })}</option>
               {activeDispatchers.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -999,24 +1043,24 @@ const Dispatchers = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <SortableTh columnId="id" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>ID</SortableTh>
-                <SortableTh columnId="sale_id" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Sale</SortableTh>
-                <SortableTh columnId="product" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Product</SortableTh>
-                <SortableTh columnId="customer" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Customer</SortableTh>
-                <SortableTh columnId="dispatch_type_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Type</SortableTh>
-                <SortableTh columnId="delivery_cost_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Cost</SortableTh>
-                <SortableTh columnId="dispatcher_name" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Dispatcher</SortableTh>
-                <SortableTh columnId="delivered_at" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Delivered</SortableTh>
-                <SortableTh columnId="logistics_notes" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Logistics notes</SortableTh>
-                <SortableTh columnId="status" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>Status</SortableTh>
-                <th>Actions</th>
+                <SortableTh columnId="id" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('table.id', { ns: 'common' })}</SortableTh>
+                <SortableTh columnId="sale_id" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.sale')}</SortableTh>
+                <SortableTh columnId="product" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.product')}</SortableTh>
+                <SortableTh columnId="customer" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.customer')}</SortableTh>
+                <SortableTh columnId="dispatch_type_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.type')}</SortableTh>
+                <SortableTh columnId="delivery_cost_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.deliveryCost')}</SortableTh>
+                <SortableTh columnId="dispatcher_name" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('filters.dispatcher')}</SortableTh>
+                <SortableTh columnId="delivered_at" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.delivered')}</SortableTh>
+                <SortableTh columnId="logistics_notes" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.notes')}</SortableTh>
+                <SortableTh columnId="status" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('table.status', { ns: 'common' })}</SortableTh>
+                <th>{t('table.actions', { ns: 'common' })}</th>
               </tr>
             </thead>
             <tbody>
               {dispatches.length === 0 ? (
                 <tr>
                   <td colSpan={11} style={{ textAlign: 'center' }}>
-                    No dispatches match filters.
+                    {t('workspace.noMatch')}
                   </td>
                 </tr>
               ) : (
@@ -1028,8 +1072,8 @@ const Dispatchers = () => {
                       <td>#{sale?.id}</td>
                       <td>{productLine(sale)}</td>
                       <td>{sale?.customer_detail?.name || '—'}</td>
-                      <td>{row.dispatch_type === 'bts' ? 'BTS' : 'Dostavshik'}</td>
-                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.9rem' }}>{formatCost(row)}</td>
+                      <td>{dispatchTypeLabel(row.dispatch_type)}</td>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: '0.9rem' }}>{formatCost(row, uzsLabel)}</td>
                       <td>
                         {canManagePartners ? (
                         <select
@@ -1039,7 +1083,7 @@ const Dispatchers = () => {
                             patchDispatch(row.id, { dispatcher: v ? parseInt(v, 10) : null });
                           }}
                         >
-                          <option value="">— Unassigned —</option>
+                          <option value="">{t('workspace.unassigned')}</option>
                           {activeDispatchers.map((d) => (
                             <option key={d.id} value={d.id}>
                               {d.name}
@@ -1051,7 +1095,7 @@ const Dispatchers = () => {
                         )}
                       </td>
                       <td style={{ whiteSpace: 'nowrap', fontSize: '0.9em' }}>
-                        {row.delivered_at ? new Date(row.delivered_at).toLocaleString() : '—'}
+                        {row.delivered_at ? formatAppDateTime(row.delivered_at) : '—'}
                       </td>
                       <td>
                         <LogisticsNotesCell
@@ -1072,22 +1116,7 @@ const Dispatchers = () => {
                           ))}
                         </select>
                       </td>
-                      <td>
-                        {saleReadyToComplete(sale) && canShowCompleteActions &&
-                          (shopDeliverySettlementRequired(sale) ? (
-                            <ShopDeliverySettlementButtons sale={sale} onOpenSettlement={openCompleteAndPay} />
-                          ) : (
-                            !isDispatcherRole && (
-                            <button
-                              type="button"
-                              className="btn-status"
-                              onClick={() => openCompleteAndPay(sale.id)}
-                            >
-                              Complete & Pay
-                            </button>
-                            )
-                          ))}
-                      </td>
+                      <td>{renderSaleActionsCell(sale)}</td>
                     </tr>
                   );
                 })
@@ -1096,13 +1125,13 @@ const Dispatchers = () => {
             <tfoot>
               <tr>
                 <td colSpan="5" style={{ textAlign: 'right' }}>
-                  Total (filtered)
+                  {t('workspace.totalFiltered')}
                 </td>
                 <td style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
                   {allDeliveriesCostTotals.uzs > 0 || allDeliveriesCostTotals.usd > 0
                     ? [
                         allDeliveriesCostTotals.uzs > 0
-                          ? `${allDeliveriesCostTotals.uzs.toLocaleString()} UZS`
+                          ? `${formatAppNumber(allDeliveriesCostTotals.uzs)} ${uzsLabel}`
                           : null,
                         allDeliveriesCostTotals.usd > 0
                           ? `$${allDeliveriesCostTotals.usd.toFixed(2)}`
@@ -1124,6 +1153,7 @@ const Dispatchers = () => {
 };
 
 function LogisticsNotesCell({ dispatchId, initial, onSave }) {
+  const { t } = useAppTranslation(['dispatchers', 'common']);
   const [value, setValue] = useState(initial);
   const [dirty, setDirty] = useState(false);
 
@@ -1149,14 +1179,14 @@ function LogisticsNotesCell({ dispatchId, initial, onSave }) {
           className="btn-primary"
           onClick={() => {
             if (!String(value).trim()) {
-              alert('Please enter logistics notes before saving.');
+              alert(t('notifications.logisticsNotesRequired'));
               return;
             }
             onSave(String(value).trim());
             setDirty(false);
           }}
         >
-          Save
+          {t('actions.save', { ns: 'common' })}
         </button>
       )}
     </div>

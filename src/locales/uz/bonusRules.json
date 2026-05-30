@@ -1,0 +1,55 @@
+{
+  "title": "Bonus qoidalari",
+  "newRule": "+ Yangi qoida",
+  "form": {
+    "editTitle": "Qoidani tahrirlash",
+    "newTitle": "Yangi bonus qoidasi",
+    "salesManager": "Savdo menejeri *",
+    "selectUser": "Foydalanuvchini tanlang",
+    "productOptional": "Mahsulot (ixtiyoriy)",
+    "anyProduct": "Har qanday mahsulot",
+    "categoryOptional": "Kategoriya (ixtiyoriy)",
+    "categoryPlaceholder": "masalan, krossovka",
+    "saleTypeOptional": "Sotuv turi (ixtiyoriy)",
+    "any": "Har qanday",
+    "bonusType": "Bonus turi",
+    "fixedPerUnit": "Birlik uchun qat’iy",
+    "percentRevenue": "Daromad foizi",
+    "amountPerUnit": "Birlik uchun summa",
+    "percent": "Foiz",
+    "active": "Faol"
+  },
+  "saleTypes": {
+    "bought_from_shop": "Do‘kon",
+    "delivery": "Yetkazib berish",
+    "from_order": "Buyurtmadan",
+    "reserved": "Band qilingan"
+  },
+  "rulesTable": {
+    "title": "Qoidalar",
+    "manager": "Menejer",
+    "target": "Maqsad",
+    "type": "Turi",
+    "value": "Qiymat",
+    "active": "Faol",
+    "actions": "Harakatlar",
+    "noRows": "Bonus qoidalari yo‘q",
+    "allSales": "Barcha sotuvlar",
+    "yes": "Ha",
+    "no": "Yo‘q"
+  },
+  "transactionsTable": {
+    "title": "Bonus tranzaksiyalari",
+    "date": "Sana",
+    "manager": "Menejer",
+    "sale": "Sotuv",
+    "amount": "Summa",
+    "notes": "Izoh",
+    "noRows": "Tranzaksiyalar hali yo‘q"
+  },
+  "confirmDelete": "Ushbu bonus qoidasini o‘chirasizmi?",
+  "notifications": {
+    "saveFailed": "Qoidani saqlab bo‘lmadi",
+    "deleteFailed": "Qoidani o‘chirib bo‘lmadi"
+  }
+}

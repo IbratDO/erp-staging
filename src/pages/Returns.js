@@ -12,19 +12,17 @@ import {
   buildReturnCrossCurrencyConfirmMessage,
   buildReturnCombinedRefundConfirmMessage,
 } from '../utils/returnRefundHelpers';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppDateTime } from '../utils/localeFormat';
+import i18n from '../i18n';
 import './TablePage.css';
 
-const PRODUCT_CATEGORY_TYPES = [
-  { value: 'sports', label: 'Sports' },
-  { value: 'casual', label: 'Casual' },
-];
+const PRODUCT_CATEGORY_TYPE_VALUES = ['sports', 'casual'];
 
-const categoryTypeLabel = (value) =>
-  PRODUCT_CATEGORY_TYPES.find((t) => t.value === value)?.label ?? '';
-
-function returnProductPickerLabel(p) {
+function returnProductPickerLabel(p, tr) {
   if (!p) return '';
-  return `${p.brand} ${p.model} - Size ${p.size} (${p.color})`;
+  return tr('productPicker', { brand: p.brand, model: p.model, size: p.size, color: p.color });
 }
 
 function getSaleUnitPrice(sale) {
@@ -104,32 +102,42 @@ function formatRefundAmounts(uzs, usd) {
 
 /** @returns {false} if user cancels */
 function confirmReturnRefund(returnItem, uzsEntered, usdEntered, meta) {
+  const tr = (key, opts) => i18n.t(key, { ns: 'returns', ...opts });
   const uzs = Number(uzsEntered) || 0;
   const usd = Number(usdEntered) || 0;
   const due = meta
     ? { amount: meta.due, currency: meta.sc, unitPrice: computeReturnRefundDue(returnItem).unitPrice }
     : computeReturnRefundDue(returnItem);
   const productLabel = returnItem?.product_detail
-    ? `${returnItem.product_detail.brand} ${returnItem.product_detail.model}`
-    : `Product #${returnItem?.product ?? '?'}`;
+    ? tr('confirm.productLine', {
+        label: `${returnItem.product_detail.brand} ${returnItem.product_detail.model}`,
+      })
+    : tr('confirm.productFallback', { id: returnItem?.product ?? '?' });
   const customerLine = returnItem?.customer_detail?.name
-    ? `\nCustomer: ${returnItem.customer_detail.name}`
+    ? `\n${tr('confirm.customerLine', { name: returnItem.customer_detail.name })}`
     : '';
   const dueLine =
     due.amount != null
       ? formatDisplayAmount(due.amount, due.currency)
       : '—';
   const unitDetail = Number.isFinite(due.unitPrice)
-    ? `\n(${formatDisplayAmount(due.unitPrice, due.currency)} / unit × ${returnItem?.quantity ?? 0})`
+    ? tr('confirm.unitDetail', {
+        unit: formatDisplayAmount(due.unitPrice, due.currency),
+        qty: returnItem?.quantity ?? 0,
+      })
     : '';
 
-  const msg =
-    `Mark Return #${returnItem?.id ?? '?'} as refunded?\n\n` +
-    `${productLabel}\n` +
-    `Qty: ${returnItem?.quantity ?? '—'}${customerLine}\n\n` +
-    `Sold price: ${dueLine}${unitDetail}\n` +
-    `Refunding: ${formatRefundAmounts(uzs, usd)}\n\n` +
-    'Proceed with this refund?';
+  const msg = [
+    tr('confirm.markRefundedTitle', { id: returnItem?.id ?? '?' }),
+    '',
+    productLabel,
+    tr('confirm.qtyLine', { qty: returnItem?.quantity ?? '—' }) + customerLine,
+    '',
+    tr('confirm.soldPriceLine', { amount: dueLine, unitDetail }),
+    tr('confirm.refundingLine', { amounts: formatRefundAmounts(uzs, usd) }),
+    '',
+    tr('confirm.proceed'),
+  ].join('\n');
 
   return window.confirm(msg);
 }
@@ -169,6 +177,9 @@ const RETURNS_SORT_ACCESSORS = {
 };
 
 const Returns = () => {
+  const { t, monthOptions } = useAppTranslation(['returns', 'common', 'status', 'products']);
+  const categoryTypeLabel = (value) =>
+    value ? t(`categoryTypes.${value}`, { defaultValue: value }) : '';
   const { hasPermission } = usePermissions();
   const canMarkRefunded = hasPermission('returns.mark_refunded');
   const canCreateReturn = hasPermission('returns.create');
@@ -267,13 +278,13 @@ const Returns = () => {
       .catch(() => {
         if (!cancelled) {
           setExchangeRate(null);
-          setExchangeRateError('Could not load CBU exchange rate.');
+          setExchangeRateError(t('notifications.exchangeRateFailed'));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [showRefundForm]);
+  }, [showRefundForm, t]);
 
   const refundReturnItem = useMemo(
     () => (refundFormData.returnId ? returns.find((r) => r.id === refundFormData.returnId) : null),
@@ -586,11 +597,11 @@ const Returns = () => {
     e.preventDefault();
     if (!e.target.reportValidity()) return;
     if (!formData.sale) {
-      showNotification('Please select a sale.', 'error');
+      showNotification(t('notifications.selectSale'), 'error');
       return;
     }
     if (formData.reason === 'other' && !String(formData.notes || '').trim()) {
-      showNotification('Please enter notes when reason is Other.', 'error');
+      showNotification(t('notifications.notesRequiredOther'), 'error');
       return;
     }
     const qty = parseInt(formData.quantity, 10);
@@ -644,11 +655,11 @@ const Returns = () => {
         payload.customer = parseInt(formData.customer, 10);
       }
       if (Number.isNaN(payload.product) || Number.isNaN(payload.sale)) {
-        showNotification('Please select a product and sale.', 'error');
+        showNotification(t('notifications.selectProductSale'), 'error');
         return;
       }
       await api.post('/returns/', payload);
-      showNotification('Return created successfully!', 'success');
+      showNotification(t('notifications.created'), 'success');
       setShowForm(false);
       setFormCategory('');
       setFormData({
@@ -668,8 +679,8 @@ const Returns = () => {
       const msg =
         extractReturnApiError(d) ||
         error.message ||
-        'Error creating return';
-      showNotification(typeof msg === 'string' ? msg : 'Error creating return', 'error');
+        t('notifications.createFailed');
+      showNotification(typeof msg === 'string' ? msg : t('notifications.createFailed'), 'error');
     }
   };
 
@@ -690,7 +701,7 @@ const Returns = () => {
     const uzs = parseFloat(refundFormData.uzs) || 0;
     const usd = parseFloat(refundFormData.usd) || 0;
     if (uzs + usd === 0) {
-      showNotification('Please enter at least one refund amount.', 'error');
+      showNotification(t('notifications.refundAmountRequired'), 'error');
       return;
     }
     const meta = computeReturnRefundMeta(returnItem, refundFormData, cbuRate);
@@ -808,12 +819,12 @@ const Returns = () => {
       await api.post(`/returns/${refundFormData.returnId}/mark_refunded/`, requestData);
       setShowRefundForm(false);
       setRefundFormData({ returnId: null, uzs: '', usd: '' });
-      showNotification('Return marked as refunded.', 'success');
+      showNotification(t('notifications.markedRefunded'), 'success');
       fetchReturns();
     } catch (error) {
       console.error('Error marking return as refunded:', error);
       showNotification(
-        error.response?.data?.error || error.response?.data?.detail || 'Error marking return as refunded',
+        error.response?.data?.error || error.response?.data?.detail || t('notifications.markFailed'),
         'error',
       );
     }
@@ -842,7 +853,7 @@ const Returns = () => {
   }, [filteredReturns, returnsSort]);
 
   if (loading) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   return (
@@ -858,17 +869,17 @@ const Returns = () => {
         </div>
       )}
       <div className="page-header">
-        <h1>Returns</h1>
+        <PageTitle ns="returns" />
         {canCreateReturn && (
         <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Cancel' : '+ New Return'}
+          {showForm ? t('actions.cancel', { ns: 'common' }) : t('newReturn')}
         </button>
         )}
       </div>
 
       {showForm && canCreateReturn && (
         <div className="form-card">
-          <h2>New Return</h2>
+          <h2>{t('form.title')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="form-grid">
               {(() => {
@@ -948,7 +959,7 @@ const Returns = () => {
                         );
                       }}
                     >
-                      <option value="">All Categories</option>
+                      <option value="">{t('form.allCategories')}</option>
                       {newReturnFormCategories.map((cat) => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
@@ -977,8 +988,8 @@ const Returns = () => {
                       >
                         <span style={{ color: selectedReturnProduct ? '#333' : '#999' }}>
                           {selectedReturnProduct
-                            ? returnProductPickerLabel(selectedReturnProduct)
-                            : 'Select a product'}
+                            ? returnProductPickerLabel(selectedReturnProduct, t)
+                            : t('form.selectProduct')}
                         </span>
                         <span style={{ color: '#666', fontSize: '0.8em' }}>{productDropdownOpen ? '▲' : '▼'}</span>
                       </div>
@@ -1071,7 +1082,7 @@ const Returns = () => {
                                       e.currentTarget.style.background = 'white';
                                   }}
                                 >
-                                  {returnProductPickerLabel(product)}
+                                  {returnProductPickerLabel(product, t)}
                                 </div>
                               ))
                             )}
@@ -1272,21 +1283,23 @@ const Returns = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Reason</label>
+                <label>{t('form.reason')}</label>
                 <select
                   value={formData.reason}
                   onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                   required
                 >
-                  <option value="defective">Defective</option>
-                  <option value="wrong_size">Wrong Size</option>
-                  <option value="wrong_item">Wrong Item</option>
-                  <option value="customer_request">Customer Request</option>
-                  <option value="other">Other</option>
+                  {['defective', 'wrong_size', 'wrong_item', 'customer_request', 'other'].map((reasonKey) => (
+                    <option key={reasonKey} value={reasonKey}>
+                      {t(`reasons.${reasonKey}`)}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>Notes{formData.reason === 'other' ? ' *' : ''}</label>
+                <label>
+                  {formData.reason === 'other' ? t('form.notesRequiredOther') : t('form.notes')}
+                </label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
@@ -1297,7 +1310,7 @@ const Returns = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Create Return
+                {t('form.submit')}
               </button>
             </div>
           </form>
@@ -1306,10 +1319,9 @@ const Returns = () => {
 
       {showRefundForm && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>Mark Return #{refundFormData.returnId} as Refunded</h2>
+          <h2>{t('markRefundedModal.title', { id: refundFormData.returnId })}</h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Enter the UZS and/or USD refund amount. Combined refunds use the CBU rate (one confirmation).
-            You may refund less than the amount due; payable and profit/loss will match the cash you pay.
+            {t('markRefundedModal.intro')}
           </p>
           {exchangeRate?.label && (
             <p style={{ color: '#4a5568', marginBottom: '12px', fontSize: '0.85em' }}>
@@ -1331,19 +1343,22 @@ const Returns = () => {
               }}
             >
               <div>
-                <strong>Refund due:</strong> {formatDisplayAmount(refundMeta.due, refundMeta.sc)}
+                <strong>{t('markRefundedModal.refundDue')}</strong>{' '}
+                {formatDisplayAmount(refundMeta.due, refundMeta.sc)}
               </div>
               {refundMeta.paid != null && (parseFloat(refundFormData.uzs) || parseFloat(refundFormData.usd)) ? (
                 <div style={{ marginTop: 6 }}>
                   <strong>
                     {refundMeta.splitCurrency || refundMeta.crossCurrency
-                      ? `Total at CBU rate (in ${refundMeta.sc}):`
-                      : `Entered (in ${refundMeta.sc}):`}
+                      ? t('markRefundedModal.totalAtCbu', { currency: refundMeta.sc })
+                      : t('markRefundedModal.enteredInCurrency', { currency: refundMeta.sc })}
                   </strong>{' '}
                   {formatDisplayAmount(refundMeta.paid, refundMeta.sc)}
                   {refundMeta.needs && (
                     <span style={{ color: '#c62828', marginLeft: 8 }}>
-                      — below due by {formatDisplayAmount(refundMeta.short, refundMeta.sc)}
+                      {t('markRefundedModal.belowDue', {
+                        short: formatDisplayAmount(refundMeta.short, refundMeta.sc),
+                      })}
                     </span>
                   )}
                 </div>
@@ -1353,13 +1368,13 @@ const Returns = () => {
           <form onSubmit={handleRefundSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>UZS</label>
+                <label>{t('refundForm.uzsRefund')}</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
                   value={refundFormData.uzs}
                   onChange={(e) => setRefundFormData({ ...refundFormData, uzs: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>USD</label>
+                <label>{t('refundForm.usdRefund')}</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
                   value={refundFormData.usd}
                   onChange={(e) => setRefundFormData({ ...refundFormData, usd: e.target.value })} />
@@ -1367,7 +1382,7 @@ const Returns = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Mark as Refunded
+                {t('table.markRefunded')}
               </button>
               <button
                 type="button"
@@ -1377,7 +1392,7 @@ const Returns = () => {
                   setRefundFormData({ returnId: null, uzs: '', usd: '' });
                 }}
               >
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -1387,29 +1402,29 @@ const Returns = () => {
       {/* Filters */}
       {!showForm && !showRefundForm && (
         <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
-          <h3 className="filter-card__title">Filters</h3>
+          <h3 className="filter-card__title">{t('filters.title')}</h3>
         <div className="filter-toolbar">
           <div className="filter-field">
-            <label>Category type</label>
+            <label>{t('filters.categoryType')}</label>
             <select
               value={filters.category_type}
               onChange={(e) => setFilters({ ...filters, category_type: e.target.value })}
             >
-              <option value="">All types</option>
-              {PRODUCT_CATEGORY_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
+              <option value="">{t('filters.allTypes')}</option>
+              {PRODUCT_CATEGORY_TYPE_VALUES.map((value) => (
+                <option key={value} value={value}>
+                  {t(`categoryTypes.${value}`)}
                 </option>
               ))}
             </select>
           </div>
           <div className="filter-field">
-            <label>Category</label>
+            <label>{t('filters.category')}</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             >
-              <option value="">All Categories</option>
+              <option value="">{t('form.allCategories')}</option>
               {[...new Set(
                 returns
                   .filter((r) => !filters.category_type || r.product_detail?.category_type === filters.category_type)
@@ -1421,12 +1436,12 @@ const Returns = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Brand</label>
+            <label>{t('filters.brand')}</label>
             <select
               value={filters.brand}
               onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
             >
-              <option value="">All Brands</option>
+              <option value="">{t('filters.allBrands')}</option>
               {getUniqueValues(returns, 'brand').map((brand) => (
                 <option key={brand} value={brand}>
                   {brand}
@@ -1435,12 +1450,12 @@ const Returns = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Model</label>
+            <label>{t('filters.model')}</label>
             <select
               value={filters.model}
               onChange={(e) => setFilters({ ...filters, model: e.target.value })}
             >
-              <option value="">All Models</option>
+              <option value="">{t('filters.allModels')}</option>
               {getUniqueValues(returns, 'model').map((model) => (
                 <option key={model} value={model}>
                   {model}
@@ -1449,12 +1464,12 @@ const Returns = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Size</label>
+            <label>{t('filters.size')}</label>
             <select
               value={filters.size}
               onChange={(e) => setFilters({ ...filters, size: e.target.value })}
             >
-              <option value="">All Sizes</option>
+              <option value="">{t('filters.allSizes')}</option>
               {getUniqueValues(returns, 'size').map((size) => (
                 <option key={size} value={size}>
                   {size}
@@ -1463,12 +1478,12 @@ const Returns = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Color</label>
+            <label>{t('filters.color')}</label>
             <select
               value={filters.color}
               onChange={(e) => setFilters({ ...filters, color: e.target.value })}
             >
-              <option value="">All Colors</option>
+              <option value="">{t('filters.allColors')}</option>
               {getUniqueValues(returns, 'color').map((color) => (
                 <option key={color} value={color}>
                   {color}
@@ -1477,26 +1492,24 @@ const Returns = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Reason</label>
+            <label>{t('filters.reason')}</label>
             <select
               value={filters.reason}
               onChange={(e) => setFilters({ ...filters, reason: e.target.value })}
             >
-              <option value="">All Reasons</option>
-              <option value="defective">Defective</option>
-              <option value="wrong_size">Wrong Size</option>
-              <option value="wrong_item">Wrong Item</option>
-              <option value="customer_request">Customer Request</option>
-              <option value="other">Other</option>
+              <option value="">{t('filters.allReasons')}</option>
+              {['defective', 'wrong_size', 'wrong_item', 'customer_request', 'other'].map((value) => (
+                <option key={value} value={value}>{t(`reasons.${value}`)}</option>
+              ))}
             </select>
           </div>
           <div className="filter-field">
-            <label>Year</label>
+            <label>{t('filters.year')}</label>
             <select
               value={filters.year}
               onChange={(e) => setFilters({ ...filters, year: e.target.value })}
             >
-              <option value="">All Years</option>
+              <option value="">{t('filters.allYears')}</option>
               {Array.from({ length: 10 }, (_, i) => {
                 const year = new Date().getFullYear() - i;
                 return (
@@ -1508,24 +1521,15 @@ const Returns = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Month</label>
+            <label>{t('filters.month')}</label>
             <select
               value={filters.month}
               onChange={(e) => setFilters({ ...filters, month: e.target.value })}
             >
-              <option value="">All Months</option>
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
+              <option value="">{t('filters.allMonths')}</option>
+              {monthOptions.filter((o) => o.value).map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
           <div className="filter-toolbar__actions">
@@ -1546,7 +1550,7 @@ const Returns = () => {
                 })
               }
             >
-              Clear all
+              {t('filters.clearAll')}
             </button>
           </div>
         </div>
@@ -1559,59 +1563,59 @@ const Returns = () => {
           <thead>
             <tr>
               <SortableTh columnId="id" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                ID
+                {t('table.id')}
               </SortableTh>
-              <th>Actions</th>
+              <th>{t('table.actions')}</th>
               <SortableTh columnId="refund_status" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Refund Status
+                {t('table.refundStatus')}
               </SortableTh>
               <SortableTh columnId="category_type" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Category type
+                {t('table.categoryType')}
               </SortableTh>
               <SortableTh columnId="category" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Category
+                {t('table.category')}
               </SortableTh>
               <SortableTh columnId="brand" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Brand
+                {t('table.brand')}
               </SortableTh>
               <SortableTh columnId="model" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Model
+                {t('table.model')}
               </SortableTh>
               <SortableTh columnId="size" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Size
+                {t('table.size')}
               </SortableTh>
               <SortableTh columnId="color" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Color
+                {t('table.color')}
               </SortableTh>
               <SortableTh columnId="sale" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Sale
+                {t('table.sale')}
               </SortableTh>
               <SortableTh columnId="customer" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Customer
+                {t('table.customer')}
               </SortableTh>
               <SortableTh columnId="phone" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Phone
+                {t('table.phone')}
               </SortableTh>
               <SortableTh columnId="quantity" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Quantity
+                {t('table.quantity')}
               </SortableTh>
               <SortableTh columnId="reason" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Reason
+                {t('table.reason')}
               </SortableTh>
               <SortableTh columnId="refund_uzs" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Refund UZS
+                {t('table.refundUzs')}
               </SortableTh>
               <SortableTh columnId="refund_usd" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Refund USD
+                {t('table.refundUsd')}
               </SortableTh>
               <SortableTh columnId="notes" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Notes
+                {t('table.notes')}
               </SortableTh>
               <SortableTh columnId="processed_by" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Processed By
+                {t('table.processedBy')}
               </SortableTh>
               <SortableTh columnId="return_date" sortCol={returnsSort.sortCol} sortDir={returnsSort.sortDir} onSort={returnsSort.onHeaderClick}>
-                Date
+                {t('table.date')}
               </SortableTh>
             </tr>
           </thead>
@@ -1619,7 +1623,7 @@ const Returns = () => {
             {filteredReturns.length === 0 ? (
               <tr>
                 <td colSpan="19" style={{ textAlign: 'center' }}>
-                  No returns found
+                  {t('table.noRows')}
                 </td>
               </tr>
             ) : (
@@ -1632,13 +1636,13 @@ const Returns = () => {
                         className="btn-status"
                         onClick={() => handleMarkRefunded(returnItem.id)}
                       >
-                        Mark as Refunded
+                        {t('table.markRefunded')}
                       </button>
                     )}
                   </td>
                   <td>
                     <span className={`status-badge ${returnItem.refund_status === 'refunded' ? 'completed' : 'pending'}`}>
-                      {returnItem.refund_status === 'refunded' ? 'Refunded' : 'Pending'}
+                      {t(`refundStatus.${returnItem.refund_status}`, { defaultValue: returnItem.refund_status })}
                     </span>
                   </td>
                   <td>
@@ -1652,12 +1656,12 @@ const Returns = () => {
                   <td><strong>{returnItem.product_detail?.size || '-'}</strong></td>
                   <td><strong>{returnItem.product_detail?.color || '-'}</strong></td>
                   <td>
-                    {returnItem.sale ? `Sale #${returnItem.sale}` : '-'}
+                    {returnItem.sale ? t('table.saleRef', { id: returnItem.sale }) : '-'}
                   </td>
                   <td>{returnItem.customer_detail?.name || <span style={{ color: '#bbb' }}>—</span>}</td>
                   <td>{returnItem.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
                   <td>{returnItem.quantity}</td>
-                  <td>{returnItem.reason.replace('_', ' ')}</td>
+                  <td>{t(`reasons.${returnItem.reason}`, { defaultValue: returnItem.reason })}</td>
                   <td>
                     {(() => { const v = (parseFloat(returnItem.refund_uzs_cash) || 0) + (parseFloat(returnItem.refund_uzs_card) || 0); return v > 0 ? <span style={{ color: '#4caf50' }}>{v.toLocaleString()} UZS</span> : <span style={{ color: '#bbb' }}>—</span>; })()}
                   </td>
@@ -1666,15 +1670,15 @@ const Returns = () => {
                   </td>
                   <td>{returnItem.notes || <span style={{ color: '#bbb' }}>—</span>}</td>
                   <td>{returnItem.processed_by_detail?.username || '-'}</td>
-                  <td>{new Date(returnItem.return_date).toLocaleString()}</td>
+                  <td>{formatAppDateTime(returnItem.return_date)}</td>
                 </tr>
               ))
             )}
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="10" style={{ textAlign: 'right' }}>
-                Total
+              <td colSpan="12" style={{ textAlign: 'right' }}>
+                {t('table.total')}
               </td>
               <td style={{ fontWeight: 600 }}>{returnColumnTotals.quantity.toLocaleString()}</td>
               <td>—</td>
@@ -1684,7 +1688,7 @@ const Returns = () => {
               <td style={{ fontWeight: 600 }}>
                 {returnColumnTotals.usd > 0 ? `$${returnColumnTotals.usd.toFixed(2)}` : '—'}
               </td>
-              <td colSpan="4">—</td>
+              <td colSpan="3">—</td>
             </tr>
           </tfoot>
         </table>

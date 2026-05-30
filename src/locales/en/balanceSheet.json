@@ -1,0 +1,60 @@
+{
+  "title": "Balance Sheet",
+  "intro": "Financial position at a point in time (USD). Net profit for the selected month flows into equity and links to the Profit / Loss report for the same period. Past dates are recalculated from transactions recorded on or before that date.",
+  "filters": {
+    "title": "As-of date / period",
+    "asOf": "As of (date)",
+    "year": "Year",
+    "month": "Month",
+    "emptyOption": "—"
+  },
+  "positionAsOf": "Position as of {{date}}",
+  "plPeriod": " · P&L period: {{label}}",
+  "loading": "Loading…",
+  "loadFailed": "Could not load balance sheet.",
+  "balanceCheck": {
+    "unbalanced": "Balance check: Assets and liabilities + equity differ by {{diff}}. This can happen when accrual P&L and point-in-time ledger positions use different timing; review notes below.",
+    "balanced": "Balanced: Assets = Liabilities + Equity ({{total}})"
+  },
+  "metrics": {
+    "totalAssets": "Total assets",
+    "equityLiabilities": "Equity + liabilities"
+  },
+  "assets": {
+    "title": "Assets",
+    "total": "TOTAL ASSETS",
+    "sections": {
+      "money": "Money",
+      "receivables": "Receivables",
+      "inventory": "Inventory",
+      "fixedAssets": "Fixed assets"
+    },
+    "cash": "Cash",
+    "bank": "Bank",
+    "customerReceivables": "Customer receivables (unpaid sales)",
+    "productReceivables": "Product receivables (prepaid orders, goods in transit)",
+    "fixedAssetReceivables": "Fixed asset receivables (paid, not yet received)",
+    "products": "Products",
+    "packages": "Packages",
+    "packagesWithUnits": "Packages ({{units}} units)",
+    "prepaidExpenses": "Prepaid expenses",
+    "fixedAssetsOnBooks": "Fixed assets (on the books)"
+  },
+  "liabilities": {
+    "title": "Liabilities",
+    "total": "TOTAL LIABILITIES",
+    "sections": {
+      "payables": "Payables"
+    },
+    "payableExpenses": "Payable expenses",
+    "customerAdvances": "Customer advances (deposits)"
+  },
+  "equity": {
+    "title": "Equity",
+    "total": "TOTAL EQUITY",
+    "ownerCapital": "Owner capital (net contributions)",
+    "retainedEarnings": "Retained earnings (prior periods)",
+    "currentPeriodPl": "Current period profit / loss (P&L)"
+  },
+  "notes": "Notes"
+}

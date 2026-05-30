@@ -1,0 +1,122 @@
+{
+  "title": "Receivables / Payables",
+  "intro": "Open balances only. Settled items are reflected in Money Balance and removed from this list.",
+  "tabs": {
+    "receivables": "Receivables",
+    "payables": "Payables"
+  },
+  "metrics": {
+    "recvPendingUsd": "Receivables — Pending (USD)",
+    "recvPendingUzs": "Receivables — Pending (UZS)",
+    "recvAllUsd": "Receivables — All (USD)",
+    "recvAllUzs": "Receivables — All (UZS)",
+    "payPendingUsd": "Payables — Pending (USD)",
+    "payPendingUzs": "Payables — Pending (UZS)",
+    "payAllUsd": "Payables — All (USD)",
+    "payAllUzs": "Payables — All (UZS)"
+  },
+  "filters": {
+    "title": "Filters",
+    "status": "Status",
+    "pendingDefault": "Pending only (default)",
+    "year": "Year",
+    "allYears": "All Years",
+    "month": "Month",
+    "allMonths": "All Months",
+    "clearAll": "Clear all"
+  },
+  "collect": {
+    "title": "Collect payment — receivable #{{id}}",
+    "saleRef": "(Sale #{{sale}})",
+    "hint": "Enter what the customer paid now toward this open balance. Remaining <strong>{{amount}} {{currency}}</strong> — you can collect in partial payments until the balance is cleared.",
+    "amount": "Amount ({{currency}})",
+    "notesOptional": "Notes (optional)",
+    "record": "Record collection"
+  },
+  "receivablesTable": {
+    "title": "Accounts Receivable",
+    "hint": "Outstanding balances on completed sales (after any order advance). Customer prepayments before a sale are listed under Payables.",
+    "id": "ID",
+    "customer": "Customer",
+    "sale": "Sale",
+    "product": "Product",
+    "saleType": "Sale type",
+    "fromOrder": "From order",
+    "delivery": "Delivery (BTS / Dostavshik)",
+    "amount": "Amount",
+    "currency": "Currency",
+    "status": "Status",
+    "created": "Created",
+    "paidDate": "Paid date",
+    "action": "Action",
+    "noRows": "No receivables found",
+    "orderRef": "Order #{{id}}",
+    "saleRef": "#{{id}}",
+    "financeRef": "Fin #{{id}}",
+    "collect": "Collect",
+    "footerPending": "Pending balance due"
+  },
+  "payablesTable": {
+    "title": "Accounts Payable",
+    "hint": "Supplier, courier, and package obligations, plus customer prepayments on on-demand orders until you sell (deposit rows drop off once the order is sold and the advance is applied).",
+    "payableType": "Payable type",
+    "ref": "Ref",
+    "customer": "Customer",
+    "product": "Product",
+    "context": "Context",
+    "amount": "Amount",
+    "currency": "Currency",
+    "status": "Status",
+    "created": "Created",
+    "paidDate": "Paid date",
+    "action": "Action",
+    "noRows": "No payables found",
+    "packagesType": "Packages · type {{type}}",
+    "prepaidByCustomer": "Prepaid by customer",
+    "prepaidStatus": "prepaid",
+    "pay": "Pay",
+    "footerSupplier": "Supplier / courier / package (pending)",
+    "footerDeposits": "Customer deposits (on-demand, not sold yet)"
+  },
+  "saleTypes": {
+    "bought_from_shop": "Shop",
+    "delivery": "Delivery",
+    "from_order": "From order",
+    "reserved": "Reserved"
+  },
+  "dispatch": {
+    "bts": "BTS",
+    "btsNamed": "BTS · {{name}}",
+    "dostavshik": "Dostavshik",
+    "dostavshikNamed": "Dostavshik · {{name}}"
+  },
+  "payableKinds": {
+    "customerDeposit": "Customer deposit",
+    "supplier": "Supplier",
+    "dispatch": "Dispatch",
+    "package": "Package",
+    "otherExpense": "Other expense"
+  },
+  "payableRefs": {
+    "order": "Order #{{id}}",
+    "dispatch": "#{{dispatch}} (Sale #{{sale}})",
+    "packageHistory": "History #{{id}}",
+    "finance": "Finance #{{id}}"
+  },
+  "payableContext": {
+    "customerDeposit": "On-demand prepayment — cleared when you sell from this order",
+    "onDemandSupplier": "On-demand supplier cost",
+    "stockOrder": "Stock order (inventory)",
+    "packageType": "Package type {{type}}",
+    "packagePurchase": "Package purchase"
+  },
+  "notifications": {
+    "amountRequired": "Enter the amount collected (greater than zero).",
+    "amountExceeds": "Collected amount cannot exceed remaining balance ({{balance}}).",
+    "paymentRecorded": "Payment recorded.",
+    "paymentFailed": "Error recording payment",
+    "confirmSettlePayable": "Mark this payable as paid and deduct from Money Balance?",
+    "paid": "Paid.",
+    "settleFailed": "Could not settle payable."
+  }
+}

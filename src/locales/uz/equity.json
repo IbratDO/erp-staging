@@ -1,0 +1,37 @@
+{
+  "title": "Kapital",
+  "contribution": "Egasi hissasi",
+  "withdrawal": "Egasi yechib olishi",
+  "newTransaction": "+ Egasi tranzaksiyasi",
+  "intro": "Egasi kapitali va yechib olishlar Pul balansi va Balansdagi kapital bo‘limini yangilaydi. Operatsion foyda Foyda va zarar orqali saqlangan daromadga oqadi.",
+  "metrics": {
+    "contributions": "Hissalar (ro‘yxatda)",
+    "withdrawals": "Yechib olishlar (ro‘yxatda)"
+  },
+  "form": {
+    "title": "Egasi tranzaksiyasini qayd etish",
+    "type": "Turi",
+    "contributionOption": "Hissa (naqd kirim)",
+    "withdrawalOption": "Yechib olish (naqd chiqim)",
+    "currency": "Valyuta",
+    "amount": "Summa",
+    "notes": "Izoh"
+  },
+  "table": {
+    "id": "ID",
+    "type": "Turi",
+    "amount": "Summa",
+    "currency": "Valyuta",
+    "date": "Sana",
+    "notes": "Izoh",
+    "by": "Kim",
+    "noRows": "Kapital tranzaksiyalari hali yo‘q"
+  },
+  "types": {
+    "contribution": "Hissa",
+    "withdrawal": "Yechib olish"
+  },
+  "notifications": {
+    "saveFailed": "Saqlab bo‘lmadi"
+  }
+}

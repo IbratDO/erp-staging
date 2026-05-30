@@ -1,0 +1,59 @@
+{
+  "title": "Inventory — products",
+  "layers": "Layers",
+  "quantity": "Quantity",
+  "cost": "Cost",
+  "addItem": "Add inventory item",
+  "newItem": "New inventory item",
+  "noStock": "No inventory in stock",
+  "rowCount": "{{count}} row(s)",
+  "categoryTypes": {
+    "sports": "Sports",
+    "casual": "Casual"
+  },
+  "filters": {
+    "filterProductsHint": "(filter products)",
+    "allTypes": "All types",
+    "allCategories": "All categories",
+    "allBrands": "All brands",
+    "allModels": "All models",
+    "allSizes": "All sizes",
+    "allColors": "All colors",
+    "allStatuses": "All statuses"
+  },
+  "form": {
+    "categoryType": "Category type",
+    "category": "Category",
+    "product": "Product",
+    "selectProduct": "Select a product",
+    "sellingPriceUsd": "Selling price per unit (USD)",
+    "costPerUnitUsd": "Cost per unit (USD)",
+    "usdPerUnit": "USD / unit",
+    "lineTotalUsd": "= ${{amount}} line total",
+    "status": "Status",
+    "locationOptional": "Location (optional)",
+    "create": "Create"
+  },
+  "table": {
+    "categoryType": "Category type",
+    "category": "Category",
+    "recNo": "Rec #",
+    "brand": "Brand",
+    "model": "Model",
+    "size": "Size",
+    "color": "Color",
+    "layerNo": "Layer #",
+    "landedCostUzs": "Landed cost (UZS) / unit",
+    "landedCostUsd": "Landed cost (USD) / unit",
+    "sellingPerUnit": "Selling price / unit",
+    "location": "Location",
+    "updated": "Updated",
+    "total": "Total"
+  },
+  "notifications": {
+    "errQuantity": "Please enter a valid quantity (at least 1).",
+    "errSellingPrice": "Enter a selling price per unit in USD.",
+    "errSupplierCost": "Enter a unit supplier cost in USD.",
+    "errSave": "Error saving inventory item"
+  }
+}

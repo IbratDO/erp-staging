@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount } from '../utils/currencyFormat';
+import useAppTranslation from '../hooks/useAppTranslation';
 import {
   emptyPaymentFormState,
   buildPaymentFormDataFromSale,
@@ -17,6 +18,7 @@ import {
  * Complete sale & pay (status → completed). Shared by Sales and Dispatchers tabs.
  */
 export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNotification }) {
+  const { t } = useAppTranslation(['sales', 'common']);
   const groupSales = sale?.groupSales?.length ? sale.groupSales : null;
   const [paymentFormData, setPaymentFormData] = useState(() => emptyPaymentFormState());
   const [exchangeRate, setExchangeRate] = useState(null);
@@ -48,13 +50,13 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
       .catch(() => {
         if (!cancelled) {
           setExchangeRate(null);
-          setExchangeRateError('Could not load CBU exchange rate.');
+          setExchangeRateError(t('completePay.errCbuRate'));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [sale]);
+  }, [sale, t]);
 
   if (!sale) return null;
 
@@ -91,10 +93,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
       }
 
       if (meta.mixed) {
-        showNotification(
-          exchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
-          'error',
-        );
+        showNotification(t('completePay.errRateLoading'), 'error');
         return;
       }
 
@@ -138,7 +137,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
 
       if (meta.exceedsRemainingDue) {
         showNotification(
-          `Payment cannot exceed the remaining amount due (${meta.due.toFixed(2)} ${meta.sc} after advance).`,
+          t('completePay.errExceedsDue', { due: meta.due.toFixed(2), currency: meta.sc }),
           'error',
         );
         return;
@@ -147,19 +146,13 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
       if (paymentFormData.dispatch_payment_needed) {
         const dAmt = parseFloat(String(paymentFormData.dispatch_payment_amount).replace(',', '.')) || 0;
         if (dAmt <= 0) {
-          showNotification('Enter the delivery / dispatch payment amount (or check dispatch setup).', 'error');
+          showNotification(t('completePay.errDispatchAmount'), 'error');
           return;
         }
       }
 
-      if (
-        meta.needs &&
-        paymentFormData.balance_shortfall_type !== 'discount'
-      ) {
-        showNotification(
-          'Payment is below the amount due. Select Discount to record the remainder, or collect more.',
-          'error'
-        );
+      if (meta.needs && paymentFormData.balance_shortfall_type !== 'discount') {
+        showNotification(t('completePay.errShortfall'), 'error');
         return;
       }
 
@@ -177,13 +170,13 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
             ? `${meta.overpaymentAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
             : `${meta.overpaymentAmount.toFixed(2)} USD`;
         const msg = [
-          `Payment entered is higher than amount due.`,
-          `Due: ${dueLabel} · Entered: ${paidLabel} · Excess: ${excessLabel}.`,
+          t('completePay.confirmOverpayTitle'),
+          `${t('completePay.confirmOverpayDue')} ${dueLabel} · ${t('completePay.confirmOverpayEntered')} ${paidLabel} · ${t('completePay.confirmOverpayExcess')} ${excessLabel}.`,
           meta.splitCurrency && exchangeRate?.label
-            ? `(Total calculated at CBU rate: ${exchangeRate.label})`
+            ? t('completePay.confirmOverpayCbu', { label: exchangeRate.label })
             : null,
-          `The extra amount will still be booked as collected sale payment.`,
-          `Continue?`,
+          t('completePay.confirmOverpayBook'),
+          t('completePay.confirmContinue'),
         ]
           .filter(Boolean)
           .join('\n\n');
@@ -196,16 +189,16 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         for (const req of requests) {
           await api.post(`/sales/${req.id}/update_status/`, req.data);
         }
-        showNotification(`Completed ${groupSales.length} sale line(s) successfully!`, 'success');
+        showNotification(t('completePay.successGroup', { count: groupSales.length }), 'success');
       } else {
         await api.post(`/sales/${sale.id}/update_status/`, requestData);
-        showNotification('Sale completed successfully!', 'success');
+        showNotification(t('completePay.success'), 'success');
       }
       onSuccess?.();
       onClose?.();
     } catch (error) {
       console.error('Error completing sale:', error);
-      showNotification(error.response?.data?.error || 'Error completing sale', 'error');
+      showNotification(error.response?.data?.error || t('completePay.errComplete'), 'error');
     }
   };
 
@@ -216,15 +209,10 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
 
   return (
     <div className="form-card" style={{ marginBottom: '20px' }}>
-      <h2>Complete Sale #{sale.id}</h2>
-      <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-        Enter the UZS and/or USD amount received. You may split payment across both currencies; mixed
-        payments use the CBU exchange rate.
-      </p>
+      <h2>{t('completePay.title', { id: sale.id })}</h2>
+      <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>{t('completePay.intro')}</p>
       {exchangeRate?.label && (
-        <p style={{ color: '#4a5568', marginBottom: '12px', fontSize: '0.85em' }}>
-          {exchangeRate.label}
-        </p>
+        <p style={{ color: '#4a5568', marginBottom: '12px', fontSize: '0.85em' }}>{exchangeRate.label}</p>
       )}
       {exchangeRateError && (
         <p style={{ color: '#b45309', marginBottom: '12px', fontSize: '0.85em' }}>{exchangeRateError}</p>
@@ -241,27 +229,30 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         }}
       >
         <div>
-          <strong>List price:</strong> {formatDisplayAmount(listUnit, sc)} per unit
-          {qty > 1 ? ` · ${formatDisplayAmount(listTotal, sc)} total` : ''}
+          <strong>{t('completePay.listPrice')}</strong> {formatDisplayAmount(listUnit, sc)}{' '}
+          {t('completePay.perUnit')}
+          {qty > 1 ? ` · ${formatDisplayAmount(listTotal, sc)} ${t('completePay.total')}` : ''}
         </div>
         <div>
-          <strong>Discount:</strong> {formatDisplayAmount(discountAmountPerUnit, sc)} per unit
+          <strong>{t('completePay.discount')}</strong> {formatDisplayAmount(discountAmountPerUnit, sc)}{' '}
+          {t('completePay.perUnit')}
           {saleDiscountTotal > 0 && qty > 1
-            ? ` · ${formatDisplayAmount(saleDiscountTotal, sc)} total`
+            ? ` · ${formatDisplayAmount(saleDiscountTotal, sc)} ${t('completePay.total')}`
             : ''}
         </div>
         <div>
-          <strong>Final price:</strong> {formatDisplayAmount(finalUnit, sc)} per unit
+          <strong>{t('completePay.finalPrice')}</strong> {formatDisplayAmount(finalUnit, sc)}{' '}
+          {t('completePay.perUnit')}
         </div>
         <div>
-          <strong>Amount due:</strong> {formatDisplayAmount(finalDue, sc)}
+          <strong>{t('completePay.amountDue')}</strong> {formatDisplayAmount(finalDue, sc)}
         </div>
       </div>
       <form onSubmit={handleSubmit}>
         <div className="form-grid">
           {paymentFormData.prepayment_amount && parseFloat(paymentFormData.prepayment_amount) > 0 && (
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-              <label>Prepayment Already Received</label>
+              <label>{t('completePay.prepayment')}</label>
               <input
                 type="number"
                 step="0.01"
@@ -270,12 +261,12 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                 style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
               />
               <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
-                This amount was received when the order was created
+                {t('completePay.prepaymentHint')}
               </small>
             </div>
           )}
           <div className="form-group">
-            <label>UZS</label>
+            <label>{t('currency.uzs', { ns: 'common' })}</label>
             <input
               type="number"
               step="0.01"
@@ -286,7 +277,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
             />
           </div>
           <div className="form-group">
-            <label>USD</label>
+            <label>{t('currency.usd', { ns: 'common' })}</label>
             <input
               type="number"
               step="0.01"
@@ -300,25 +291,28 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           {shortfallMeta.due != null && !Number.isNaN(shortfallMeta.due) && (
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <p style={{ margin: 0, fontSize: '0.9em', color: '#444' }}>
-                <strong>Amount due (after prepayment):</strong>{' '}
+                <strong>{t('completePay.amountDueAfterPrepay')}</strong>{' '}
                 {shortfallMeta.sc === 'UZS'
                   ? `${shortfallMeta.due.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
                   : `${shortfallMeta.due.toFixed(2)} USD`}
                 {saleHasOrderAdvance(sale) && (
                   <>
                     {' '}
-                    · Max total in {shortfallMeta.sc}: same amount · remainder may be collected in{' '}
-                    {shortfallMeta.sc === 'USD' ? 'UZS' : 'USD'} or split across both (CBU rate)
+                    {t('completePay.maxInCurrency', {
+                      currency: shortfallMeta.sc,
+                      other: shortfallMeta.sc === 'USD' ? 'UZS' : 'USD',
+                    })}
                   </>
                 )}
-                {shortfallMeta.paid != null && (parseFloat(paymentFormData.uzs) || parseFloat(paymentFormData.usd)) ? (
+                {shortfallMeta.paid != null &&
+                (parseFloat(paymentFormData.uzs) || parseFloat(paymentFormData.usd)) ? (
                   <>
                     {' '}
                     ·{' '}
                     <strong>
                       {shortfallMeta.splitCurrency || shortfallMeta.crossCurrency
-                        ? `Total at CBU rate (in ${shortfallMeta.sc}):`
-                        : `Entered (in ${shortfallMeta.sc}):`}
+                        ? t('completePay.totalAtCbuIn', { currency: shortfallMeta.sc })
+                        : t('completePay.enteredIn', { currency: shortfallMeta.sc })}
                     </strong>{' '}
                     {shortfallMeta.sc === 'UZS'
                       ? shortfallMeta.paid.toLocaleString(undefined, { maximumFractionDigits: 0 })
@@ -332,10 +326,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           {shortfallMeta.needs && (
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <p style={{ margin: '0 0 10px 0', fontSize: '0.9em', color: '#555', lineHeight: 1.45 }}>
-                Payment is below the amount due. To complete, choose{' '}
-                <strong>Discount</strong> so the unpaid remainder{' '}
-                {shortfallMeta.short != null ? `(${shortfallMeta.short.toFixed(2)} ${shortfallMeta.sc}) ` : ''}
-                is recorded as a discount, or increase the payment.
+                {t('completePay.shortfallHint')}
               </p>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <input
@@ -346,7 +337,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                     setPaymentFormData({ ...paymentFormData, balance_shortfall_type: 'discount' })
                   }
                 />
-                <span>Discount (record remainder as discount)</span>
+                <span>{t('completePay.discountOption')}</span>
               </label>
             </div>
           )}
@@ -357,10 +348,14 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                 className="form-group"
                 style={{ gridColumn: '1 / -1', marginTop: '20px', paddingTop: '20px', borderTop: '2px solid #e0e0e0' }}
               >
-                <h3 style={{ margin: '0 0 12px 0', color: '#333' }}>Dispatch payment</h3>
+                <h3 style={{ margin: '0 0 12px 0', color: '#333' }}>{t('completePay.dispatchPayment')}</h3>
               </div>
               <div className="form-group">
-                <label>Dispatch Payment Amount ({paymentFormData.dispatch_payment_currency})</label>
+                <label>
+                  {t('completePay.dispatchAmount', {
+                    currency: paymentFormData.dispatch_payment_currency,
+                  })}
+                </label>
                 <input
                   type="number"
                   step="0.01"
@@ -373,7 +368,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                 />
               </div>
               <div className="form-group">
-                <label>Dispatch Payment Currency</label>
+                <label>{t('completePay.dispatchCurrency')}</label>
                 <select
                   value={paymentFormData.dispatch_payment_currency || 'UZS'}
                   onChange={(e) =>
@@ -381,33 +376,31 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   }
                   required={paymentFormData.dispatch_payment_needed}
                 >
-                  <option value="USD">USD</option>
-                  <option value="UZS">UZS</option>
+                  <option value="USD">{t('currency.usd', { ns: 'common' })}</option>
+                  <option value="UZS">{t('currency.uzs', { ns: 'common' })}</option>
                 </select>
               </div>
             </>
           )}
 
           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-            <label>Notes</label>
+            <label>{t('completePay.notes')}</label>
             <textarea
               rows={3}
               value={paymentFormData.completion_notes ?? ''}
               onChange={(e) => setPaymentFormData({ ...paymentFormData, completion_notes: e.target.value })}
             />
             <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
-              {shortfallMeta.needs
-                ? 'Optional. Choosing Discount still records the remainder; add a note only if you want it on the completion record.'
-                : 'Optional when the entered payment equals or exceeds the amount due.'}
+              {shortfallMeta.needs ? t('completePay.notesDiscountHint') : t('completePay.notesOptional')}
             </small>
           </div>
         </div>
         <div className="form-actions">
           <button type="submit" className="btn-primary">
-            Complete Sale
+            {t('completeSale')}
           </button>
           <button type="button" className="btn-edit" onClick={handleCancel}>
-            Cancel
+            {t('actions.cancel', { ns: 'common' })}
           </button>
         </div>
       </form>

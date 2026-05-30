@@ -1,4 +1,5 @@
 /** Shared logic for "Complete & Pay" (sale status → completed) used from Sales and Dispatchers tabs. */
+import i18n from '../i18n';
 
 /** Match backend _validate_and_set_sale_completion_shortfall tolerance (USD sale currency). */
 export const PAYMENT_SHORTFALL_TOLERANCE = 0.005;
@@ -554,5 +555,7 @@ export function shopDeliverySettlementStep3Label(sale) {
   const uzFee = d ? parseFloat(d.delivery_cost_uzs ?? 0) || 0 : 0;
   const usFee = d ? parseFloat(d.delivery_cost ?? 0) || 0 : 0;
   const needsDispatchFeePayment = !!(d && !d.is_paid && (uzFee > 0 || usFee > 0));
-  return needsDispatchFeePayment ? 'Pay for dispatch & complete sale' : 'Complete sale';
+  return needsDispatchFeePayment
+    ? i18n.t('deliverySettlement.btnStep3Pay', { ns: 'sales' })
+    : i18n.t('deliverySettlement.btnStep3Complete', { ns: 'sales' });
 }

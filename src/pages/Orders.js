@@ -17,26 +17,24 @@ import SortableTh from '../components/SortableTh';
 import { usePermissions } from '../hooks/usePermissions';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import { useClientTableSort, compareForSort } from '../utils/tableSort';
+import useAppTranslation from '../hooks/useAppTranslation';
+import PageTitle from '../components/PageTitle';
+import { formatAppDateTime, formatAppNumber } from '../utils/localeFormat';
 
-const PRODUCT_CATEGORY_TYPES = [
-  { value: 'sports', label: 'Sports' },
-  { value: 'casual', label: 'Casual' },
-];
+const PRODUCT_CATEGORY_TYPE_VALUES = ['sports', 'casual'];
 
-const categoryTypeLabel = (value) =>
-  PRODUCT_CATEGORY_TYPES.find((t) => t.value === value)?.label ?? '';
+const categoryTypeLabel = (value, t) =>
+  value ? t(`categoryTypes.${value}`, { ns: 'orders', defaultValue: '' }) : '';
 
-const ORDER_STATUS_LABELS = {
-  ordered: 'Ordered',
-  order_paid: 'Order paid',
-  received: 'Received',
-  in_inventory: 'In Inventory',
-  sold: 'Sold',
-  cancelled: 'Cancelled',
+const orderTypeShortLabel = (orderType, t) => {
+  if (orderType === 'stock') return t('types.stock_short', { ns: 'orders' });
+  if (orderType === 'on_demand') return t('types.on_demand_short', { ns: 'orders' });
+  return orderType || '—';
 };
 
-function formatOrderStatus(status) {
-  return ORDER_STATUS_LABELS[status] || String(status ?? '').replace(/_/g, ' ');
+function formatOrderStatus(status, tStatus) {
+  if (tStatus) return tStatus(status, 'order');
+  return String(status ?? '').replace(/_/g, ' ');
 }
 
 function showMarkAsReceivedAction(order) {
@@ -97,7 +95,7 @@ function plannedCargoPaymentTotals(order) {
  * Cargo pay form: single UZS field + single USD field (Option A rolls into *_cash buckets).
  * @returns {false} if user cancels.
  */
-function confirmCargoPaymentIfNeeded(order, uzsEntered, usdEntered) {
+function confirmCargoPaymentIfNeeded(order, uzsEntered, usdEntered, t) {
   const uz = Number(uzsEntered) || 0;
   const us = Number(usdEntered) || 0;
   const { uzs: expZ, usd: expD } = plannedCargoPaymentTotals(order);
@@ -109,28 +107,30 @@ function confirmCargoPaymentIfNeeded(order, uzsEntered, usdEntered) {
   if (uz + us === 0) {
     const hadPlannedCargo = expZ + expD > 0;
     const msg = hadPlannedCargo
-      ? 'This order shows cargo amounts on record:\n' +
-        `UZS: ${formatDisplayAmount(expZ, 'UZS')}; USD: ${formatDisplayAmount(expD, 'USD')}\n\n` +
-        'You submitted 0 everywhere — cargo will be recorded as FREE and those cargo amounts cleared.\n\nProceed?'
-      : `Record cargo as paid with no freight charge (all amounts zero)?`;
+      ? t('confirm.cargoZeroWithPlanned', {
+          uzs: formatDisplayAmount(expZ, 'UZS'),
+          usd: formatDisplayAmount(expD, 'USD'),
+        })
+      : t('confirm.cargoZeroNoPlanned');
 
     return window.confirm(msg);
   }
 
-  const msg =
-    'The cargo payment totals you entered differ from the cargo amount on this order.\n\n' +
-    `On order — UZS: ${formatDisplayAmount(expZ, 'UZS')}; USD: ${formatDisplayAmount(expD, 'USD')}\n` +
-    `Entered — UZS: ${formatDisplayAmount(uz, 'UZS')}; USD: ${formatDisplayAmount(us, 'USD')}\n\n` +
-    'Proceed anyway with this cargo payment?';
-
-  return window.confirm(msg);
+  return window.confirm(
+    t('confirm.cargoMismatch', {
+      plannedUzs: formatDisplayAmount(expZ, 'UZS'),
+      plannedUsd: formatDisplayAmount(expD, 'USD'),
+      enteredUzs: formatDisplayAmount(uz, 'UZS'),
+      enteredUsd: formatDisplayAmount(us, 'USD'),
+    }),
+  );
 }
 
 /**
  * “Pay for the order” / supplier cost: compares form UZS + USD totals to planned supplier legs.
  * @returns {false} if user cancels.
  */
-function confirmOrderPayTotalsIfMismatch(order, uzsEntered, usdEntered) {
+function confirmOrderPayTotalsIfMismatch(order, uzsEntered, usdEntered, t) {
   const uz = Number(uzsEntered) || 0;
   const us = Number(usdEntered) || 0;
   const { uzs: expZ, usd: expD } = plannedSupplierPaymentTotals(order);
@@ -138,13 +138,14 @@ function confirmOrderPayTotalsIfMismatch(order, uzsEntered, usdEntered) {
     return true;
   }
 
-  const msg =
-    "The payment totals you entered differ from this order's planned supplier cost (from when the order was created).\n\n" +
-    `Planned — UZS: ${formatDisplayAmount(expZ, 'UZS')}; USD: ${formatDisplayAmount(expD, 'USD')}\n` +
-    `Entered — UZS: ${formatDisplayAmount(uz, 'UZS')}; USD: ${formatDisplayAmount(us, 'USD')}\n\n` +
-    'Proceed anyway with this payment?';
-
-  return window.confirm(msg);
+  return window.confirm(
+    t('confirm.orderPayMismatch', {
+      plannedUzs: formatDisplayAmount(expZ, 'UZS'),
+      plannedUsd: formatDisplayAmount(expD, 'USD'),
+      enteredUzs: formatDisplayAmount(uz, 'UZS'),
+      enteredUsd: formatDisplayAmount(us, 'USD'),
+    }),
+  );
 }
 
 function formatOrderPaymentAmounts(uzs, usd) {
@@ -155,59 +156,75 @@ function formatOrderPaymentAmounts(uzs, usd) {
   return parts.length ? parts.join(' + ') : '$0.00';
 }
 
-function formatOrderDueAmount(order) {
+function formatOrderDueAmount(order, t) {
   const { uzs, usd } = plannedSupplierPaymentTotals(order);
   if (uzs <= 0 && usd <= 0) {
-    return '— (no planned supplier cost recorded)';
+    return t('confirm.noPlannedSupplierCost');
   }
   return formatOrderPaymentAmounts(uzs, usd);
 }
 
-function orderDueUnitDetail(order) {
+function orderDueUnitDetail(order, t) {
   const qi = parseInt(order?.ordered_quantity, 10) || 0;
   if (qi <= 0) return '';
   const { uzs, usd } = plannedSupplierPaymentTotals(order);
   if (uzs > 0) {
-    return `\n(${formatDisplayAmount(uzs / qi, 'UZS')} / unit × ${qi})`;
+    return t('confirm.unitDetailUzs', {
+      perUnit: formatDisplayAmount(uzs / qi, 'UZS'),
+      qty: qi,
+    });
   }
   if (usd > 0) {
     const pu = parseFloat(order.cost_per_unit);
     if (Number.isFinite(pu) && pu > 0) {
-      return `\n(${formatDisplayAmount(pu, 'USD')} / unit × ${qi})`;
+      return t('confirm.unitDetailUsd', {
+        perUnit: formatDisplayAmount(pu, 'USD'),
+        qty: qi,
+      });
     }
   }
   return '';
 }
 
 /** Client eShop orders: always confirm before paying (due vs entered). @returns {false} if user cancels. */
-function confirmClientOrderPay(order, uzsEntered, usdEntered) {
+function confirmClientOrderPay(order, uzsEntered, usdEntered, t) {
   const uz = Number(uzsEntered) || 0;
   const us = Number(usdEntered) || 0;
   const productLabel = order?.product_detail
-    ? productOrderPickerLabel(order.product_detail)
-    : `Product #${order?.product ?? '?'}`;
+    ? productOrderPickerLabel(order.product_detail, t)
+    : t('confirm.productFallback', { id: order?.product ?? '?' });
   const customerLine = order?.customer_detail?.name
-    ? `\nCustomer: ${order.customer_detail.name}`
+    ? t('confirm.customerLine', { name: order.customer_detail.name })
     : '';
   const notesRaw = String(order?.client_eshop_notes || '').trim();
   const notesLine = notesRaw
-    ? `\nClient notes: ${notesRaw.length > 120 ? `${notesRaw.slice(0, 120)}…` : notesRaw}`
+    ? t('confirm.clientNotesLine', {
+        notes: notesRaw.length > 120 ? `${notesRaw.slice(0, 120)}…` : notesRaw,
+      })
     : '';
 
-  const msg =
-    `Pay for Order #${order?.id ?? '?'}?\n\n` +
-    `${productLabel}\n` +
-    `Qty: ${order?.ordered_quantity ?? '—'} · eShop: Client${customerLine}${notesLine}\n\n` +
-    `Due amount: ${formatOrderDueAmount(order)}${orderDueUnitDetail(order)}\n` +
-    `Paying: ${formatOrderPaymentAmounts(uz, us)}\n\n` +
-    'Proceed with this payment?';
-
-  return window.confirm(msg);
+  return window.confirm(
+    t('confirm.clientPay', {
+      id: order?.id ?? '?',
+      product: productLabel,
+      qty: order?.ordered_quantity ?? '—',
+      customer: customerLine,
+      notes: notesLine,
+      due: formatOrderDueAmount(order, t),
+      unitDetail: orderDueUnitDetail(order, t),
+      paying: formatOrderPaymentAmounts(uz, us),
+    }),
+  );
 }
 
-function productOrderPickerLabel(p) {
+function productOrderPickerLabel(p, t) {
   if (!p) return '';
-  const bits = [p.brand, p.model, p.size ? `size ${p.size}` : null, p.color].filter(Boolean);
+  const bits = [
+    p.brand,
+    p.model,
+    p.size ? t('form.sizeLabel', { size: p.size }) : null,
+    p.color,
+  ].filter(Boolean);
   return bits.join(' · ');
 }
 
@@ -238,11 +255,14 @@ const KNOWN_ESHOP_LABELS = {
   client: 'Client',
 };
 
-function formatEshopDisplay(eshop) {
+function formatEshopDisplay(eshop, t) {
   const raw = String(eshop ?? '').trim();
   if (!raw) return '';
   const key = raw.toLowerCase();
-  return KNOWN_ESHOP_LABELS[key] ?? raw;
+  if (KNOWN_ESHOP_LABELS[key]) {
+    return t(`eshops.${key}`, { ns: 'orders', defaultValue: KNOWN_ESHOP_LABELS[key] });
+  }
+  return raw;
 }
 
 function orderSellingUsdPerUnitForSort(order) {
@@ -299,6 +319,53 @@ const ORDER_SORT_ACCESSORS = {
   order_date: (o) => new Date(o.order_date || o.created_at).getTime() || 0,
 };
 const Orders = () => {
+  const { t, tStatus, monthOptions } = useAppTranslation(['common', 'orders', 'status', 'sales']);
+  const uzsLabel = t('currency.uzs', { ns: 'common' });
+
+  const productCategoryTypes = useMemo(
+    () =>
+      PRODUCT_CATEGORY_TYPE_VALUES.map((value) => ({
+        value,
+        label: t(`categoryTypes.${value}`, { ns: 'orders' }),
+      })),
+    [t],
+  );
+
+  const regionChoices = useMemo(
+    () =>
+      [
+        'andijan',
+        'bukhara',
+        'fergana',
+        'jizzakh',
+        'kashkadarya',
+        'khorezm',
+        'namangan',
+        'navoi',
+        'samarkand',
+        'surkhandarya',
+        'syrdarya',
+        'tashkent_region',
+        'karakalpakstan',
+        'tashkent_city',
+      ].map((value) => ({
+        value,
+        label: t(`regions.${value}`, { ns: 'sales' }),
+      })),
+    [t],
+  );
+
+  const orderStatusFilterOptions = useMemo(
+    () => [
+      { value: 'ordered', label: tStatus('ordered', 'order') },
+      { value: 'order_paid', label: tStatus('order_paid', 'order') },
+      { value: 'received', label: tStatus('received', 'order') },
+      { value: 'in_inventory', label: tStatus('in_inventory', 'order') },
+      { value: 'cancelled', label: tStatus('cancelled', 'order') },
+    ],
+    [tStatus],
+  );
+
   const { user, refreshUser, hasPermission, hasAnyPermission } = usePermissions();
   const canCreateOrder = hasPermission('orders.create');
   const canPayOrder = hasPermission('orders.pay_order');
@@ -308,6 +375,8 @@ const Orders = () => {
   const canUpdateStatus = hasPermission('orders.update_status');
   const canPostOrderStatus = hasAnyPermission(['orders.update_status', 'orders.move_to_inventory']);
   const canManageStockOrders = canUpdateStatus || isOperationalSenior(user);
+  const orderTableColumnCount = canManageStockOrders ? 24 : 23;
+  const orderFooterLabelColSpan = canManageStockOrders ? 14 : 13;
   /** Ledger totals for pay flows and move-to-inventory advance refunds (not bare status updates). */
   const needsLedgerForPayments = canPayOrder || canPayCargo || canMoveInventory;
 
@@ -427,23 +496,6 @@ const Orders = () => {
     }, 5000);
   };
   
-  const regionChoices = [
-    { value: 'andijan', label: 'Andijan' },
-    { value: 'bukhara', label: 'Bukhara' },
-    { value: 'fergana', label: 'Fergana' },
-    { value: 'jizzakh', label: 'Jizzakh' },
-    { value: 'kashkadarya', label: 'Kashkadarya' },
-    { value: 'khorezm', label: 'Khorezm' },
-    { value: 'namangan', label: 'Namangan' },
-    { value: 'navoi', label: 'Navoi' },
-    { value: 'samarkand', label: 'Samarkand' },
-    { value: 'surkhandarya', label: 'Surkhandarya' },
-    { value: 'syrdarya', label: 'Syrdarya' },
-    { value: 'tashkent_region', label: 'Tashkent region' },
-    { value: 'karakalpakstan', label: 'Karakalpakstan' },
-    { value: 'tashkent_city', label: 'Tashkent city' },
-  ];
-
   const canViewCash = hasPermission('cash.view');
 
   useEffect(() => {
@@ -498,7 +550,7 @@ const Orders = () => {
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
     if (!newCustomerData.telephone.trim()) {
-      showNotification('Telephone is required.', 'error');
+      showNotification(t('notifications.telephoneRequired'), 'error');
       return;
     }
     try {
@@ -509,7 +561,7 @@ const Orders = () => {
       setNewCustomerData({ name: '', telephone: '', instagram: '', region: '', notes: '' });
     } catch (error) {
       console.error('Error creating customer:', error);
-      showNotification(error.response?.data?.error || 'Error creating customer', 'error');
+      showNotification(error.response?.data?.error || t('notifications.createCustomerError'), 'error');
     }
   };
 
@@ -743,57 +795,51 @@ const Orders = () => {
     try {
       const qty = parseInt(formData.ordered_quantity, 10) || 0;
       if (!formData.product || qty < 1) {
-        showNotification('Please select a product and enter a valid quantity.', 'error');
+        showNotification(t('notifications.selectProductQty'), 'error');
         return;
       }
       if (!String(formCategory || '').trim()) {
-        showNotification('Please select a category.', 'error');
+        showNotification(t('notifications.selectCategory'), 'error');
         return;
       }
       if (!String(formData.eshop || '').trim()) {
-        showNotification('Please select or enter an eShop.', 'error');
+        showNotification(t('notifications.selectEshop'), 'error');
         return;
       }
       if (!formData.supplier_country.trim()) {
-        showNotification('Please select or enter a Supplier Country.', 'error');
+        showNotification(t('notifications.selectCountry'), 'error');
         return;
       }
 
       if (isClientEshopSlug(formData.eshop) && !String(formData.client_eshop_notes || '').trim()) {
-        showNotification('Enter notes — required when eShop is Client.', 'error');
+        showNotification(t('notifications.clientNotesRequired'), 'error');
         return;
       }
 
       if (formData.order_type === 'on_demand') {
         const cId = parseInt(formData.customer, 10);
         if (!formData.customer || Number.isNaN(cId)) {
-          showNotification('Select a customer for on-demand orders.', 'error');
+          showNotification(t('notifications.selectCustomerOnDemand'), 'error');
           return;
         }
       }
 
       const usdS = numOrZero(formData.selling_usd_per_unit);
       if (!(usdS > 0)) {
-        showNotification('Enter a selling price per unit in USD.', 'error');
+        showNotification(t('notifications.sellingPriceRequired'), 'error');
         return;
       }
 
       const usdSup = numOrZero(formData.cost_usd_per_unit);
 
       if (formData.order_is_paid && !(usdSup > 0) && !isClientEshopSlug(formData.eshop)) {
-        showNotification(
-          'To mark the order as already paid, enter a USD cost per unit, or leave unpaid and record cost later.',
-          'error',
-        );
+        showNotification(t('notifications.paidNeedCost'), 'error');
         return;
       }
 
       if (formData.order_is_paid) {
         if (formData.order_payment_currency !== 'USD') {
-          showNotification(
-            'Recording “already paid” from this form is USD-only. Leave the order unpaid and split UZS/USD in “Pay for the Order”.',
-            'error',
-          );
+          showNotification(t('notifications.paidUsdOnly'), 'error');
           return;
         }
         const required = usdSup * qty;
@@ -817,7 +863,9 @@ const Orders = () => {
           const usdSellingTotal = usdS * qty;
           if (advanceAmt > usdSellingTotal + 0.01) {
             showNotification(
-              `Advance cannot exceed planned USD selling total (${formatDisplayAmount(usdSellingTotal, 'USD')}).`,
+              t('notifications.advanceExceedsSelling', {
+                total: formatDisplayAmount(usdSellingTotal, 'USD'),
+              }),
               'error',
             );
             return;
@@ -825,10 +873,10 @@ const Orders = () => {
         } else {
           const usdSellingTotal = usdS * qty;
           const ok = window.confirm(
-            `Record UZS advance payment?\n\n` +
-              `Amount: ${formatDisplayAmount(advanceAmt, 'UZS')}\n` +
-              `Planned selling (USD): ${formatDisplayAmount(usdSellingTotal, 'USD')}\n\n` +
-              `UZS advance will be credited to UZS cash. Planned selling is still recorded in USD only.`,
+            t('confirm.advanceUzs', {
+              amount: formatDisplayAmount(advanceAmt, 'UZS'),
+              selling: formatDisplayAmount(usdSellingTotal, 'USD'),
+            }),
           );
           if (!ok) return;
         }
@@ -881,14 +929,14 @@ const Orders = () => {
       setProductDropdownOpen(false);
       setFormData(newOrderFormDefaults());
       fetchOrders();
-      showNotification('Order created successfully!', 'success');
+      showNotification(t('notifications.createSuccess'), 'success');
     } catch (error) {
       console.error('Error creating order:', error);
       const d = error.response?.data;
       const advErr = d?.advance_payment_amount;
       const advMsg = Array.isArray(advErr) ? advErr[0] : typeof advErr === 'string' ? advErr : null;
       showNotification(
-        advMsg || d?.error || d?.detail || (typeof d === 'string' ? d : null) || 'Error creating order',
+        advMsg || d?.error || d?.detail || (typeof d === 'string' ? d : null) || t('notifications.createError'),
         'error'
       );
     } finally {
@@ -900,7 +948,7 @@ const Orders = () => {
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
       if (!canPostOrderStatus) {
-        showNotification('You do not have permission to update order status.', 'error');
+        showNotification(t('notifications.noStatusPermission'), 'error');
         return;
       }
       await api.post(`/orders/${orderId}/update_status/`, {
@@ -908,10 +956,10 @@ const Orders = () => {
         notes: '',
       });
       await fetchOrders();
-      showNotification('Order status updated successfully!', 'success');
+      showNotification(t('notifications.statusUpdated'), 'success');
     } catch (error) {
       console.error('Error updating status:', error);
-      showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error updating status', 'error');
+      showNotification(error.response?.data?.error || error.response?.data?.detail || t('notifications.statusUpdateError'), 'error');
     }
   };
 
@@ -946,7 +994,7 @@ const Orders = () => {
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
     if (!paymentFormData.is_pay_order && !String(paymentFormData.status_notes || '').trim()) {
-      showNotification('Please enter notes for this order update.', 'error');
+      showNotification(t('notifications.notesRequired'), 'error');
       return;
     }
     try {
@@ -957,7 +1005,7 @@ const Orders = () => {
         const orderForPay = orders.find((o) => o.id === paymentFormData.orderId);
         const isClientPay = orderForPay && isClientEshopSlug(orderForPay.eshop);
         if (uzs + usd === 0 && !isClientPay) {
-          showNotification('Please enter at least one payment amount.', 'error');
+          showNotification(t('notifications.paymentAmountRequired'), 'error');
           return;
         }
         await fetchBalances();
@@ -971,8 +1019,8 @@ const Orders = () => {
         }
         if (orderForPay) {
           const confirmed = isClientPay
-            ? confirmClientOrderPay(orderForPay, uzs, usd)
-            : confirmOrderPayTotalsIfMismatch(orderForPay, uzs, usd);
+            ? confirmClientOrderPay(orderForPay, uzs, usd, t)
+            : confirmOrderPayTotalsIfMismatch(orderForPay, uzs, usd, t);
           if (!confirmed) {
             return;
           }
@@ -998,7 +1046,7 @@ const Orders = () => {
         setShowPaymentForm(false);
         setPaymentFormData({ orderId: null, uzs: '', usd: '', is_pay_order: false, is_received_and_pay: false, status_notes: '' });
         await fetchOrders();
-        showNotification('Order payment completed successfully!', 'success');
+        showNotification(t('notifications.orderPaidSuccess'), 'success');
         return;
       }
       
@@ -1014,7 +1062,7 @@ const Orders = () => {
         const uzs = parseFloat(paymentFormData.uzs) || 0;
         const usd = parseFloat(paymentFormData.usd) || 0;
         if (uzs + usd === 0) {
-          showNotification('Please enter at least one payment amount.', 'error');
+          showNotification(t('notifications.paymentAmountRequired'), 'error');
           return;
         }
         await fetchBalances();
@@ -1049,10 +1097,10 @@ const Orders = () => {
 
       setShowPaymentForm(false);
       setPaymentFormData({ orderId: null, uzs: '', usd: '', is_pay_order: false, is_received_and_pay: false, status_notes: '' });
-      showNotification('Payment processed successfully!', 'success');
+      showNotification(t('notifications.paymentSuccess'), 'success');
     } catch (error) {
       console.error('Error updating order payment:', error);
-      showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error updating order payment', 'error');
+      showNotification(error.response?.data?.error || error.response?.data?.detail || t('notifications.paymentUpdateError'), 'error');
     }
   };
 
@@ -1079,7 +1127,7 @@ const Orders = () => {
       }
 
       const cargoOrder = orders.find((o) => o.id === cargoFormData.orderId);
-      if (!confirmCargoPaymentIfNeeded(cargoOrder, uzs, usd)) {
+      if (!confirmCargoPaymentIfNeeded(cargoOrder, uzs, usd, t)) {
         return;
       }
 
@@ -1087,10 +1135,10 @@ const Orders = () => {
       setShowCargoForm(false);
       setCargoFormData({ orderId: null, uzs: '', usd: '' });
       await fetchOrders();
-      showNotification(res.data?.message || 'Cargo payment processed successfully.', 'success');
+      showNotification(res.data?.message || t('notifications.cargoPaidSuccess'), 'success');
     } catch (error) {
       console.error('Error paying cargo:', error);
-      showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error paying cargo', 'error');
+      showNotification(error.response?.data?.error || error.response?.data?.detail || t('notifications.cargoPayError'), 'error');
     }
   };
 
@@ -1103,39 +1151,30 @@ const Orders = () => {
     if (!order) return false;
 
     if (!order.order_is_paid) {
-      showNotification(
-        'Pay for the supplier order first (Pay for the Order) before selling this on‑demand product.',
-        'error',
-      );
+      showNotification(t('notifications.payOrderBeforeSell'), 'error');
       return false;
     }
     if (!order.cargo_is_paid) {
-      showNotification(
-        'Pay for the cargo first (use zero totals in that form if there is no freight). You cannot sell this on‑demand item until cargo is marked paid.',
-        'error',
-      );
+      showNotification(t('notifications.payCargoBeforeSell'), 'error');
       return false;
     }
 
     if (showConfirm) {
-      const ok = window.confirm(
-        `Sell the product from order #${orderId}?\n` +
-          `A pending sale will be created — complete it in Sales.`,
-      );
+      const ok = window.confirm(t('confirm.sellProduct', { id: orderId }));
       if (!ok) return false;
     }
 
     try {
       const response = await api.post(`/orders/${orderId}/sell_product/`);
       showNotification(
-        response.data.message || 'Sale created! Open the Sales tab to complete payment.',
+        response.data.message || t('notifications.saleCreated'),
         'success',
       );
       await fetchOrders();
       return true;
     } catch (error) {
       console.error('Error selling product:', error);
-      showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error selling product', 'error');
+      showNotification(error.response?.data?.error || error.response?.data?.detail || t('notifications.sellError'), 'error');
       return false;
     }
   };
@@ -1148,15 +1187,12 @@ const Orders = () => {
     const order = orders.find(o => o.id === orderId);
 
     if (!order?.order_is_paid) {
-      showNotification('Order payment must be completed before moving to inventory.', 'error');
+      showNotification(t('notifications.payBeforeInventory'), 'error');
       return;
     }
 
     if (!order?.cargo_is_paid) {
-      showNotification(
-        'Cargo must be marked paid before moving to inventory (use Pay for the Cargo; zero totals if there is no freight).',
-        'error',
-      );
+      showNotification(t('notifications.cargoBeforeInventory'), 'error');
       return;
     }
     
@@ -1201,10 +1237,10 @@ const Orders = () => {
         return_advance_amount: '',
       });
       await fetchOrders();
-      showNotification('Order moved to inventory successfully!', 'success');
+      showNotification(t('notifications.movedToInventory'), 'success');
     } catch (error) {
       console.error('Error moving to inventory:', error);
-      showNotification(error.response?.data?.error || error.response?.data?.detail || 'Error moving to inventory', 'error');
+      showNotification(error.response?.data?.error || error.response?.data?.detail || t('notifications.moveInventoryError'), 'error');
     }
   };
 
@@ -1216,7 +1252,7 @@ const Orders = () => {
       const booked = parseFloat(invOrder.advance_payment_amount) || 0;
       const amt = parseFloat(String(moveToInventoryData.return_advance_amount ?? '').trim()) || 0;
       if (!(amt > 0)) {
-        showNotification('Enter how much advance to return (greater than zero).', 'error');
+        showNotification(t('notifications.advanceReturnRequired'), 'error');
         return;
       }
       const ccy = moveToInventoryData.return_payment_currency === 'UZS' ? 'UZS' : 'USD';
@@ -1224,7 +1260,7 @@ const Orders = () => {
         ? String(invOrder.advance_payment_currency).toUpperCase()
         : 'USD';
       if (ccy === bookedCur && amt > booked) {
-        showNotification(`Return amount cannot exceed the recorded advance (${booked}).`, 'error');
+        showNotification(t('notifications.advanceReturnExceeds', { booked }), 'error');
         return;
       }
       if (!ledgerHasFunds(ccy, amt)) {
@@ -1237,10 +1273,11 @@ const Orders = () => {
       );
       const payingLabel = formatDisplayAmount(amt, ccy);
       const ok = window.confirm(
-        `Return advance?\n\n` +
-          `Order #${invOrder.id}\n` +
-          `Recorded advance: ${bookedAdvLabel}\n` +
-          `Paying amount: ${payingLabel}`,
+        t('confirm.returnAdvance', {
+          id: invOrder.id,
+          booked: bookedAdvLabel,
+          paying: payingLabel,
+        }),
       );
       if (!ok) return;
     }
@@ -1253,16 +1290,16 @@ const Orders = () => {
   };
 
   if (loading) {
-    return <div className="page-container">Loading...</div>;
+    return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
 
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>Orders</h1>
+        <PageTitle ns="orders" />
         {canCreateOrder && (
           <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : '+ New Order'}
+            {showForm ? t('actions.cancel', { ns: 'common' }) : t('newOrder', { ns: 'orders' })}
           </button>
         )}
       </div>
@@ -1314,28 +1351,32 @@ const Orders = () => {
       {showPaymentForm && (
         <div className="form-card" style={{ marginBottom: '20px' }} ref={paymentFormRef}>
           <h2>
-            {paymentFormData.is_pay_order ? 'Pay for the Order' : paymentFormData.is_received_and_pay ? 'Mark Order as Received and Pay' : 'Move Order to Inventory & Pay'}
+            {paymentFormData.is_pay_order
+              ? t('paymentForm.payOrderTitle')
+              : paymentFormData.is_received_and_pay
+                ? t('paymentForm.receivedAndPayTitle')
+                : t('paymentForm.moveAndPayTitle')}
           </h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Enter the UZS and/or USD amount. Leave a field empty or 0 if not used.
+            {t('paymentForm.intro')}
           </p>
           <form onSubmit={handlePaymentSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>UZS</label>
+                <label>{uzsLabel}</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
                   value={paymentFormData.uzs}
                   onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs: e.target.value })} />
               </div>
               <div className="form-group">
-                <label>USD</label>
+                <label>{t('currency.usd', { ns: 'common' })}</label>
                 <input type="number" step="0.01" min="0" placeholder="0"
                   value={paymentFormData.usd}
                   onChange={(e) => setPaymentFormData({ ...paymentFormData, usd: e.target.value })} />
               </div>
               {!paymentFormData.is_pay_order && (
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                  <label>Notes *</label>
+                  <label>{t('paymentForm.notes')} *</label>
                   <textarea
                     rows={3}
                     value={paymentFormData.status_notes}
@@ -1347,14 +1388,18 @@ const Orders = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                {paymentFormData.is_pay_order ? 'Pay for the Order' : paymentFormData.is_received_and_pay ? 'Mark as Received and Pay' : 'Confirm & Move to Inventory'}
+                {paymentFormData.is_pay_order
+                  ? t('actions.payOrder', { ns: 'orders' })
+                  : paymentFormData.is_received_and_pay
+                    ? t('actions.markReceivedAndPay', { ns: 'orders' })
+                    : t('actions.confirmMoveToInventory', { ns: 'orders' })}
               </button>
               <button type="button" className="btn-edit"
                 onClick={() => {
                   setShowPaymentForm(false);
                   setPaymentFormData({ orderId: null, uzs: '', usd: '', is_pay_order: false, is_received_and_pay: false, status_notes: '' });
                 }}>
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -1363,7 +1408,7 @@ const Orders = () => {
 
       {showMoveToInventoryForm && (
         <div className="form-card" style={{ marginBottom: '20px' }} ref={moveToInventoryFormRef}>
-          <h2>Move to Inventory - Order #{moveToInventoryData.orderId}</h2>
+          <h2>{t('moveForm.title', { id: moveToInventoryData.orderId })}</h2>
           <form onSubmit={handleMoveToInventorySubmit}>
             <div className="form-grid">
               {(() => {
@@ -1372,7 +1417,7 @@ const Orders = () => {
                   return (
                     <>
                       <p style={{ gridColumn: '1 / -1', color: '#555', margin: 0, fontSize: '0.92em' }}>
-                        Return advance payment to customer — recorded advance:{' '}
+                        {t('moveForm.returnAdvance')}{' '}
                         <strong>
                           {formatDisplayAmount(
                             invOrder.advance_payment_amount,
@@ -1390,7 +1435,7 @@ const Orders = () => {
                           }}
                         >
                           <div className="form-group" style={{ marginBottom: 0, width: '11rem', maxWidth: '100%' }}>
-                            <label htmlFor="move-inv-return-amt">Amount</label>
+                            <label htmlFor="move-inv-return-amt">{t('moveForm.amount')}</label>
                             <input
                               id="move-inv-return-amt"
                               type="number"
@@ -1404,7 +1449,7 @@ const Orders = () => {
                             />
                           </div>
                           <div className="form-group" style={{ marginBottom: 0, minWidth: '7rem', width: '7.5rem' }}>
-                            <label htmlFor="move-inv-return-ccy">Currency</label>
+                            <label htmlFor="move-inv-return-ccy">{t('moveForm.currency')}</label>
                             <select
                               id="move-inv-return-ccy"
                               value={moveToInventoryData.return_payment_currency}
@@ -1429,7 +1474,7 @@ const Orders = () => {
                           </div>
                         </div>
                         <p style={{ margin: '8px 0 0', fontSize: '0.82em', color: '#666' }}>
-                          ≤ advance above · deducted from chosen cash · no FX
+                          {t('moveForm.advanceHint')}
                         </p>
                       </div>
                     </>
@@ -1440,7 +1485,7 @@ const Orders = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Move to Inventory
+                {t('actions.moveToInventory', { ns: 'orders' })}
               </button>
               <button
                 type="button"
@@ -1455,7 +1500,7 @@ const Orders = () => {
                   });
                 }}
               >
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -1464,14 +1509,14 @@ const Orders = () => {
 
       {showCargoForm && (
         <div className="form-card" style={{ marginBottom: '20px' }} ref={cargoFormRef}>
-          <h2>Pay for Cargo - Order #{cargoFormData.orderId}</h2>
+          <h2>{t('cargoForm.title', { id: cargoFormData.orderId })}</h2>
           <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
-            Enter the UZS and/or USD amount. If cargo was <strong>free</strong>, enter <strong>0</strong> in both fields and submit.
+            {t('cargoForm.intro')}
           </p>
           <form onSubmit={handleCargoPaymentSubmit}>
             <div className="form-grid">
               <div className="form-group">
-                <label>UZS</label>
+                <label>{uzsLabel}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -1482,7 +1527,7 @@ const Orders = () => {
                 />
               </div>
               <div className="form-group">
-                <label>USD</label>
+                <label>{t('currency.usd', { ns: 'common' })}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -1495,7 +1540,7 @@ const Orders = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Pay for the Cargo
+                {t('actions.payCargo', { ns: 'orders' })}
               </button>
               <button
                 type="button"
@@ -1505,7 +1550,7 @@ const Orders = () => {
                   setCargoFormData({ orderId: null, uzs: '', usd: '' });
                 }}
               >
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -1514,25 +1559,25 @@ const Orders = () => {
 
       {showForm && canCreateOrder && (
         <div className="form-card">
-          <h2>New Order</h2>
+          <h2>{t('form.newTitle')}</h2>
           <form onSubmit={handleSubmit}>
             <div className="orders-new-order-form">
               <div className="orders-new-order-row orders-new-order-row--6">
               {canManageStockOrders && (
               <div className="form-group">
-                <label>Order Type</label>
+                <label>{t('form.orderType')}</label>
                 <select
                   value={formData.order_type}
                   onChange={(e) => setFormData({ ...formData, order_type: e.target.value })}
                   required
                 >
-                  <option value="stock">Stock-Based</option>
-                  <option value="on_demand">On-Demand</option>
+                  <option value="stock">{t('types.stock', { ns: 'orders' })}</option>
+                  <option value="on_demand">{t('types.on_demand', { ns: 'orders' })}</option>
                 </select>
               </div>
               )}
               <div className="form-group">
-                <label>Category type <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
+                <label>{t('filters.categoryType')} <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>({t('form.categoryTypeFilter')})</span></label>
                 <select
                   value={formCategoryType}
                   onChange={(e) => {
@@ -1551,22 +1596,22 @@ const Orders = () => {
                     });
                   }}
                 >
-                  <option value="">— None —</option>
-                  {PRODUCT_CATEGORY_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
+                  <option value="">{t('form.none')}</option>
+                  {productCategoryTypes.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="form-group">
-                <label>Category <span style={{ color: '#e53e3e' }}>*</span> <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter products)</span></label>
+                <label>{t('form.category')} <span style={{ color: '#e53e3e' }}>*</span> <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>({t('form.categoryFilter')})</span></label>
                 <select
                   value={formCategory}
                   onChange={(e) => { setFormCategory(e.target.value); setProductSearch(''); setProductDropdownOpen(false); setFormData({ ...formData, product: '', supplier_country: '', selling_usd_per_unit: '', selling_uzs_per_unit: '', cost_usd_per_unit: '', cost_uzs_per_unit: '' }); }}
                   required
                 >
-                  <option value="">Select category</option>
+                  <option value="">{t('form.selectCategory')}</option>
                   {[...new Set(
                     products
                       .filter((p) => !formCategoryType || p.category_type === formCategoryType)
@@ -1578,7 +1623,7 @@ const Orders = () => {
                 </select>
               </div>
               <div className="form-group" ref={productDropdownRef} style={{ position: 'relative' }}>
-                <label>Product</label>
+                <label>{t('form.product')}</label>
                 {(() => {
                   const selectedProduct = products.find(p => p.id === parseInt(formData.product));
                   const filteredByCategory = products.filter(
@@ -1610,8 +1655,8 @@ const Orders = () => {
                       >
                         <span style={{ color: selectedProduct ? '#333' : '#999' }}>
                           {selectedProduct
-                            ? productOrderPickerLabel(selectedProduct)
-                            : 'Select a product'}
+                            ? productOrderPickerLabel(selectedProduct, t)
+                            : t('form.selectProduct')}
                         </span>
                         <span style={{ color: '#666', fontSize: '0.8em' }}>{productDropdownOpen ? '▲' : '▼'}</span>
                       </div>
@@ -1634,7 +1679,7 @@ const Orders = () => {
                             <input
                               type="text"
                               autoFocus
-                              placeholder="Search product..."
+                              placeholder={t('form.searchProduct')}
                               value={productSearch}
                               onChange={(e) => setProductSearch(e.target.value)}
                               onClick={(e) => e.stopPropagation()}
@@ -1650,7 +1695,7 @@ const Orders = () => {
                           </div>
                           <div style={{ overflowY: 'auto', flex: 1 }}>
                             {filteredProducts.length === 0 ? (
-                              <div style={{ padding: '12px', color: '#999', textAlign: 'center', fontSize: '14px' }}>No products found</div>
+                              <div style={{ padding: '12px', color: '#999', textAlign: 'center', fontSize: '14px' }}>{t('form.noProducts')}</div>
                             ) : (
                               filteredProducts.map(product => (
                                 <div
@@ -1681,7 +1726,7 @@ const Orders = () => {
                                   onMouseEnter={(e) => { if (formData.product !== String(product.id)) e.currentTarget.style.background = '#f5f5f5'; }}
                                   onMouseLeave={(e) => { if (formData.product !== String(product.id)) e.currentTarget.style.background = 'white'; }}
                                 >
-                                  {productOrderPickerLabel(product)}
+                                  {productOrderPickerLabel(product, t)}
                                 </div>
                               ))
                             )}
@@ -1693,7 +1738,7 @@ const Orders = () => {
                 })()}
               </div>
               <div className="form-group">
-                <label>Supplier Country <span style={{ color: '#e53e3e' }}>*</span></label>
+                <label>{t('form.supplierCountry')} <span style={{ color: '#e53e3e' }}>*</span></label>
                 {!isNewCountry ? (
                   <select
                     value={formData.supplier_country}
@@ -1707,19 +1752,19 @@ const Orders = () => {
                     }}
                     required
                   >
-                    <option value="">Select a country</option>
+                    <option value="">{t('form.selectCountry')}</option>
                     {uniqueSupplierCountriesFromOrdersAndProducts(orders, products).map((country) => (
                       <option key={country} value={country}>
                         {country.charAt(0).toUpperCase() + country.slice(1)}
                       </option>
                     ))}
-                    <option value="__new__">+ Add new country...</option>
+                    <option value="__new__">{t('form.addCountry')}</option>
                   </select>
                 ) : (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input
                       type="text"
-                      placeholder="Enter country name"
+                      placeholder={t('form.enterCountry')}
                       value={formData.supplier_country}
                       onChange={(e) => setFormData({ ...formData, supplier_country: e.target.value })}
                       required
@@ -1742,13 +1787,13 @@ const Orders = () => {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      ← Back
+                      ← {t('actions.back', { ns: 'common' })}
                     </button>
                   </div>
                 )}
               </div>
               <div className="form-group">
-                <label>Supplier cargo <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(optional)</span></label>
+                <label>{t('form.supplierCargo')} <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>({t('form.optional')})</span></label>
                 {!isNewCargo ? (
                   <select
                     value={formData.supplier_cargo}
@@ -1761,19 +1806,19 @@ const Orders = () => {
                       }
                     }}
                   >
-                    <option value="">— None —</option>
+                    <option value="">{t('form.none')}</option>
                     {uniqueSupplierCargosFromOrders(orders).map((cargo) => (
                       <option key={cargo} value={cargo}>
                         {cargo.charAt(0).toUpperCase() + cargo.slice(1)}
                       </option>
                     ))}
-                    <option value="__new__">+ Add new supplier cargo...</option>
+                    <option value="__new__">{t('form.addCargo')}</option>
                   </select>
                 ) : (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input
                       type="text"
-                      placeholder="Enter supplier cargo name"
+                      placeholder={t('form.enterCargo')}
                       value={formData.supplier_cargo}
                       onChange={(e) => setFormData({ ...formData, supplier_cargo: e.target.value })}
                       autoFocus
@@ -1794,7 +1839,7 @@ const Orders = () => {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      ← Back
+                      ← {t('actions.back', { ns: 'common' })}
                     </button>
                   </div>
                 )}
@@ -1803,7 +1848,7 @@ const Orders = () => {
 
               <div className="orders-new-order-row orders-new-order-row--eshop-prices">
               <div className="form-group">
-                <label>eShop <span style={{ color: '#e53e3e' }}>*</span></label>
+                <label>{t('form.eshop')} <span style={{ color: '#e53e3e' }}>*</span></label>
                 {!isNewEshop ? (
                   <select
                     value={formData.eshop}
@@ -1822,14 +1867,13 @@ const Orders = () => {
                       }
                     }}
                   >
-                    <option value="">Select eShop</option>
-                    {/* Built-in options */}
-                    <option value="zalando">Zalando</option>
-                    <option value="best_secret">Best Secret</option>
-                    <option value="adidas">Adidas</option>
-                    <option value="unidays">UniDays</option>
-                    <option value="nike">Nike</option>
-                    <option value="asos">ASOS</option>
+                    <option value="">{t('form.selectEshop')}</option>
+                    <option value="zalando">{t('eshops.zalando', { ns: 'orders' })}</option>
+                    <option value="best_secret">{t('eshops.best_secret', { ns: 'orders' })}</option>
+                    <option value="adidas">{t('eshops.adidas', { ns: 'orders' })}</option>
+                    <option value="unidays">{t('eshops.unidays', { ns: 'orders' })}</option>
+                    <option value="nike">{t('eshops.nike', { ns: 'orders' })}</option>
+                    <option value="asos">{t('eshops.asos', { ns: 'orders' })}</option>
                     {/* Custom eshops added by users (from existing orders) */}
                     {[...new Set(
                       orders
@@ -1838,15 +1882,15 @@ const Orders = () => {
                     )].sort().map(eshop => (
                       <option key={eshop} value={eshop}>{eshop}</option>
                     ))}
-                    <option value="client">Client</option>
-                    <option value="other">Other</option>
-                    <option value="__new__">+ Add new eShop...</option>
+                    <option value="client">{t('eshops.client', { ns: 'orders' })}</option>
+                    <option value="other">{t('eshops.other', { ns: 'orders' })}</option>
+                    <option value="__new__">{t('form.addEshop')}</option>
                   </select>
                 ) : (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <input
                       type="text"
-                      placeholder="Enter new eShop name"
+                      placeholder={t('form.enterEshop')}
                       value={formData.eshop}
                       required
                       onChange={(e) => {
@@ -1875,13 +1919,13 @@ const Orders = () => {
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      ← Back
+                      ← {t('actions.back', { ns: 'common' })}
                     </button>
                   </div>
                 )}
               </div>
               <div className="form-group orders-new-order-field--qty">
-                <label>Ordered Quantity</label>
+                <label>{t('form.orderedQuantity')}</label>
                 <input
                   type="number"
                   min="1"
@@ -1892,7 +1936,7 @@ const Orders = () => {
               </div>
               <div className="form-group">
                 <label>
-                  Selling price per unit (USD){' '}
+                  {t('form.sellingPriceUsd')}{' '}
                   <span style={{ color: '#e53e3e', fontWeight: 400 }}>*</span>
                 </label>
                 <input
@@ -1905,17 +1949,19 @@ const Orders = () => {
                 />
                 {numOrZero(formData.selling_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
                   <span className="orders-field-hint">
-                    = ${(parseFloat(formData.selling_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} line total
+                    = {t('form.lineTotal', {
+                      total: (parseFloat(formData.selling_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2),
+                    })}
                   </span>
                 )}
               </div>
               <div className="form-group">
-                <label>Cost per unit (USD)</label>
+                <label>{t('form.costUsd')}</label>
                 {!isClientEshopSlug(formData.eshop) && (
                   <span className="orders-field-hint">
                     {formData.order_type === 'on_demand'
-                      ? 'Leave blank if supplier cost is not confirmed yet; you can record it when paying the order.'
-                      : 'Optional until you have the supplier invoice; leave blank and pay later from the list.'}
+                      ? t('form.costHintOnDemand')
+                      : t('form.costHintStock')}
                   </span>
                 )}
                 <input
@@ -1935,7 +1981,9 @@ const Orders = () => {
                 />
                 {numOrZero(formData.cost_usd_per_unit) > 0 && parseInt(formData.ordered_quantity, 10) > 0 && (
                   <span className="orders-field-hint">
-                    = ${(parseFloat(formData.cost_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2)} line total
+                    = {t('form.lineTotal', {
+                      total: (parseFloat(formData.cost_usd_per_unit) * parseInt(formData.ordered_quantity, 10)).toFixed(2),
+                    })}
                   </span>
                 )}
               </div>
@@ -1945,7 +1993,7 @@ const Orders = () => {
                 <div className="orders-new-order-row orders-new-order-row--notes">
                   <div className="form-group">
                     <label>
-                      Notes <span style={{ color: '#e53e3e' }}>*</span>
+                      {t('form.clientNotes')} <span style={{ color: '#e53e3e' }}>*</span>
                     </label>
                     <textarea
                       className="orders-client-notes-field"
@@ -1955,7 +2003,7 @@ const Orders = () => {
                       }
                       required
                       rows={2}
-                      placeholder="Who / reference / sourcing (required when eShop is Client)"
+                      placeholder={t('form.clientNotesPlaceholder')}
                     />
                   </div>
                 </div>
@@ -1967,10 +2015,10 @@ const Orders = () => {
                 <label
                   title={
                     isClientEshopSlug(formData.eshop)
-                      ? 'Enter a USD cost per unit to mark paid at creation, or leave blank and pay later.'
+                      ? t('form.alreadyPaidTitleClient')
                       : numOrZero(formData.cost_usd_per_unit)
                         ? undefined
-                        : 'Enter a USD cost per unit above, or leave this unchecked and use Pay for the Order after you know the price.'
+                        : t('form.alreadyPaidTitleNeedCost')
                   }
                 >
                   <input
@@ -1979,12 +2027,12 @@ const Orders = () => {
                     disabled={!numOrZero(formData.cost_usd_per_unit)}
                     onChange={(e) => setFormData({ ...formData, order_is_paid: e.target.checked })}
                   />
-                  Order payment is already made <span style={{ color: '#666', fontWeight: 400 }}>(USD only)</span>
+                  {t('form.alreadyPaid')} <span style={{ color: '#666', fontWeight: 400 }}>{t('form.usdOnly')}</span>
                 </label>
               </div>
               {formData.order_is_paid && (
                 <div className="form-group">
-                  <label>Payment Currency</label>
+                  <label>{t('form.paymentCurrency')}</label>
                   <select
                     value={formData.order_payment_currency}
                     onChange={(e) => setFormData({ ...formData, order_payment_currency: e.target.value })}
@@ -2000,7 +2048,7 @@ const Orders = () => {
               {formData.order_type === 'on_demand' && (
               <div className="orders-new-order-row orders-new-order-row--on-demand">
                   <div className="form-group">
-                    <label>Customer *</label>
+                    <label>{t('form.customer')} *</label>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
                       <select
                         value={formData.customer}
@@ -2008,7 +2056,7 @@ const Orders = () => {
                         style={{ flex: 1, minWidth: 0 }}
                         required={formData.order_type === 'on_demand'}
                       >
-                        <option value="">Select or add customer</option>
+                        <option value="">{t('form.selectCustomer')}</option>
                         {customers.map((customer) => (
                           <option key={customer.id} value={customer.id}>
                             {customer.name} {customer.telephone ? `(${customer.telephone})` : ''}
@@ -2021,23 +2069,23 @@ const Orders = () => {
                         onClick={() => setShowCustomerForm(true)}
                         style={{ whiteSpace: 'nowrap', alignSelf: 'center' }}
                       >
-                        + New
+                        {t('form.newCustomer')}
                       </button>
                     </div>
                   </div>
                   <div className="form-group">
-                    <label>Advance payment amount</label>
+                    <label>{t('form.advanceAmount')}</label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       value={formData.advance_payment_amount}
                       onChange={(e) => setFormData({ ...formData, advance_payment_amount: e.target.value })}
-                      placeholder="0 if none"
+                      placeholder={t('form.advanceNone')}
                     />
                   </div>
                   <div className="form-group">
-                    <label>Advance currency</label>
+                    <label>{t('form.advanceCurrency')}</label>
                     <select
                       value={formData.advance_payment_currency}
                       onChange={(e) => setFormData({ ...formData, advance_payment_currency: e.target.value })}
@@ -2051,7 +2099,7 @@ const Orders = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary" disabled={orderCreating}>
-                {orderCreating ? 'Creating…' : 'Create Order'}
+                {orderCreating ? t('creating', { ns: 'orders' }) : t('createOrder', { ns: 'orders' })}
               </button>
               <button
                 type="button"
@@ -2069,7 +2117,7 @@ const Orders = () => {
                   setFormData(newOrderFormDefaults());
                 }}
               >
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -2078,11 +2126,11 @@ const Orders = () => {
 
       {showCustomerForm && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
-          <h2>Add New Customer</h2>
+          <h2>{t('customerForm.title')}</h2>
           <form onSubmit={handleCreateCustomer}>
             <div className="form-grid">
               <div className="form-group">
-                <label>Name *</label>
+                <label>{t('name', { ns: 'common' })} *</label>
                 <input
                   type="text"
                   value={newCustomerData.name}
@@ -2091,7 +2139,7 @@ const Orders = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Telephone *</label>
+                <label>{t('phone', { ns: 'common' })} *</label>
                 <input
                   type="text"
                   value={newCustomerData.telephone}
@@ -2100,7 +2148,7 @@ const Orders = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Instagram</label>
+                <label>{t('customerForm.instagram')}</label>
                 <input
                   type="text"
                   value={newCustomerData.instagram}
@@ -2108,7 +2156,7 @@ const Orders = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Region</label>
+                <label>{t('customerForm.region')}</label>
                 <select
                   value={newCustomerData.region}
                   onChange={(e) => setNewCustomerData({ ...newCustomerData, region: e.target.value })}
@@ -2123,7 +2171,7 @@ const Orders = () => {
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
-                Add Customer
+                {t('customerForm.add')}
               </button>
               <button
                 type="button"
@@ -2133,7 +2181,7 @@ const Orders = () => {
                   setNewCustomerData({ name: '', telephone: '+998', instagram: '', region: 'tashkent_city', notes: '' });
                 }}
               >
-                Cancel
+                {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>
           </form>
@@ -2143,29 +2191,29 @@ const Orders = () => {
       {/* Filters */}
       {!showForm && !showPaymentForm && !showCargoForm && !showMoveToInventoryForm && !showCustomerForm && (
         <div className="form-card filter-card" style={{ marginBottom: '16px' }}>
-          <h3 className="filter-card__title">Filters</h3>
+          <h3 className="filter-card__title">{t('filters.title', { ns: 'orders' })}</h3>
         <div className="filter-toolbar">
           <div className="filter-field">
-            <label>Category type</label>
+            <label>{t('filters.categoryType', { ns: 'orders' })}</label>
             <select
               value={filters.category_type}
               onChange={(e) => setFilters({ ...filters, category_type: e.target.value })}
             >
-              <option value="">All types</option>
-              {PRODUCT_CATEGORY_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
+              <option value="">{t('filters.allCategoryTypes', { ns: 'orders' })}</option>
+              {productCategoryTypes.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
                 </option>
               ))}
             </select>
           </div>
           <div className="filter-field">
-            <label>Category</label>
+            <label>{t('filters.category', { ns: 'orders' })}</label>
             <select
               value={filters.category}
               onChange={(e) => setFilters({ ...filters, category: e.target.value })}
             >
-              <option value="">All Categories</option>
+              <option value="">{t('filters.allCategories', { ns: 'orders' })}</option>
               {[...new Set(
                 products
                   .filter((p) => !filters.category_type || p.category_type === filters.category_type)
@@ -2181,12 +2229,12 @@ const Orders = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Brand</label>
+            <label>{t('filters.brand', { ns: 'orders' })}</label>
             <select
               value={filters.brand}
               onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
             >
-              <option value="">All Brands</option>
+              <option value="">{t('filters.allBrands', { ns: 'orders' })}</option>
               {getUniqueValues(orders, 'brand').map((brand) => (
                 <option key={brand} value={brand}>
                   {brand}
@@ -2195,12 +2243,12 @@ const Orders = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Model</label>
+            <label>{t('filters.model', { ns: 'orders' })}</label>
             <select
               value={filters.model}
               onChange={(e) => setFilters({ ...filters, model: e.target.value })}
             >
-              <option value="">All Models</option>
+              <option value="">{t('filters.allModels', { ns: 'orders' })}</option>
               {getUniqueValues(orders, 'model').map((model) => (
                 <option key={model} value={model}>
                   {model}
@@ -2209,12 +2257,12 @@ const Orders = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Size</label>
+            <label>{t('filters.size', { ns: 'orders' })}</label>
             <select
               value={filters.size}
               onChange={(e) => setFilters({ ...filters, size: e.target.value })}
             >
-              <option value="">All Sizes</option>
+              <option value="">{t('filters.allSizes', { ns: 'orders' })}</option>
               {getUniqueValues(orders, 'size').map((size) => (
                 <option key={size} value={size}>
                   {size}
@@ -2223,12 +2271,12 @@ const Orders = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Color</label>
+            <label>{t('filters.color', { ns: 'orders' })}</label>
             <select
               value={filters.color}
               onChange={(e) => setFilters({ ...filters, color: e.target.value })}
             >
-              <option value="">All Colors</option>
+              <option value="">{t('filters.allColors', { ns: 'orders' })}</option>
               {getUniqueValues(orders, 'color').map((color) => (
                 <option key={color} value={color}>
                   {color}
@@ -2238,52 +2286,52 @@ const Orders = () => {
           </div>
           {canManageStockOrders && (
           <div className="filter-field">
-            <label>Order Type</label>
+            <label>{t('filters.orderType', { ns: 'orders' })}</label>
             <select
               value={filters.order_type}
               onChange={(e) => setFilters({ ...filters, order_type: e.target.value })}
             >
-              <option value="">All Types</option>
-              <option value="stock">Stock-Based</option>
-              <option value="on_demand">On-Demand</option>
+              <option value="">{t('filters.allOrderTypes', { ns: 'orders' })}</option>
+              <option value="stock">{t('types.stock', { ns: 'orders' })}</option>
+              <option value="on_demand">{t('types.on_demand', { ns: 'orders' })}</option>
             </select>
           </div>
           )}
           <div className="filter-field">
-            <label>Status</label>
+            <label>{t('filters.status', { ns: 'orders' })}</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
             >
-              <option value="">All Statuses</option>
-              <option value="ordered">Ordered</option>
-              <option value="order_paid">Order paid</option>
-              <option value="received">Received</option>
-              <option value="in_inventory">In Inventory</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="">{t('filters.allStatuses', { ns: 'orders' })}</option>
+              {orderStatusFilterOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="filter-field">
-            <label>Customer</label>
+            <label>{t('filters.customer', { ns: 'orders' })}</label>
             <CustomerSearchableSelect
               variant="filter"
               customers={customerFilterOptions}
               value={filters.customer}
               allowEmpty
-              emptyLabel="All Customers"
-              placeholder="All Customers"
-              extraOptions={[{ value: '__none__', label: 'No customer' }]}
-              aria-label="Filter by customer"
+              emptyLabel={t('filters.allCustomers', { ns: 'orders' })}
+              placeholder={t('filters.allCustomers', { ns: 'orders' })}
+              extraOptions={[{ value: '__none__', label: t('filters.noCustomer', { ns: 'orders' }) }]}
+              aria-label={t('filters.customer', { ns: 'orders' })}
               onChange={(customerId) => setFilters({ ...filters, customer: customerId })}
             />
           </div>
           <div className="filter-field">
-            <label>Year</label>
+            <label>{t('filters.year', { ns: 'orders' })}</label>
             <select
               value={filters.year}
               onChange={(e) => setFilters({ ...filters, year: e.target.value })}
             >
-              <option value="">All Years</option>
+              <option value="">{t('filters.allYears', { ns: 'common' })}</option>
               {Array.from({ length: 10 }, (_, i) => {
                 const year = new Date().getFullYear() - i;
                 return (
@@ -2295,24 +2343,16 @@ const Orders = () => {
             </select>
           </div>
           <div className="filter-field">
-            <label>Month</label>
+            <label>{t('filters.month', { ns: 'orders' })}</label>
             <select
               value={filters.month}
               onChange={(e) => setFilters({ ...filters, month: e.target.value })}
             >
-              <option value="">All Months</option>
-              <option value="1">January</option>
-              <option value="2">February</option>
-              <option value="3">March</option>
-              <option value="4">April</option>
-              <option value="5">May</option>
-              <option value="6">June</option>
-              <option value="7">July</option>
-              <option value="8">August</option>
-              <option value="9">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
+              {monthOptions.map((m) => (
+                <option key={m.value || 'all'} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="filter-toolbar__actions">
@@ -2335,7 +2375,7 @@ const Orders = () => {
                 })
               }
             >
-              Clear all
+              {t('actions.clearAll', { ns: 'common' })}
             </button>
           </div>
         </div>
@@ -2347,46 +2387,46 @@ const Orders = () => {
         <table className="data-table">
           <thead>
             <tr>
-              <SortableTh columnId="id" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>ID</SortableTh>
-              <th>Actions</th>
-              <SortableTh columnId="status" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Status</SortableTh>
-              <SortableTh columnId="category_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Category type</SortableTh>
-              <SortableTh columnId="category" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Category</SortableTh>
-              <SortableTh columnId="brand" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Brand</SortableTh>
-              <SortableTh columnId="model" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Model</SortableTh>
-              <SortableTh columnId="size" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Size</SortableTh>
-              <SortableTh columnId="color" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Color</SortableTh>
-              <SortableTh columnId="supplier_country" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Supplier Country</SortableTh>
-              <SortableTh columnId="supplier_cargo" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Supplier Cargo</SortableTh>
-              <SortableTh columnId="eshop" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>eShop</SortableTh>
+              <SortableTh columnId="id" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.id', { ns: 'common' })}</SortableTh>
+              <th>{t('table.actions', { ns: 'orders' })}</th>
+              <SortableTh columnId="status" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.status', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="category_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.categoryType', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="category" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.category', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="brand" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.brand', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="model" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.model', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="size" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.size', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="color" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.color', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="supplier_country" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.supplierCountry', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="supplier_cargo" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.supplierCargo', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="eshop" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.eshop', { ns: 'orders' })}</SortableTh>
               {canManageStockOrders && (
-              <SortableTh columnId="order_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Order Type</SortableTh>
+              <SortableTh columnId="order_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.orderType', { ns: 'orders' })}</SortableTh>
               )}
-              <SortableTh columnId="customer" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Customer</SortableTh>
-              <SortableTh columnId="qty" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Qty</SortableTh>
-              <SortableTh columnId="selling_price_unit" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Selling price/unit</SortableTh>
-              <SortableTh columnId="cost_per_unit" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Cost Per Unit</SortableTh>
-              <SortableTh columnId="total_cost" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Total Cost</SortableTh>
-              <SortableTh columnId="order_uzs" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Order UZS</SortableTh>
-              <SortableTh columnId="order_usd" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Order USD</SortableTh>
-              <SortableTh columnId="cargo_uzs" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Cargo UZS</SortableTh>
-              <SortableTh columnId="cargo_usd" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Cargo USD</SortableTh>
-              <SortableTh columnId="created_by" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Created By</SortableTh>
-              <SortableTh columnId="order_date" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>Date</SortableTh>
+              <SortableTh columnId="customer" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.customer', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="qty" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.qty', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="selling_price_unit" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.sellingPerUnit', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="cost_per_unit" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.costPerUnit', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="total_cost" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.totalCost', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="order_uzs" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.orderUzs', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="order_usd" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.orderUsd', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="cargo_uzs" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.cargoUzs', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="cargo_usd" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.cargoUsd', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="created_by" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.createdBy', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="order_date" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.date', { ns: 'orders' })}</SortableTh>
             </tr>
           </thead>
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="24" style={{ textAlign: 'center' }}>
-                  No orders found
+                <td colSpan={orderTableColumnCount} style={{ textAlign: 'center' }}>
+                  {t('table.noOrders', { ns: 'orders' })}
                 </td>
               </tr>
             ) : (
               sortedFilteredOrders.map((order) => {
                 const plannedSellingLabel = plannedSellingSummary(order);
                 const plannedSupplierTotalLabel = plannedSupplierTotal(order);
-                const eshopLabel = formatEshopDisplay(order.eshop);
+                const eshopLabel = formatEshopDisplay(order.eshop, t);
                 return (
                 <tr key={order.id}>
                   <td>#{order.id}</td>
@@ -2398,7 +2438,7 @@ const Orders = () => {
                         onClick={() => handleStatusUpdate(order.id, 'received')}
                         style={{ marginRight: '5px' }}
                       >
-                        Mark as Received
+                        {t('actions.markReceived', { ns: 'orders' })}
                       </button>
                     )}
                     {!order.order_is_paid && canPayOrder && (
@@ -2407,7 +2447,7 @@ const Orders = () => {
                         onClick={() => handlePayOrder(order.id)}
                         style={{ marginRight: '5px' }}
                       >
-                        Pay for the Order
+                        {t('actions.payOrder', { ns: 'orders' })}
                       </button>
                     )}
                     {!order.cargo_is_paid && canPayCargo && (
@@ -2416,7 +2456,7 @@ const Orders = () => {
                         onClick={() => handlePayCargo(order.id)}
                         style={{ marginRight: '5px' }}
                       >
-                        Pay for the Cargo
+                        {t('actions.payCargo', { ns: 'orders' })}
                       </button>
                     )}
                     {orderReadyForInventoryActions(order) && order.order_type === 'stock' && canMoveInventory && (
@@ -2425,7 +2465,7 @@ const Orders = () => {
                         onClick={() => handleStatusUpdate(order.id, 'in_inventory')}
                         style={{ marginRight: '5px' }}
                       >
-                        Move to Inventory
+                        {t('actions.moveToInventory', { ns: 'orders' })}
                       </button>
                     )}
                     {order.order_type === 'on_demand' &&
@@ -2438,7 +2478,7 @@ const Orders = () => {
                           onClick={() => handleSellProduct(order.id)}
                           style={{ marginRight: '5px', backgroundColor: '#4caf50', color: 'white' }}
                         >
-                          Sell the Product
+                          {t('actions.sellProduct', { ns: 'orders' })}
                         </button>
                         )}
                         {canMoveInventory && (
@@ -2447,7 +2487,7 @@ const Orders = () => {
                           onClick={() => handleMoveToInventoryFromOrder(order.id)}
                           style={{ backgroundColor: '#2196f3', color: 'white' }}
                         >
-                          Move to Inventory
+                          {t('actions.moveToInventory', { ns: 'orders' })}
                         </button>
                         )}
                       </>
@@ -2455,11 +2495,11 @@ const Orders = () => {
                   </td>
                   <td>
                     <span className={`status-badge ${order.status}`}>
-                      {formatOrderStatus(order.status)}
+                      {formatOrderStatus(order.status, tStatus)}
                     </span>
                   </td>
                   <td>
-                    {categoryTypeLabel(order.product_detail?.category_type) || (
+                    {categoryTypeLabel(order.product_detail?.category_type, t) || (
                       <span style={{ color: '#999' }}>—</span>
                     )}
                   </td>
@@ -2480,7 +2520,7 @@ const Orders = () => {
                   {canManageStockOrders && (
                   <td>
                     <span className={`status-badge ${order.order_type === 'stock' ? 'confirmed' : 'pending'}`}>
-                      {order.order_type === 'stock' ? 'Stock' : 'On-Demand'}
+                      {orderTypeShortLabel(order.order_type, t)}
                     </span>
                   </td>
                   )}
@@ -2494,7 +2534,7 @@ const Orders = () => {
                           )}
                           {order.advance_payment_amount > 0 && (
                             <div style={{ fontSize: '0.82em', color: '#4caf50' }}>
-                              Advance:{' '}
+                              {t('table.advance', { ns: 'orders' })}{' '}
                               {formatDisplayAmount(
                                 order.advance_payment_amount,
                                 order.advance_payment_currency || 'USD',
@@ -2503,7 +2543,7 @@ const Orders = () => {
                           )}
                         </div>
                       ) : (
-                        <span style={{ color: '#f44336', fontSize: '0.85em' }}>No customer</span>
+                        <span style={{ color: '#f44336', fontSize: '0.85em' }}>{t('table.noCustomer', { ns: 'orders' })}</span>
                       )
                     ) : (
                       <span style={{ color: '#aaa' }}>—</span>
@@ -2528,7 +2568,7 @@ const Orders = () => {
                   <td>
                     {(() => {
                       const v = (parseFloat(order.order_payment_uzs_cash) || 0) + (parseFloat(order.order_payment_uzs_card) || 0);
-                      return v > 0 ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>{v.toLocaleString()} UZS</span> : <span style={{ color: '#bbb' }}>—</span>;
+                      return v > 0 ? <span style={{ color: order.order_is_paid ? '#4caf50' : 'inherit' }}>{formatAppNumber(v)} {uzsLabel}</span> : <span style={{ color: '#bbb' }}>—</span>;
                     })()}
                   </td>
                   <td>
@@ -2540,7 +2580,7 @@ const Orders = () => {
                   <td>
                     {(() => {
                       const v = (parseFloat(order.cargo_payment_uzs_cash) || 0) + (parseFloat(order.cargo_payment_uzs_card) || 0);
-                      return v > 0 ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>{v.toLocaleString()} UZS</span> : <span style={{ color: '#bbb' }}>—</span>;
+                      return v > 0 ? <span style={{ color: order.cargo_is_paid ? '#4caf50' : 'inherit' }}>{formatAppNumber(v)} {uzsLabel}</span> : <span style={{ color: '#bbb' }}>—</span>;
                     })()}
                   </td>
                   <td>
@@ -2550,7 +2590,7 @@ const Orders = () => {
                     })()}
                   </td>
                   <td>{order.created_by_detail?.username || '-'}</td>
-                  <td>{new Date(order.order_date || order.created_at).toLocaleString()}</td>
+                  <td>{formatAppDateTime(order.order_date || order.created_at)}</td>
                 </tr>
                 );
               })
@@ -2558,13 +2598,13 @@ const Orders = () => {
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan="12" style={{ textAlign: 'right' }}>
-                Total
+              <td colSpan={orderFooterLabelColSpan} style={{ textAlign: 'right' }}>
+                {t('table.total', { ns: 'orders' })}
               </td>
-              <td style={{ fontWeight: 600 }}>{orderColumnTotals.quantity.toLocaleString()}</td>
+              <td style={{ fontWeight: 600 }}>{formatAppNumber(orderColumnTotals.quantity)}</td>
               <td
                 style={{ fontWeight: 600 }}
-                title="Weighted average planned USD-only line totals per unit ordered (UZS-only lines excluded; no FX)"
+                title={t('table.avgSellingHint', { ns: 'orders' })}
               >
                 {orderColumnTotals.avgSellingPerUnitOrdered > 0
                   ? `$${orderColumnTotals.avgSellingPerUnitOrdered.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -2576,16 +2616,18 @@ const Orders = () => {
                   : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                ${orderColumnTotals.costTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {orderColumnTotals.costTotal > 0
+                  ? `$${orderColumnTotals.costTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {orderColumnTotals.orderUzs > 0 ? `${orderColumnTotals.orderUzs.toLocaleString()} UZS` : '—'}
+                {orderColumnTotals.orderUzs > 0 ? `${formatAppNumber(orderColumnTotals.orderUzs)} ${uzsLabel}` : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
                 {orderColumnTotals.orderUsd > 0 ? `$${orderColumnTotals.orderUsd.toFixed(2)}` : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {orderColumnTotals.cargoUzs > 0 ? `${orderColumnTotals.cargoUzs.toLocaleString()} UZS` : '—'}
+                {orderColumnTotals.cargoUzs > 0 ? `${formatAppNumber(orderColumnTotals.cargoUzs)} ${uzsLabel}` : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
                 {orderColumnTotals.cargoUsd > 0 ? `$${orderColumnTotals.cargoUsd.toFixed(2)}` : '—'}

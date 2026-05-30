@@ -1,0 +1,59 @@
+{
+  "title": "Audit jurnali",
+  "tabs": {
+    "actions": "Ruxsatga bog‘liq harakatlar",
+    "status": "Holat o‘zgarishlari"
+  },
+  "filters": {
+    "title": "Filtrlar",
+    "action": "Harakat",
+    "objectType": "Obekt turi",
+    "objectId": "Obekt ID",
+    "type": "Turi",
+    "id": "ID",
+    "objectTypePlaceholder": "masalan, order",
+    "objectIdPlaceholder": "#",
+    "objectIdStatusPlaceholder": "Obekt #"
+  },
+  "statusTypes": {
+    "all": "Barcha turlar",
+    "order": "Buyurtma",
+    "inventory_item": "Ombor pozitsiyasi",
+    "sale": "Sotuv",
+    "dispatch": "Yetkazib berish"
+  },
+  "actionTypes": {
+    "all": "Barcha harakatlar",
+    "orders.pay_order": "Buyurtmani to‘lash",
+    "orders.pay_cargo": "Kargoni to‘lash",
+    "orders.move_to_inventory": "Omborga ko‘chirish",
+    "sales.update_status": "Sotuv holati o‘zgarishi",
+    "sales.complete_from_order": "Buyurtmadan yakunlash",
+    "returns.mark_refunded": "Qaytarilgan deb belgilash",
+    "cash.adjust": "Naqd tuzatish"
+  },
+  "table": {
+    "actions": {
+      "id": "ID",
+      "action": "Harakat",
+      "object": "Obekt",
+      "user": "Foydalanuvchi",
+      "timestamp": "Vaqt",
+      "before": "Oldin",
+      "after": "Keyin",
+      "notes": "Izoh",
+      "noRows": "Harakat audit yozuvlari topilmadi"
+    },
+    "status": {
+      "id": "ID",
+      "objectType": "Obekt turi",
+      "objectId": "Obekt ID",
+      "previousStatus": "Oldingi holat",
+      "newStatus": "Yangi holat",
+      "changedBy": "Kim o‘zgartirdi",
+      "timestamp": "Vaqt",
+      "notes": "Izoh",
+      "noRows": "Holat yozuvlari topilmadi"
+    }
+  }
+}
