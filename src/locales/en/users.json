@@ -26,5 +26,19 @@
   "errPasswordNew": "Password is required for new users",
   "errSave": "Could not save user",
   "confirmDelete": "Delete this login account? Linked dispatcher/worker rows will be deactivated.",
-  "errDelete": "Could not delete user"
+  "errDelete": "Could not delete user",
+  "clearDataButton": "Clear database",
+  "clearDataTitle": "Clear database",
+  "clearDataWarningIntro": "The following business data will be permanently deleted:",
+  "clearDataWarningItem1": "Orders, sales, returns, and dispatches",
+  "clearDataWarningItem2": "Inventory, packages, products, and finance records",
+  "clearDataWarningItem3": "Customers, dispatchers, workers, and other operational data",
+  "clearDataWarningKept": "Kept: Django superuser logins and passwords.",
+  "clearDataConfirmLabel": "Type CLEAR to proceed",
+  "clearDataConfirmPlaceholder": "CLEAR",
+  "clearDataConfirmPhrase": "CLEAR",
+  "clearDataConfirmMismatch": "Type CLEAR exactly to continue",
+  "clearDataProceed": "Clear data",
+  "clearDataSuccess": "Database cleared. Superuser accounts were kept.",
+  "clearDataFailed": "Could not clear database"
 }

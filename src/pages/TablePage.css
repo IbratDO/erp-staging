@@ -29,6 +29,81 @@
   background-color: #2980b9;
 }
 
+.btn-danger-action {
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.btn-danger-action:hover:not(:disabled) {
+  background-color: #c0392b;
+}
+
+.btn-danger-action:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.form-card--danger {
+  border-left: 4px solid #e74c3c;
+}
+
+.form-card--danger h2 {
+  color: #c0392b;
+}
+
+.danger-callout {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #fdf2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 0.9em;
+  color: #7f1d1d;
+  line-height: 1.55;
+}
+
+.danger-callout ul {
+  margin: 8px 0 0;
+  padding-left: 1.25rem;
+}
+
+.danger-callout li + li {
+  margin-top: 4px;
+}
+
+.danger-callout__kept {
+  margin-top: 10px;
+  color: #444;
+}
+
+.form-hint-error {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #c0392b;
+}
+
+.notification-banner {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  color: white;
+  font-size: 0.95em;
+}
+
+.notification-banner.success {
+  background-color: #4caf50;
+}
+
+.notification-banner.error {
+  background-color: #f44336;
+}
+
 .form-card {
   background: white;
   padding: 20px;
