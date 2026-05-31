@@ -7,7 +7,7 @@
     "dashboard": "Dashboard",
     "products": "Products",
     "inventory": "Inventory",
-    "inventoryProducts": "Products",
+    "inventoryProducts": "Stock items",
     "packages": "Packages",
     "orders": "Orders",
     "sales": "Sales",
@@ -33,7 +33,17 @@
     "login": "Login",
     "loggingIn": "Logging in...",
     "logout": "Logout",
-    "invalidCredentials": "Invalid credentials"
+    "invalidCredentials": "Invalid credentials",
+    "loginFailed": "Login failed"
+  },
+  "exchangeRate": {
+    "loadFailed": "Could not load CBU exchange rate."
+  },
+  "ledger": {
+    "insufficientDefault": "Insufficient {{label}} balance. Available: {{available}}, required: {{required}}.",
+    "insufficientRefund": "Insufficient {{label}} balance for this refund. Available: {{available}}, required: {{required}}.",
+    "insufficientOrderPaid": "Insufficient USD balance to mark this order paid at creation. Available: {{available}}, required supplier cost: {{required}}.",
+    "topUpHint": " Add funds under Money Balance, then try again."
   },
   "roles": {
     "founder": "Asoschi",

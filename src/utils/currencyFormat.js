@@ -1,6 +1,7 @@
 /**
  * Display rules: never prefix UZS with $. USD (default) uses $ and 2 decimal places.
  */
+import i18n from '../i18n';
 
 export function formatDisplayAmount(amount, currency) {
   if (amount === null || amount === undefined || amount === '') return '—';
@@ -60,18 +61,21 @@ export function formatInsufficientLedgerMessage(currency, available, required, o
   const reqStr = formatDisplayAmount(required, ccy);
   const label = ccy === 'UZS' ? 'UZS' : 'USD';
 
-  let base;
-  if (context === 'refund') {
-    base = `Insufficient ${label} balance for this refund. Available: ${availStr}, required: ${reqStr}`;
-  } else if (context === 'order_paid_on_create') {
-    base = `Insufficient USD balance to mark this order paid at creation. Available: ${availStr}, required supplier cost: ${reqStr}`;
-  } else {
-    base = `Insufficient ${label} balance. Available: ${availStr}, required: ${reqStr}`;
-  }
+  const key =
+    context === 'refund'
+      ? 'ledger.insufficientRefund'
+      : context === 'order_paid_on_create'
+        ? 'ledger.insufficientOrderPaid'
+        : 'ledger.insufficientDefault';
 
-  let out = `${base}.`;
+  let out = i18n.t(key, {
+    ns: 'common',
+    label,
+    available: availStr,
+    required: reqStr,
+  });
   if (topUpSuffix) {
-    out += ' Add funds under Money Balance, then try again.';
+    out += i18n.t('ledger.topUpHint', { ns: 'common' });
   }
   return out;
 }

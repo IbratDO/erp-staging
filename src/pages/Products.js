@@ -22,10 +22,6 @@ const PRODUCTS_SORT_ACCESSORS = {
   color: (p) => String(p.color ?? '').toLowerCase(),
 };
 
-const COMMON_COLORS = [
-  'Black', 'White', 'Grey', 'Navy', 'Red', 'Blue', 'Brown', 'Beige', 'Green', 'Pink',
-];
-
 /** Normalize variant fields for duplicate checks (matches backend iexact + strip). */
 const variantPart = (v) => String(v ?? '').trim().toLowerCase();
 
@@ -199,7 +195,6 @@ const Products = () => {
     setPendingCustomSize('');
   };
 
-  // Close size/color dropdowns when clicking outside either panel
   useEffect(() => {
     const handleClickOutside = (e) => {
       const inSize = sizeDropdownRef.current?.contains(e.target);
@@ -284,11 +279,10 @@ const Products = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, products]);
 
-  /** Colors from inventory + presets; sorted for the Color dropdown (same idea as supplier country picklist). */
+  /** Colors from catalog only (no fixed preset list). */
   const colorOptions = useMemo(() => {
     const fromDb = [...new Set(products.map((p) => p.color).filter(Boolean))];
-    const set = new Set([...COMMON_COLORS, ...fromDb]);
-    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    return fromDb.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [products]);
 
   const pickerColorOptions = useMemo(() => {
@@ -966,63 +960,69 @@ const Products = () => {
                         overflowY: 'auto',
                       }}
                     >
-                      <div
-                        role="listbox"
-                        aria-label={t('color')}
-                        aria-multiselectable="true"
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0',
-                          border: '1px solid #eee',
-                          borderRadius: '4px',
-                          overflow: 'hidden',
-                          marginBottom: '4px',
-                        }}
-                      >
-                        {pickerColorOptions.map((c, idx) => {
-                          const isSelected = selectedColors.includes(c);
-                          const isLast = idx === pickerColorOptions.length - 1;
-                          return (
-                            <label
-                              key={c}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                fontSize: '0.95em',
-                                borderBottom: isLast ? 'none' : '1px solid #f0f0f0',
-                                background: isSelected ? '#e8f4fd' : '#fff',
-                                transition: 'background 0.12s',
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleColor(c)}
-                                style={{ width: '16px', height: '16px', cursor: 'pointer', flexShrink: 0 }}
-                              />
-                              <span
+                      {pickerColorOptions.length > 0 ? (
+                        <div
+                          role="listbox"
+                          aria-label={t('color')}
+                          aria-multiselectable="true"
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0',
+                            border: '1px solid #eee',
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            marginBottom: '4px',
+                          }}
+                        >
+                          {pickerColorOptions.map((c, idx) => {
+                            const isSelected = selectedColors.includes(c);
+                            const isLast = idx === pickerColorOptions.length - 1;
+                            return (
+                              <label
+                                key={c}
                                 style={{
-                                  flex: 1,
-                                  fontWeight: isSelected ? 600 : 400,
-                                  color: '#222',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '10px',
+                                  padding: '8px 12px',
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  fontSize: '0.95em',
+                                  borderBottom: isLast ? 'none' : '1px solid #f0f0f0',
+                                  background: isSelected ? '#e8f4fd' : '#fff',
+                                  transition: 'background 0.12s',
                                 }}
                               >
-                                {c}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleColor(c)}
+                                  style={{ width: '16px', height: '16px', cursor: 'pointer', flexShrink: 0 }}
+                                />
+                                <span
+                                  style={{
+                                    flex: 1,
+                                    fontWeight: isSelected ? 600 : 400,
+                                    color: '#222',
+                                  }}
+                                >
+                                  {c}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p style={{ margin: '0 0 8px', fontSize: '0.85em', color: '#666' }}>
+                          {t('form.noColorsYet')}
+                        </p>
+                      )}
                       <div
                         style={{
-                          marginTop: '10px',
-                          paddingTop: '10px',
-                          borderTop: '1px solid #eee',
+                          marginTop: pickerColorOptions.length > 0 ? '10px' : 0,
+                          paddingTop: pickerColorOptions.length > 0 ? '10px' : 0,
+                          borderTop: pickerColorOptions.length > 0 ? '1px solid #eee' : 'none',
                           display: 'flex',
                           gap: '8px',
                           flexWrap: 'wrap',

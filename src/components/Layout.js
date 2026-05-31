@@ -7,13 +7,19 @@ import { getRoleDisplayName } from '../utils/permissions';
 import { translateMenuItems } from '../utils/i18nMenu';
 import './Layout.css';
 
+const MOBILE_BREAKPOINT = 768;
+
 const Layout = () => {
   const { user, logout } = useAuth();
   const { menuItems } = usePermissions();
   const { t } = useTranslation('common');
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT,
+  );
 
   const translatedMenu = useMemo(
     () => translateMenuItems(menuItems, t),
@@ -21,28 +27,70 @@ const Layout = () => {
   );
 
   useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const onChange = () => {
+      const mobile = mq.matches;
+      setIsMobile(mobile);
+      if (mobile) {
+        setSidebarOpen(false);
+        setMobileNavOpen(false);
+      } else {
+        setSidebarOpen(true);
+        setMobileNavOpen(false);
+      }
+    };
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
     if (location.pathname.startsWith('/inventory')) {
       setInventoryOpen(true);
     }
-  }, [location.pathname]);
+    if (isMobile) {
+      setMobileNavOpen(false);
+    }
+  }, [location.pathname, isMobile]);
 
   const isActive = (path) => location.pathname === path;
   const isInventoryActive = () => location.pathname.startsWith('/inventory');
 
   const displayRole = getRoleDisplayName(user, t);
 
+  const toggleSidebar = () => {
+    if (isMobile) {
+      setMobileNavOpen((prev) => !prev);
+    } else {
+      setSidebarOpen((prev) => !prev);
+    }
+  };
+
+  const sidebarClass = [
+    'sidebar',
+    isMobile ? (mobileNavOpen ? 'open' : 'closed') : sidebarOpen ? 'open' : 'closed',
+  ].join(' ');
+
   return (
-    <div className="layout">
-      <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+    <div className={`layout ${isMobile ? 'layout--mobile' : ''}`}>
+      {isMobile && mobileNavOpen && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label={t('actions.close')}
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
+      <aside className={sidebarClass}>
         <div className="sidebar-header">
           <h2>{t('app.title')}</h2>
           <button
             className="sidebar-toggle"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
+            onClick={toggleSidebar}
             type="button"
-            aria-label={sidebarOpen ? t('actions.close') : t('actions.view')}
+            aria-label={sidebarOpen || mobileNavOpen ? t('actions.close') : t('actions.view')}
           >
-            {sidebarOpen ? '◀' : '▶'}
+            {isMobile ? (mobileNavOpen ? '✕' : '☰') : sidebarOpen ? '◀' : '▶'}
           </button>
         </div>
         <nav className="sidebar-nav">
@@ -58,14 +106,14 @@ const Layout = () => {
                   onKeyDown={(e) => e.key === 'Enter' && setInventoryOpen(!inventoryOpen)}
                 >
                   <span className="nav-icon">{item.icon}</span>
-                  {sidebarOpen && (
+                  {(sidebarOpen || mobileNavOpen) && (
                     <>
                       <span className="nav-label">{item.label}</span>
                       <span className="dropdown-arrow">{inventoryOpen ? '▼' : '▶'}</span>
                     </>
                   )}
                 </div>
-                {inventoryOpen && sidebarOpen && (
+                {inventoryOpen && (sidebarOpen || mobileNavOpen) && (
                   <div className="submenu">
                     {item.subItems.map((subItem) => (
                       <Link
@@ -87,14 +135,14 @@ const Layout = () => {
                 className={`nav-item ${isActive(item.path) ? 'active' : ''}`}
               >
                 <span className="nav-icon">{item.icon}</span>
-                {sidebarOpen && <span className="nav-label">{item.label}</span>}
+                {(sidebarOpen || mobileNavOpen) && <span className="nav-label">{item.label}</span>}
               </Link>
             ),
           )}
         </nav>
         <div className="sidebar-footer">
           <div className="user-info">
-            {sidebarOpen && (
+            {(sidebarOpen || mobileNavOpen) && (
               <>
                 <div className="user-name">{user?.username}</div>
                 <div className="user-role">{displayRole}</div>
@@ -102,11 +150,21 @@ const Layout = () => {
             )}
           </div>
           <button className="logout-btn" type="button" onClick={logout}>
-            {sidebarOpen ? t('auth.logout') : '🚪'}
+            {sidebarOpen || mobileNavOpen ? t('auth.logout') : '🚪'}
           </button>
         </div>
       </aside>
       <main className="main-content">
+        {isMobile && (
+          <button
+            type="button"
+            className="mobile-menu-fab"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label={t('actions.view')}
+          >
+            ☰
+          </button>
+        )}
         <Outlet />
       </main>
     </div>

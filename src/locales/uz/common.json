@@ -7,7 +7,7 @@
     "dashboard": "Dashboard",
     "products": "Mahsulotlar",
     "inventory": "Ombor",
-    "inventoryProducts": "Mahsulotlar",
+    "inventoryProducts": "Tovarlar",
     "packages": "Qadoqlar",
     "orders": "Buyurtmalar",
     "sales": "Sotuvlar",
@@ -33,7 +33,17 @@
     "login": "Kirish",
     "loggingIn": "Kirish…",
     "logout": "Chiqish",
-    "invalidCredentials": "Noto‘g‘ri login yoki parol"
+    "invalidCredentials": "Noto‘g‘ri login yoki parol",
+    "loginFailed": "Kirish amalga oshmadi"
+  },
+  "exchangeRate": {
+    "loadFailed": "MB valyuta kursi yuklanmadi."
+  },
+  "ledger": {
+    "insufficientDefault": "{{label}} balansi yetarli emas. Mavjud: {{available}}, kerak: {{required}}.",
+    "insufficientRefund": "Qaytarish uchun {{label}} balansi yetarli emas. Mavjud: {{available}}, kerak: {{required}}.",
+    "insufficientOrderPaid": "Buyurtmani yaratishda to‘langan deb belgilash uchun USD balansi yetarli emas. Mavjud: {{available}}, yetkazib beruvchi xarajati: {{required}}.",
+    "topUpHint": " Pul balansiga mablag‘ qo‘shing va qayta urinib ko‘ring."
   },
   "roles": {
     "founder": "Asoschi",

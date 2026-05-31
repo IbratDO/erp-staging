@@ -949,3 +949,227 @@ input.batch-sale-lines__control[type='number']::-webkit-outer-spin-button {
   border-top: 2px solid #dee2e6;
 }
 
+/* Returns form — refund amount + reason on one row */
+.returns-refund-reason-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+  align-items: start;
+}
+
+.returns-refund-reason-row .form-group {
+  margin-bottom: 0;
+}
+
+.returns-refund-reason-row__reason select {
+  width: 100%;
+  min-height: 42px;
+}
+
+@media (max-width: 767px) {
+  .returns-refund-reason-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Product color editor — free-text entry (no preset swatches) */
+.product-color-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.product-color-editor__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.product-color-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #e8f4fd;
+  border: 1px solid #b6d9f5;
+  border-radius: 6px;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.product-color-chip__remove {
+  border: none;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  font-size: 1.1em;
+  line-height: 1;
+  padding: 0 2px;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+.product-color-editor__catalog-label {
+  display: block;
+  font-size: 0.8em;
+  color: #6c757d;
+  margin-bottom: 4px;
+}
+
+.product-color-editor__catalog-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.product-color-editor__catalog-btn {
+  padding: 6px 12px;
+  font-size: 0.85em;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  background: #f8f9fa;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.product-color-editor__add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.product-color-editor__add input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 16px;
+}
+
+.product-color-editor__hint {
+  color: #1976d2;
+  font-size: 0.85em;
+}
+
+/* Mobile-friendly tables, forms, and toolbars */
+@media (max-width: 767px) {
+  .page-container {
+    padding: 0;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .page-header h1 {
+    font-size: 1.25rem;
+  }
+
+  .page-header .btn-primary,
+  .page-header .btn-danger-action,
+  .page-header .btn-edit {
+    width: 100%;
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  .form-card {
+    padding: 14px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-actions {
+    flex-direction: column;
+  }
+
+  .form-actions .btn-primary,
+  .form-actions .btn-edit,
+  .form-actions .btn-danger-action,
+  .form-actions .btn-secondary {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .filter-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-field {
+    width: 100%;
+    max-width: none;
+  }
+
+  .filter-field select,
+  .filter-field input[type="text"],
+  .filter-field input[type="search"],
+  .filter-field input[type="number"] {
+    max-width: none;
+    width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .filter-field .filter-searchable-select,
+  .filter-field .filter-searchable-select__trigger {
+    max-width: none;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .table-card {
+    padding: 12px;
+  }
+
+  .data-table-scroll {
+    max-height: none;
+  }
+
+  .data-table {
+    font-size: 13px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 8px 10px;
+  }
+
+  .btn-edit,
+  .btn-delete,
+  .btn-status {
+    min-height: 36px;
+    padding: 8px 12px;
+    margin-bottom: 4px;
+  }
+
+  .metrics-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .metrics-grid--balance-sheet-summary {
+    max-width: none;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  .orders-new-order-row--5,
+  .orders-new-order-row--6,
+  .orders-new-order-row--eshop-prices,
+  .orders-new-order-row--on-demand {
+    grid-template-columns: 1fr;
+  }
+}
+

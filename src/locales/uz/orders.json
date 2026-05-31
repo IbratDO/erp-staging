@@ -84,6 +84,7 @@
     "orderedQuantity": "Buyurtma miqdori",
     "sellingPriceUsd": "Sotuv narxi (USD / dona)",
     "costUsd": "Xarajat (USD / dona)",
+    "usdPerUnitPlaceholder": "USD / dona",
     "lineTotal": "= {{total}} qator jami",
     "costHintOnDemand": "Yetkazib beruvchi narxi hali tasdiqlanmagan bo‘lsa bo‘sh qoldiring; buyurtmani to‘lashda kiritishingiz mumkin.",
     "costHintStock": "Yetkazib beruvchi hisob-fakturasi bo‘lmaguncha ixtiyoriy; bo‘sh qoldiring va keyin ro‘yxatdan to‘lang.",

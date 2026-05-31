@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import api from '../utils/api';
+import i18n from '../i18n';
 import { hasPermission, getRoleCode } from '../utils/permissions';
 
 const AuthContext = createContext();
@@ -69,7 +70,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       return {
         success: false,
-        error: error.response?.data?.detail || 'Login failed',
+        error: error.response?.data?.detail || i18n.t('auth.loginFailed', { ns: 'common' }),
       };
     }
   };

@@ -84,6 +84,7 @@
     "orderedQuantity": "Ordered Quantity",
     "sellingPriceUsd": "Selling price per unit (USD)",
     "costUsd": "Cost per unit (USD)",
+    "usdPerUnitPlaceholder": "USD / unit",
     "lineTotal": "= ${{total}} line total",
     "costHintOnDemand": "Leave blank if supplier cost is not confirmed yet; you can record it when paying the order.",
     "costHintStock": "Optional until you have the supplier invoice; leave blank and pay later from the list.",

@@ -8,8 +8,9 @@ import { getMonthFilterOptions } from '../utils/localeFormat';
  * @param {string|string[]} ns - namespace(s), e.g. 'orders' or ['common','orders']
  */
 export function useAppTranslation(ns = 'common') {
-  const { t, i18n } = useTranslation(ns);
   const namespaces = Array.isArray(ns) ? ns : [ns];
+  // First namespace is the default for unprefixed keys (e.g. t('form.newTitle')).
+  const { t, i18n } = useTranslation(namespaces);
 
   const tStatus = (status, context) => translateStatus(t, status, context);
   const tTxType = (type) => translateTransactionType(t, type);

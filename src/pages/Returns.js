@@ -606,22 +606,25 @@ const Returns = () => {
     }
     const qty = parseInt(formData.quantity, 10);
     if (!Number.isFinite(qty) || qty < 1) {
-      showNotification('Please enter a valid quantity (at least 1).', 'error');
+      showNotification(t('notifications.invalidQuantity'), 'error');
       return;
     }
     const refundTotal = parseFloat(String(formData.sold_price ?? '').trim());
     if (!Number.isFinite(refundTotal) || refundTotal <= 0) {
-      showNotification('Please enter a valid refund amount (greater than zero).', 'error');
+      showNotification(t('notifications.invalidRefundGreaterZero'), 'error');
       return;
     }
     const refundAmountApi = formatSoldPriceForApi(refundTotal, formData.sold_price_currency);
     if (!refundAmountApi) {
-      showNotification('Please enter a valid refund amount.', 'error');
+      showNotification(t('notifications.invalidRefund'), 'error');
       return;
     }
     if (refundAmountOverDue) {
       showNotification(
-        `Refund amount (${formatDisplayAmount(parseFloat(formData.sold_price), formData.sold_price_currency)}) cannot exceed the sale amount due (${formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}).`,
+        t('notifications.refundExceedsDue', {
+          refund: formatDisplayAmount(parseFloat(formData.sold_price), formData.sold_price_currency),
+          due: formatDisplayAmount(formReturnDue.amount, formReturnDue.currency),
+        }),
         'error',
       );
       return;
@@ -634,8 +637,8 @@ const Returns = () => {
         const used = qtyReturnedBySaleId.get(selectedSale.id) || 0;
         if (q > rem) {
           showNotification(
-            `Return quantity (${q}) exceeds what can still be returned on this sale (${rem} unit(s) left; ${used} already on return records).`,
-            'error'
+            t('notifications.qtyExceedsRemainder', { q, rem, used }),
+            'error',
           );
           return;
         }
@@ -706,14 +709,11 @@ const Returns = () => {
     }
     const meta = computeReturnRefundMeta(returnItem, refundFormData, cbuRate);
     if (meta.mixed) {
-      showNotification(
-        exchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
-        'error',
-      );
+      showNotification(exchangeRateError || t('notifications.exchangeRateLoading'), 'error');
       return;
     }
     if (meta.dueUnavailable) {
-      showNotification('Refund due amount is not available for this return.', 'error');
+      showNotification(t('notifications.refundDueUnavailable'), 'error');
       return;
     }
     const sc = meta.sc;
@@ -781,10 +781,10 @@ const Returns = () => {
         const paidLabel = formatDisplayAmount(meta.paid, meta.sc);
         const excessLabel = formatDisplayAmount(meta.overpaymentAmount, meta.sc);
         const msg = [
-          'Refund entered is higher than the amount due.',
-          `Due: ${dueLabel} · Entered: ${paidLabel} · Excess: ${excessLabel}.`,
-          'Payable and profit/loss will use the settled refund amount.',
-          'Continue?',
+          t('notifications.overpaymentTitle'),
+          t('notifications.overpaymentDetail', { due: dueLabel, paid: paidLabel, excess: excessLabel }),
+          t('notifications.overpaymentBody'),
+          t('notifications.overpaymentContinue'),
         ]
           .filter(Boolean)
           .join('\n\n');
@@ -895,14 +895,14 @@ const Returns = () => {
                 return (
                   <>
                   <div className="form-group">
-                    <label>Customer (Optional)</label>
+                    <label>{t('form.customerOptional')}</label>
                     <CustomerSearchableSelect
                       customers={newReturnFormCustomers}
                       value={formData.customer}
                       allowEmpty
-                      emptyLabel="All customers"
-                      placeholder="All customers"
-                      aria-label="Customer"
+                      emptyLabel={t('form.allCustomers')}
+                      placeholder={t('form.allCustomers')}
+                      aria-label={t('form.customerAria')}
                       onChange={(customerId) => {
                         setProductSearch('');
                         setProductDropdownOpen(false);
@@ -919,15 +919,20 @@ const Returns = () => {
                     />
                     {(formCategory || formData.product) && (
                       <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
-                        Showing customers with returnable sales
-                        {formCategory ? <> in <strong>{formCategory}</strong></> : null}
+                        {t('form.customersHint')}
+                        {formCategory ? (
+                          <> {t('form.inCategory')} <strong>{formCategory}</strong></>
+                        ) : null}
                         {formData.product
                           ? (() => {
                               const p = products.find((x) => x.id === parseInt(formData.product, 10));
                               return p ? (
                                 <>
                                   {' '}
-                                  for <strong>{p.brand} {p.model}</strong>
+                                  {t('form.forProduct')}{' '}
+                                  <strong>
+                                    {p.brand} {p.model}
+                                  </strong>
                                 </>
                               ) : null;
                             })()
@@ -937,7 +942,12 @@ const Returns = () => {
                     )}
                   </div>
                   <div className="form-group">
-                    <label>Category <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>(filter)</span></label>
+                    <label>
+                      {t('form.categoryFilter')}{' '}
+                      <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>
+                        {t('form.filterHint')}
+                      </span>
+                    </label>
                     <select
                       value={formCategory}
                       onChange={(e) => {
@@ -966,7 +976,7 @@ const Returns = () => {
                     </select>
                   </div>
                   <div className="form-group" ref={productDropdownRef} style={{ position: 'relative' }}>
-                    <label>Product</label>
+                    <label>{t('form.product')}</label>
                     <>
                       <div
                         onClick={() => {
@@ -1015,7 +1025,7 @@ const Returns = () => {
                             <input
                               type="text"
                               autoFocus
-                              placeholder="Search product..."
+                              placeholder={t('form.searchProduct')}
                               value={productSearch}
                               onChange={(e) => setProductSearch(e.target.value)}
                               onClick={(e) => e.stopPropagation()}
@@ -1039,7 +1049,7 @@ const Returns = () => {
                                   fontSize: '14px',
                                 }}
                               >
-                                No products found
+                                {t('form.noProducts')}
                               </div>
                             ) : (
                               filteredProductOptions.map((product) => (
@@ -1093,21 +1103,14 @@ const Returns = () => {
                     {(formData.customer || formCategory) && (
                       <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
                         {formData.customer ? (
-                          <>
-                            Products with returnable sales for{' '}
-                            <strong>
-                              {customers.find((c) => c.id === parseInt(formData.customer, 10))?.name}
-                            </strong>
-                          </>
+                          t('form.productsForCustomer', {
+                            name: customers.find((c) => c.id === parseInt(formData.customer, 10))?.name || '',
+                          })
+                        ) : formCategory ? (
+                          t('form.productsReturnableInCategory', { category: formCategory })
                         ) : (
-                          <>Products with returnable sales</>
+                          t('form.productsReturnable')
                         )}
-                        {formCategory ? (
-                          <>
-                            {' '}
-                            in <strong>{formCategory}</strong>
-                          </>
-                        ) : null}
                         .
                       </small>
                     )}
@@ -1116,7 +1119,9 @@ const Returns = () => {
                 );
               })()}
               <div className="form-group">
-                <label>Sale <span style={{ color: '#e53e3e' }}>*</span></label>
+                <label>
+                  {t('form.saleRequired')} <span style={{ color: '#e53e3e' }}>*</span>
+                </label>
                 <select
                   value={formData.sale}
                   required
@@ -1136,17 +1141,21 @@ const Returns = () => {
                     setRefundAmountTouched(false);
                   }}
                 >
-                  <option value="">Select sale</option>
+                  <option value="">{t('form.selectSale')}</option>
                   {newReturnEligibleSales.map((sale) => (
                     <option key={sale.id} value={sale.id}>
-                      Sale #{sale.id} - {sale.product_detail?.brand} {sale.product_detail?.model}
-                      {sale.customer_detail?.name ? ` (${sale.customer_detail.name})` : ''}
+                      {t('form.saleOption', {
+                        id: sale.id,
+                        brand: sale.product_detail?.brand ?? '',
+                        model: sale.product_detail?.model ?? '',
+                        customer: sale.customer_detail?.name ? ` (${sale.customer_detail.name})` : '',
+                      })}
                     </option>
                   ))}
                 </select>
                 {(formData.customer || formData.product || formCategory) && (
                   <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
-                    Filtered by:{' '}
+                    {t('form.filteredBy')}{' '}
                     {formData.customer && (
                       <strong>{customers.find((c) => c.id === parseInt(formData.customer, 10))?.name}</strong>
                     )}
@@ -1163,7 +1172,7 @@ const Returns = () => {
                 )}
               </div>
               <div className="form-group">
-                <label>Quantity</label>
+                <label>{t('form.quantityLabel')}</label>
                 <input
                   type="number"
                   min="1"
@@ -1193,108 +1202,120 @@ const Returns = () => {
                   const alreadyReturned = qtyReturnedBySaleId.get(selectedSale.id) || 0;
                   return (
                     <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
-                      Original sale qty: <strong>{selectedSale.quantity}</strong>
-                      {' · '}Already on return records: <strong>{alreadyReturned}</strong>
-                      {' · '}You can still return: <strong>{remaining}</strong>
+                      {t('form.originalSaleQty')} <strong>{selectedSale.quantity}</strong>
+                      {' · '}
+                      {t('form.alreadyOnReturns')} <strong>{alreadyReturned}</strong>
+                      {' · '}
+                      {t('form.canStillReturn')} <strong>{remaining}</strong>
                     </small>
                   );
                 })()}
               </div>
-              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                {formReturnDue.amount != null && !Number.isNaN(formReturnDue.amount) && (
+              {formReturnDue.amount != null && !Number.isNaN(formReturnDue.amount) && (
+                <div
+                  className="form-group"
+                  style={{ gridColumn: '1 / -1', marginBottom: 0 }}
+                >
                   <div
                     style={{
-                      marginBottom: '10px',
                       padding: '10px 12px',
                       background: '#f0f4f8',
                       borderRadius: '6px',
                       fontSize: '0.9em',
                     }}
                   >
-                    <strong>Sale amount due:</strong>{' '}
+                    <strong>{t('form.saleAmountDue')}</strong>{' '}
                     {formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}
                     {Number.isFinite(formReturnDue.unitPrice) && (
                       <span style={{ color: '#666', marginLeft: '8px' }}>
-                        ({formatDisplayAmount(formReturnDue.unitPrice, formReturnDue.currency)} / unit)
+                        {t('form.perUnit', {
+                          amount: formatDisplayAmount(formReturnDue.unitPrice, formReturnDue.currency),
+                        })}
                       </span>
                     )}
                   </div>
-                )}
-                <label>Refund amount <span style={{ color: '#e53e3e' }}>*</span></label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
-                  <input
-                    type="number"
-                    step={formData.sold_price_currency === 'UZS' ? '1' : '0.01'}
-                    min="0.01"
-                    required
-                    value={formData.sold_price}
-                    onChange={(e) => {
-                      setRefundAmountTouched(true);
-                      setFormData({ ...formData, sold_price: e.target.value });
-                    }}
-                    placeholder={
-                      formReturnDue.amount != null
-                        ? `Up to ${formReturnDue.amount}`
-                        : 'Enter refund to customer'
-                    }
-                    style={{ flex: '1 1 160px' }}
-                  />
-                  <select
-                    value={formData.sold_price_currency}
-                    onChange={(e) => {
-                      setRefundAmountTouched(true);
-                      setFormData({ ...formData, sold_price_currency: e.target.value });
-                    }}
-                    style={{ width: '96px', flexShrink: 0 }}
-                  >
-                    <option value="USD">USD</option>
-                    <option value="UZS">UZS</option>
-                  </select>
-                  {formReturnDue.amount != null && (
-                    <button
-                      type="button"
-                      className="btn-edit"
-                      style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-                      onClick={() => {
-                        const sale = resolveSaleForPricing();
-                        const pricing = applySuggestedRefundAmount(sale, formData.quantity);
-                        setRefundAmountTouched(false);
-                        setFormData((prev) => ({ ...prev, ...pricing }));
+                </div>
+              )}
+              <div className="returns-refund-reason-row" style={{ gridColumn: '1 / -1' }}>
+                <div className="form-group returns-refund-reason-row__refund">
+                  <label>
+                    {t('form.refundAmount')} <span style={{ color: '#e53e3e' }}>*</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch', flexWrap: 'wrap' }}>
+                    <input
+                      type="number"
+                      step={formData.sold_price_currency === 'UZS' ? '1' : '0.01'}
+                      min="0.01"
+                      required
+                      value={formData.sold_price}
+                      onChange={(e) => {
+                        setRefundAmountTouched(true);
+                        setFormData({ ...formData, sold_price: e.target.value });
                       }}
+                      placeholder={
+                        formReturnDue.amount != null
+                          ? t('form.placeholderUpTo', { amount: formReturnDue.amount })
+                          : t('form.enterRefund')
+                      }
+                      style={{ flex: '1 1 160px' }}
+                    />
+                    <select
+                      value={formData.sold_price_currency}
+                      onChange={(e) => {
+                        setRefundAmountTouched(true);
+                        setFormData({ ...formData, sold_price_currency: e.target.value });
+                      }}
+                      style={{ width: '96px', flexShrink: 0 }}
                     >
-                      Use full sale amount
-                    </button>
+                      <option value="USD">{t('currency.usd', { ns: 'common' })}</option>
+                      <option value="UZS">{t('currency.uzs', { ns: 'common' })}</option>
+                    </select>
+                    {formReturnDue.amount != null && (
+                      <button
+                        type="button"
+                        className="btn-edit"
+                        style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                        onClick={() => {
+                          const sale = resolveSaleForPricing();
+                          const pricing = applySuggestedRefundAmount(sale, formData.quantity);
+                          setRefundAmountTouched(false);
+                          setFormData((prev) => ({ ...prev, ...pricing }));
+                        }}
+                      >
+                        {t('form.useFullSaleAmount')}
+                      </button>
+                    )}
+                  </div>
+                  <small style={{ color: '#666', marginTop: '6px', display: 'block' }}>
+                    {t('form.refundAmountHint')}
+                  </small>
+                  {(formReturnDue.amount == null || Number.isNaN(formReturnDue.amount)) && (
+                    <small style={{ color: '#888', marginTop: '4px', display: 'block' }}>
+                      {t('form.selectSaleForDue')}
+                    </small>
+                  )}
+                  {refundAmountOverDue && formReturnDue.amount != null && (
+                    <small style={{ color: '#e65100', marginTop: '6px', display: 'block', fontWeight: 500 }}>
+                      {t('form.refundExceedsDueInline', {
+                        amount: formatDisplayAmount(formReturnDue.amount, formReturnDue.currency),
+                      })}
+                    </small>
                   )}
                 </div>
-                <small style={{ color: '#666', marginTop: '6px', display: 'block' }}>
-                  Amount owed to the customer for this return. Payables and profit/loss use this value when
-                  the return is created (can be less than the sale amount due).
-                </small>
-                {(formReturnDue.amount == null || Number.isNaN(formReturnDue.amount)) && (
-                  <small style={{ color: '#888', marginTop: '4px', display: 'block' }}>
-                    Select a sale and quantity to see the sale amount due.
-                  </small>
-                )}
-                {refundAmountOverDue && formReturnDue.amount != null && (
-                  <small style={{ color: '#e65100', marginTop: '6px', display: 'block', fontWeight: 500 }}>
-                    Refund amount cannot exceed sale amount due (
-                    {formatDisplayAmount(formReturnDue.amount, formReturnDue.currency)}).
-                  </small>
-                )}
-              </div>
-              <div className="form-group">
-                <label>{t('form.reason')}</label>
-                <select
-                  value={formData.reason}
-                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                  required
-                >
-                  {['defective', 'wrong_size', 'wrong_item', 'customer_request', 'other'].map((reasonKey) => (
-                    <option key={reasonKey} value={reasonKey}>
-                      {t(`reasons.${reasonKey}`)}
-                    </option>
-                  ))}
-                </select>
+                <div className="form-group returns-refund-reason-row__reason">
+                  <label>{t('form.reason')}</label>
+                  <select
+                    value={formData.reason}
+                    onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                    required
+                  >
+                    {['defective', 'wrong_size', 'wrong_item', 'customer_request', 'other'].map((reasonKey) => (
+                      <option key={reasonKey} value={reasonKey}>
+                        {t(`reasons.${reasonKey}`)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label>

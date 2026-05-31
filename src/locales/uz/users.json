@@ -39,6 +39,6 @@
   "clearDataConfirmPhrase": "TOZALASH",
   "clearDataConfirmMismatch": "Aniq TOZALASH deb yozing",
   "clearDataProceed": "Ma’lumotlarni tozalash",
-  "clearDataSuccess": "Ma’lumotlar bazasi tozalandi. Superuser hisoblari saqlanib qoldi.",
+  "clearDataSuccess": "Ma’lumotlar bazasi tozalandi. Rollar qayta sozlandi — barcha foydalanuvchilar qayta kirishi kerak.",
   "clearDataFailed": "Ma’lumotlar bazasini tozalab bo‘lmadi"
 }

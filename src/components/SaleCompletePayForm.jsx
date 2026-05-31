@@ -11,6 +11,7 @@ import {
   validateAdvanceCompletionPayment,
   buildCrossCurrencyAdvanceConfirmMessage,
   buildSplitCurrencyConfirmMessage,
+  buildOverpayConfirmMessage,
   saleHasOrderAdvance,
 } from '../utils/saleCompletePayHelpers';
 
@@ -157,30 +158,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
       }
 
       if (meta.hasOverpayment && meta.due != null && meta.overpaymentAmount != null) {
-        const dueLabel =
-          meta.sc === 'UZS'
-            ? `${meta.due.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
-            : `${meta.due.toFixed(2)} USD`;
-        const paidLabel =
-          meta.sc === 'UZS'
-            ? `${meta.paid.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
-            : `${meta.paid.toFixed(2)} USD`;
-        const excessLabel =
-          meta.sc === 'UZS'
-            ? `${meta.overpaymentAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
-            : `${meta.overpaymentAmount.toFixed(2)} USD`;
-        const msg = [
-          t('completePay.confirmOverpayTitle'),
-          `${t('completePay.confirmOverpayDue')} ${dueLabel} · ${t('completePay.confirmOverpayEntered')} ${paidLabel} · ${t('completePay.confirmOverpayExcess')} ${excessLabel}.`,
-          meta.splitCurrency && exchangeRate?.label
-            ? t('completePay.confirmOverpayCbu', { label: exchangeRate.label })
-            : null,
-          t('completePay.confirmOverpayBook'),
-          t('completePay.confirmContinue'),
-        ]
-          .filter(Boolean)
-          .join('\n\n');
-        if (!window.confirm(msg)) return;
+        if (!window.confirm(buildOverpayConfirmMessage(meta, exchangeRate))) return;
       }
 
       const requestData = buildCompleteSaleRequest(paymentFormData, meta, exchangeRate);

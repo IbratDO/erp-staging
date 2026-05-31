@@ -491,3 +491,15 @@
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+
+@media (max-width: 767px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .chart-card {
+    padding: 12px;
+    overflow-x: auto;
+  }
+}

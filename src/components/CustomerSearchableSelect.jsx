@@ -21,8 +21,8 @@ export default function CustomerSearchableSelect({
   customers,
   value,
   onChange,
-  placeholder = 'Select a customer…',
-  emptyLabel = 'All customers',
+  placeholder,
+  emptyLabel,
   allowEmpty = false,
   extraOptions = [],
   variant = 'default',
@@ -32,8 +32,8 @@ export default function CustomerSearchableSelect({
   'aria-label': ariaLabel,
 }) {
   const { t } = useAppTranslation('customers');
-  const resolvedPlaceholder = placeholder || t('select.placeholder');
-  const resolvedEmptyLabel = emptyLabel || t('select.emptyLabel');
+  const resolvedPlaceholder = placeholder ?? t('select.placeholder');
+  const resolvedEmptyLabel = emptyLabel ?? t('select.emptyLabel');
   const resolvedAriaLabel = ariaLabel || t('select.ariaLabel');
 
   const [open, setOpen] = useState(false);

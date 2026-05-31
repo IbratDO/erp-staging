@@ -319,7 +319,7 @@ const ORDER_SORT_ACCESSORS = {
   order_date: (o) => new Date(o.order_date || o.created_at).getTime() || 0,
 };
 const Orders = () => {
-  const { t, tStatus, monthOptions } = useAppTranslation(['common', 'orders', 'status', 'sales']);
+  const { t, tStatus, monthOptions } = useAppTranslation(['orders', 'common', 'status', 'sales']);
   const uzsLabel = t('currency.uzs', { ns: 'common' });
 
   const productCategoryTypes = useMemo(
@@ -1943,7 +1943,7 @@ const Orders = () => {
                   type="number"
                   step="0.01"
                   min="0"
-                  placeholder="USD / unit"
+                  placeholder={t('form.usdPerUnitPlaceholder')}
                   value={formData.selling_usd_per_unit}
                   onChange={(e) => setFormData({ ...formData, selling_usd_per_unit: e.target.value })}
                 />
@@ -1968,7 +1968,7 @@ const Orders = () => {
                   type="number"
                   step="0.01"
                   min="0"
-                  placeholder="USD / unit"
+                  placeholder={t('form.usdPerUnitPlaceholder')}
                   value={formData.cost_usd_per_unit}
                   onChange={(e) => {
                     const v = e.target.value;

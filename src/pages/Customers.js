@@ -244,10 +244,6 @@ const Customers = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!String(formData.notes || '').trim()) {
-      alert(t('notifications.notesRequired'));
-      return;
-    }
     try {
       if (formData.id) {
         await api.put(`/customers/${formData.id}/`, formData);
@@ -366,12 +362,11 @@ const Customers = () => {
                 </select>
               </div>
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                <label>{t('notes')} *</label>
+                <label>{t('notes')}</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   rows="3"
-                  required
                 />
               </div>
             </div>

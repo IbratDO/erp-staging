@@ -1,5 +1,11 @@
 /** Shared logic for "Complete & Pay" (sale status → completed) used from Sales and Dispatchers tabs. */
 import i18n from '../i18n';
+import { formatDisplayAmount } from './currencyFormat';
+
+/** @param {string} key - key under sales.completePay */
+function cp(key, opts) {
+  return i18n.t(`completePay.${key}`, { ns: 'sales', ...opts });
+}
 
 /** Match backend _validate_and_set_sale_completion_shortfall tolerance (USD sale currency). */
 export const PAYMENT_SHORTFALL_TOLERANCE = 0.005;
@@ -121,13 +127,13 @@ export function validateAdvanceCompletionPayment(sale, uzsStr, usdStr, sellingPr
 
   if (uzsT > 0 && usdT > 0) {
     if (!cbuRate) {
-      return { ok: false, error: 'Exchange rate is still loading. Try again in a moment.' };
+      return { ok: false, error: cp('errRateLoading') };
     }
     const paid = paymentTotalInSaleCurrency(uzsT, usdT, sc, cbuRate);
     if (paid > due + 0.005) {
       return {
         ok: false,
-        error: `Payment cannot exceed the remaining amount due (${formatAmountForCurrency(due, sc)} after advance, at CBU rate).`,
+        error: cp('errExceedsDueAdvanceCbu', { amount: formatAmountForCurrency(due, sc) }),
       };
     }
     return {
@@ -146,7 +152,7 @@ export function validateAdvanceCompletionPayment(sale, uzsStr, usdStr, sellingPr
     if (usdT > due + 0.005) {
       return {
         ok: false,
-        error: `Payment cannot exceed the remaining amount due (${due.toFixed(2)} USD after advance).`,
+        error: cp('errExceedsDueFormatted', { amount: formatAmountForCurrency(due, sc) }),
       };
     }
     if (uzsT > 0 && usdT === 0) {
@@ -163,7 +169,7 @@ export function validateAdvanceCompletionPayment(sale, uzsStr, usdStr, sellingPr
     if (uzsT > due + 0.005) {
       return {
         ok: false,
-        error: `Payment cannot exceed the remaining amount due (${due.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS after advance).`,
+        error: cp('errExceedsDueFormatted', { amount: formatAmountForCurrency(due, sc) }),
       };
     }
     if (usdT > 0 && uzsT === 0) {
@@ -186,24 +192,30 @@ export function buildCrossCurrencyAdvanceConfirmMessage(validation, exchangeRate
   const dueLabel = formatAmountForCurrency(due, sc);
   const payLabel = formatAmountForCurrency(otherAmount, otherCurrency);
   const rateLine = exchangeRate?.label
-    ? `Based on CBU exchange rate: ${exchangeRate.label}`
+    ? cp('confirmCbuRate', { label: exchangeRate.label })
     : exchangeRate?.rate
-      ? `Based on CBU exchange rate: 1 USD = ${Number(exchangeRate.rate).toLocaleString(undefined, { maximumFractionDigits: 2 })} UZS`
+      ? cp('confirmCbuRateUsdUzs', {
+          rate: Number(exchangeRate.rate).toLocaleString(undefined, { maximumFractionDigits: 2 }),
+        })
       : null;
-  const equiv =
-    exchangeRate?.rate && otherAmount > 0
-      ? sc === 'USD' && otherCurrency === 'UZS'
-        ? `(equivalent to ${formatAmountForCurrency(uzsToUsd(otherAmount, exchangeRate.rate), sc)} at CBU rate)`
-        : sc === 'UZS' && otherCurrency === 'USD'
-          ? `(equivalent to ${formatAmountForCurrency(usdToUzs(otherAmount, exchangeRate.rate), sc)} at CBU rate)`
-          : null
-      : null;
+  let equivSuffix = '';
+  if (exchangeRate?.rate && otherAmount > 0) {
+    if (sc === 'USD' && otherCurrency === 'UZS') {
+      equivSuffix = cp('confirmCrossEquiv', {
+        amount: formatAmountForCurrency(uzsToUsd(otherAmount, exchangeRate.rate), sc),
+      });
+    } else if (sc === 'UZS' && otherCurrency === 'USD') {
+      equivSuffix = cp('confirmCrossEquiv', {
+        amount: formatAmountForCurrency(usdToUzs(otherAmount, exchangeRate.rate), sc),
+      });
+    }
+  }
   return [
     rateLine,
-    `This sale is listed in ${sc}. Advance payment was already received.`,
-    `Remaining due (in ${sc}): ${dueLabel}.`,
-    `You are recording ${payLabel} in ${otherCurrency}${equiv ? ` ${equiv}` : ''} as the balance payment.`,
-    'Continue?',
+    cp('confirmCrossListed', { sc }),
+    cp('confirmCrossRemaining', { sc, due: dueLabel }),
+    cp('confirmCrossRecording', { payLabel, otherCurrency, equiv: equivSuffix }),
+    cp('confirmContinue'),
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -219,34 +231,67 @@ export function buildSplitCurrencyConfirmMessage({
   paidInSaleCurrency,
   exchangeRate,
 }) {
-  const saleCurrency = sc || sale?.sale_currency || 'USD';
+  const saleCurrency = (sc || sale?.sale_currency || 'USD').toUpperCase();
   const rateLabel =
     exchangeRate?.label ||
-    (cbuRate ? `1 USD = ${Number(cbuRate).toLocaleString(undefined, { maximumFractionDigits: 2 })} UZS (CBU rate)` : null);
+    (cbuRate
+      ? cp('confirmCbuRateUsdUzs', {
+          rate: Number(cbuRate).toLocaleString(undefined, { maximumFractionDigits: 2 }),
+        })
+      : null);
+  const uzsFormatted = formatAmountForCurrency(uzsAmount, 'UZS');
+  const usdFormatted = formatAmountForCurrency(usdAmount, 'USD');
   const uzsLine =
     uzsAmount > 0
-      ? sc === 'USD'
-        ? `- ${formatAmountForCurrency(uzsAmount, 'UZS')} (equivalent to ${formatAmountForCurrency(uzsToUsd(uzsAmount, cbuRate), sc)} at CBU rate)`
-        : `- ${formatAmountForCurrency(uzsAmount, 'UZS')}`
+      ? saleCurrency === 'USD'
+        ? cp('confirmSplitLineUzsWithEquiv', {
+            amount: uzsFormatted,
+            equiv: formatAmountForCurrency(uzsToUsd(uzsAmount, cbuRate), saleCurrency),
+          })
+        : cp('confirmSplitLineUzs', { amount: uzsFormatted })
       : null;
   const usdLine =
     usdAmount > 0
-      ? sc === 'UZS'
-        ? `- ${formatAmountForCurrency(usdAmount, 'USD')} (equivalent to ${formatAmountForCurrency(usdToUzs(usdAmount, cbuRate), sc)} at CBU rate)`
-        : `- ${formatAmountForCurrency(usdAmount, 'USD')}`
+      ? saleCurrency === 'UZS'
+        ? cp('confirmSplitLineUsdWithEquiv', {
+            amount: usdFormatted,
+            equiv: formatAmountForCurrency(usdToUzs(usdAmount, cbuRate), saleCurrency),
+          })
+        : cp('confirmSplitLineUsd', { amount: usdFormatted })
       : null;
   const totalPaid =
     paidInSaleCurrency != null
       ? formatAmountForCurrency(paidInSaleCurrency, saleCurrency)
-      : formatAmountForCurrency(paymentTotalInSaleCurrency(uzsAmount, usdAmount, saleCurrency, cbuRate), saleCurrency);
+      : formatAmountForCurrency(
+          paymentTotalInSaleCurrency(uzsAmount, usdAmount, saleCurrency, cbuRate),
+          saleCurrency,
+        );
   return [
-    rateLabel ? `Based on CBU exchange rate: ${rateLabel}` : null,
-    `Amount due: ${formatAmountForCurrency(due, saleCurrency)}`,
-    'You are paying:',
+    rateLabel ? cp('confirmCbuRate', { label: rateLabel }) : null,
+    cp('confirmSplitDue', { due: formatAmountForCurrency(due, saleCurrency) }),
+    cp('confirmSplitPaying'),
     uzsLine,
     usdLine,
-    `Total payment (in ${saleCurrency}): ${totalPaid}`,
-    'Continue?',
+    cp('confirmSplitTotal', { currency: saleCurrency, total: totalPaid }),
+    cp('confirmContinue'),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+/** Multiline confirm when payment exceeds amount due (shared by modal and inline flows). */
+export function buildOverpayConfirmMessage(meta, exchangeRate) {
+  const dueLabel = formatDisplayAmount(meta.due, meta.sc);
+  const paidLabel = formatDisplayAmount(meta.paid, meta.sc);
+  const excessLabel = formatDisplayAmount(meta.overpaymentAmount, meta.sc);
+  return [
+    cp('confirmOverpayTitle'),
+    `${cp('confirmOverpayDue')} ${dueLabel} · ${cp('confirmOverpayEntered')} ${paidLabel} · ${cp('confirmOverpayExcess')} ${excessLabel}.`,
+    meta.splitCurrency && exchangeRate?.label
+      ? cp('confirmOverpayCbu', { label: exchangeRate.label })
+      : null,
+    cp('confirmOverpayBook'),
+    cp('confirmContinue'),
   ]
     .filter(Boolean)
     .join('\n\n');

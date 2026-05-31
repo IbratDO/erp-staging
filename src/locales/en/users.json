@@ -39,6 +39,6 @@
   "clearDataConfirmPhrase": "CLEAR",
   "clearDataConfirmMismatch": "Type CLEAR exactly to continue",
   "clearDataProceed": "Clear data",
-  "clearDataSuccess": "Database cleared. Superuser accounts were kept.",
+  "clearDataSuccess": "Database cleared. Roles were reset — all users should log in again.",
   "clearDataFailed": "Could not clear database"
 }

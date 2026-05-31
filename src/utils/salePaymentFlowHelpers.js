@@ -2,15 +2,21 @@
  * Shared UZS/USD + CBU payment validation (shop Complete & Pay, delivery settlement, from-order).
  */
 
+import i18n from '../i18n';
 import {
   computePaymentShortfallMeta,
   validateAdvanceCompletionPayment,
   buildCrossCurrencyAdvanceConfirmMessage,
   buildSplitCurrencyConfirmMessage,
+  buildOverpayConfirmMessage,
   buildCompleteSaleRequest,
   paymentAmountInSaleCurrency,
 } from './saleCompletePayHelpers';
 import { formatDisplayAmount } from './currencyFormat';
+
+function cp(key, opts) {
+  return i18n.t(`completePay.${key}`, { ns: 'sales', ...opts });
+}
 
 /**
  * Run the same confirm/validate flow as SaleCompletePayForm before posting payment.
@@ -31,7 +37,7 @@ export async function runSalePaymentSubmitFlow({
   const usdT = parseFloat(paymentFormData.usd) || 0;
 
   if (uzsT + usdT === 0) {
-    showNotification?.('Please enter at least one payment amount.', 'error');
+    showNotification?.(cp('errEnterPayment'), 'error');
     return { ok: false };
   }
 
@@ -48,10 +54,7 @@ export async function runSalePaymentSubmitFlow({
   }
 
   if (meta.mixed) {
-    showNotification?.(
-      exchangeRateError || 'Exchange rate is still loading. Try again in a moment.',
-      'error',
-    );
+    showNotification?.(exchangeRateError || cp('errRateLoading'), 'error');
     return { ok: false };
   }
 
@@ -97,34 +100,19 @@ export async function runSalePaymentSubmitFlow({
 
   if (meta.exceedsRemainingDue) {
     showNotification?.(
-      `Payment cannot exceed the remaining amount due (${formatDisplayAmount(meta.due, meta.sc)} after advance).`,
+      cp('errExceedsDueFormatted', { amount: formatDisplayAmount(meta.due, meta.sc) }),
       'error',
     );
     return { ok: false };
   }
 
   if (allowDiscount && meta.needs && paymentFormData.balance_shortfall_type !== 'discount') {
-    showNotification?.(
-      'Payment is below the amount due. Select Discount to record the remainder, or collect more.',
-      'error',
-    );
+    showNotification?.(cp('errShortfall'), 'error');
     return { ok: false };
   }
 
   if (meta.hasOverpayment && meta.due != null && meta.overpaymentAmount != null) {
-    const dueLabel = formatDisplayAmount(meta.due, meta.sc);
-    const paidLabel = formatDisplayAmount(meta.paid, meta.sc);
-    const excessLabel = formatDisplayAmount(meta.overpaymentAmount, meta.sc);
-    const msg = [
-      'Payment entered is higher than amount due.',
-      `Due: ${dueLabel} · Entered: ${paidLabel} · Excess: ${excessLabel}.`,
-      meta.splitCurrency && exchangeRate?.label ? `(Total at CBU rate: ${exchangeRate.label})` : null,
-      'The extra amount will still be booked as collected payment.',
-      'Continue?',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    if (!window.confirm(msg)) return { ok: false };
+    if (!window.confirm(buildOverpayConfirmMessage(meta, exchangeRate))) return { ok: false };
   }
 
   const requestData = buildCompleteSaleRequest(paymentFormData, meta, exchangeRate);

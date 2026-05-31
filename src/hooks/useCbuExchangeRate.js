@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../utils/api';
+import i18n from '../i18n';
 
 /** Load CBU USD/UZS rate for split-currency payments. */
 export default function useCbuExchangeRate(enabled = true) {
@@ -24,7 +25,7 @@ export default function useCbuExchangeRate(enabled = true) {
       .catch(() => {
         if (!cancelled) {
           setExchangeRate(null);
-          setExchangeRateError('Could not load CBU exchange rate.');
+          setExchangeRateError(i18n.t('exchangeRate.loadFailed', { ns: 'common' }));
         }
       });
     return () => {

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../utils/api';
+import i18n from '../i18n';
 import {
   Area,
   AreaChart,
@@ -127,7 +128,7 @@ const DASH_TAB_MANAGEMENT = 'management';
 
 const Dashboard = () => {
   const { hasPermission } = usePermissions();
-  const { t, monthOptions } = useAppTranslation(['common', 'dashboard']);
+  const { t, monthOptions } = useAppTranslation(['dashboard', 'common']);
   const td = (key, opts) => t(key, { ns: 'dashboard', ...opts });
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -143,7 +144,7 @@ const Dashboard = () => {
       setAnalytics(res.data);
       setError(null);
     } catch (err) {
-      setError('Failed to load dashboard analytics');
+      setError(i18n.t('analyticsLoadError', { ns: 'dashboard' }));
       console.error(err);
     } finally {
       setLoading(false);

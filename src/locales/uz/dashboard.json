@@ -18,6 +18,7 @@
   "chartUnitsByCategory": "Kategoriya bo‘yicha o‘rtacha dona",
   "chartUnitsByCustomer": "Mijoz turi bo‘yicha o‘rtacha dona",
   "loading": "Dashboard yuklanmoqda…",
+  "analyticsLoadError": "Dashboard tahlili yuklanmadi",
   "ordersToday": "Buyurtmalar (bugun)",
   "returnsToday": "Qaytarishlar (bugun)",
   "returnedUnits": "Qaytarilgan dona",

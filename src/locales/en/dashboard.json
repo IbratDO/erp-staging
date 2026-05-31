@@ -18,6 +18,7 @@
   "chartUnitsByCategory": "Avg units by category",
   "chartUnitsByCustomer": "Avg units by customer type",
   "loading": "Loading dashboard…",
+  "analyticsLoadError": "Failed to load dashboard analytics",
   "ordersToday": "Orders (today)",
   "returnsToday": "Returns (today)",
   "returnedUnits": "Returned units",
