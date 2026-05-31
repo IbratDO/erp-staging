@@ -75,6 +75,7 @@
     "prepaidByCustomer": "Prepaid by customer",
     "prepaidStatus": "prepaid",
     "pay": "Pay",
+    "returnDeposit": "Return deposit",
     "footerSupplier": "Supplier / courier / package (pending)",
     "footerDeposits": "Customer deposits (on-demand, not sold yet)"
   },
@@ -116,6 +117,9 @@
     "paymentRecorded": "Payment recorded.",
     "paymentFailed": "Error recording payment",
     "confirmSettlePayable": "Mark this payable as paid and deduct from Money Balance?",
+    "confirmRefundDeposit": "Return this customer deposit to the customer? Money Balance will decrease and the deposit liability will be cleared.",
+    "depositRefunded": "Customer deposit returned.",
+    "refundDepositFailed": "Could not return customer deposit.",
     "paid": "Paid.",
     "settleFailed": "Could not settle payable."
   }

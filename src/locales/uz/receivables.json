@@ -75,6 +75,7 @@
     "prepaidByCustomer": "Mijoz oldindan to‘lagan",
     "prepaidStatus": "oldindan to‘langan",
     "pay": "To‘lash",
+    "returnDeposit": "Depositni qaytarish",
     "footerSupplier": "Yetkazuvchi / kuryer / qadoq (kutilmoqda)",
     "footerDeposits": "Mijoz depozitlari (on-demand, hali sotilmagan)"
   },
@@ -116,6 +117,9 @@
     "paymentRecorded": "To‘lov qayd etildi.",
     "paymentFailed": "To‘lovni qayd etib bo‘lmadi",
     "confirmSettlePayable": "Ushbu kreditor to‘langan deb belgilansinmi va Pul balansidan yechilsinmi?",
+    "confirmRefundDeposit": "Mijoz depoziti qaytarilsinmi? Pul balansi kamayadi va depozit majburiyati yopiladi.",
+    "depositRefunded": "Mijoz depoziti qaytarildi.",
+    "refundDepositFailed": "Mijoz depozitini qaytarib bo‘lmadi.",
     "paid": "To‘landi.",
     "settleFailed": "Kreditorni yakunlab bo‘lmadi."
   }

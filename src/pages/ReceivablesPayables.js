@@ -46,6 +46,11 @@ function isCustomerDepositPayable(p) {
   return p?.record_kind === 'customer_deposit';
 }
 
+/** Open Kreditorlik: supplier/courier AP (pending) plus customer prepayments (prepaid). */
+function isOpenPayable(p) {
+  return p?.status === 'pending' || isCustomerDepositPayable(p);
+}
+
 function payableKind(p, t) {
   if (isCustomerDepositPayable(p)) {
     return {
@@ -180,6 +185,7 @@ const ReceivablesPayables = () => {
   const usdLabel = t('currency.usd', { ns: 'common' });
   const { hasPermission } = usePermissions();
   const canCollect = hasPermission('receivables.collect');
+  const canRefundDeposit = hasPermission('payables.refund_deposit');
   const [activeTab, setActiveTab] = useState('receivables');
   const [receivables, setReceivables] = useState([]);
   const [payables, setPayables] = useState([]);
@@ -365,6 +371,20 @@ const ReceivablesPayables = () => {
     }
   };
 
+  const handleRefundCustomerDeposit = async (payable) => {
+    const orderId = payable.order_detail?.id || payable.order;
+    if (!orderId) return;
+    if (!window.confirm(t('notifications.confirmRefundDeposit'))) return;
+    try {
+      const res = await api.post('/payables/refund_customer_deposit/', { order_id: orderId });
+      alert(res.data?.message || t('notifications.depositRefunded'));
+      fetchPayables();
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.error || t('notifications.refundDepositFailed'));
+    }
+  };
+
   const receivableAmountTotals = useMemo(
     () => sumAmountsByCurrency(receivables.filter((r) => r.status === 'pending')),
     [receivables]
@@ -386,7 +406,7 @@ const ReceivablesPayables = () => {
     [receivables]
   );
   const payablePendingByCurrency = useMemo(
-    () => sumAmountsByCurrency(payables.filter((p) => p.status === 'pending')),
+    () => sumAmountsByCurrency(payables.filter((p) => isOpenPayable(p))),
     [payables]
   );
 
@@ -867,7 +887,15 @@ const ReceivablesPayables = () => {
                           : '—'}
                       </td>
                       <td>
-                        {payable.finance_record && payable.status === 'pending' ? (
+                        {isDeposit && canRefundDeposit ? (
+                          <button
+                            type="button"
+                            className="btn-edit"
+                            onClick={() => handleRefundCustomerDeposit(payable)}
+                          >
+                            {t('payablesTable.returnDeposit')}
+                          </button>
+                        ) : payable.finance_record && payable.status === 'pending' ? (
                           <button type="button" className="btn-edit" onClick={() => handleSettleManualPayable(payable)}>
                             {t('payablesTable.pay')}
                           </button>

@@ -45,7 +45,7 @@ export const ROLE_VISIBLE_MENU_PATHS = {
 
 /** Paths hidden for a role even when a permission would allow them. */
 export const ROLE_HIDDEN_MENU_PATHS = {
-  ceo: ['/users', '/audit-logs', '/workers', '/customers', '/bonus-rules', '/equity', '/fixed-assets'],
+  ceo: ['/users', '/audit-logs', '/workers', '/bonus-rules', '/equity', '/fixed-assets'],
   admin: ['/bonus-rules'],
   investor: ['/users', '/workers', '/audit-logs', '/bonus-rules'],
   sales_manager: ['/customers', '/inventory/packages'],
