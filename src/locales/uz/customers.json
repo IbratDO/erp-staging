@@ -15,8 +15,8 @@
   },
   "filters": {
     "title": "Filtrlar",
-    "name": "Ism",
-    "searchPlaceholder": "Ism bo‘yicha qidirish"
+    "name": "Ism / telefon",
+    "searchPlaceholder": "Ism yoki telefon bo‘yicha qidirish"
   },
   "table": {
     "name": "Ism",

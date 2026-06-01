@@ -84,7 +84,6 @@ const Customers = () => {
   const canUpdate = hasPermission('customers.update');
   const canDelete = hasPermission('customers.delete');
   const [customers, setCustomers] = useState([]);
-  const [filteredCustomers, setFilteredCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -146,7 +145,6 @@ const Customers = () => {
       const response = await api.get('/customers/');
       const customersList = response.data.results || response.data;
       setCustomers(customersList);
-      applyFilters(customersList);
     } catch (error) {
       console.error('Error fetching customers:', error);
     } finally {
@@ -154,34 +152,21 @@ const Customers = () => {
     }
   };
 
-  const applyFilters = (customersList) => {
-    let filtered = customersList;
-    
-    if (filters.name && filters.name.trim()) {
-      filtered = filtered.filter(customer => 
-        customer.name?.toLowerCase().includes(filters.name.toLowerCase())
-      );
-    }
-    
-    setFilteredCustomers(filtered);
-  };
+  const filteredCustomers = useMemo(() => {
+    const q = filters.name.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter((c) => {
+      const haystack = `${c.name ?? ''} ${c.telephone ?? ''} ${c.instagram ?? ''}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [customers, filters.name]);
 
-  useEffect(() => {
-    if (customers.length > 0) {
-      applyFilters(customers);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
-
-  const customerListSort = useClientTableSort(CUSTOMER_SORT_ACCESSORS);
+  const customerListSort = useClientTableSort(CUSTOMER_SORT_ACCESSORS, { col: 'name', dir: 'asc' });
 
   const sortedFilteredCustomers = useMemo(() => {
     const rows = filteredCustomers;
     if (!rows?.length) return rows;
-    if (customerListSort.sortCol && CUSTOMER_SORT_ACCESSORS[customerListSort.sortCol]) {
-      return customerListSort.sortRows(rows);
-    }
-    return rows;
+    return customerListSort.sortRows(rows);
   }, [filteredCustomers, customerListSort]);
 
   const receivableSort = useClientTableSort(RECEIVABLE_SORT_ACCESSORS);

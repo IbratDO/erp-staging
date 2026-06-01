@@ -15,8 +15,8 @@
   },
   "filters": {
     "title": "Filters",
-    "name": "Name",
-    "searchPlaceholder": "Search name"
+    "name": "Name / phone",
+    "searchPlaceholder": "Search by name or phone"
   },
   "table": {
     "name": "Name",

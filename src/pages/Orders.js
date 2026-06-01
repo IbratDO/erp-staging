@@ -558,7 +558,7 @@ const Orders = () => {
       await fetchCustomers();
       setFormData({ ...formData, customer: response.data.id });
       setShowCustomerForm(false);
-      setNewCustomerData({ name: '', telephone: '', instagram: '', region: '', notes: '' });
+      setNewCustomerData({ name: '', telephone: '+998', instagram: '', region: 'tashkent_city', notes: '' });
     } catch (error) {
       console.error('Error creating customer:', error);
       showNotification(error.response?.data?.error || t('notifications.createCustomerError'), 'error');
@@ -2050,19 +2050,15 @@ const Orders = () => {
                   <div className="form-group">
                     <label>{t('form.customer')} *</label>
                     <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch' }}>
-                      <select
-                        value={formData.customer}
-                        onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
-                        style={{ flex: 1, minWidth: 0 }}
-                        required={formData.order_type === 'on_demand'}
-                      >
-                        <option value="">{t('form.selectCustomer')}</option>
-                        {customers.map((customer) => (
-                          <option key={customer.id} value={customer.id}>
-                            {customer.name} {customer.telephone ? `(${customer.telephone})` : ''}
-                          </option>
-                        ))}
-                      </select>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <CustomerSearchableSelect
+                          customers={customers}
+                          value={formData.customer}
+                          onChange={(customerId) => setFormData({ ...formData, customer: customerId })}
+                          placeholder={t('form.selectCustomer')}
+                          aria-label={t('form.customer')}
+                        />
+                      </div>
                       <button
                         type="button"
                         className="btn-edit"

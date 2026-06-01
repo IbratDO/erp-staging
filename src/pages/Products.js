@@ -5,6 +5,7 @@ import { useClientTableSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
+import FilterSearchableSelect from '../components/FilterSearchableSelect';
 import './TablePage.css';
 
 const PRODUCT_CATEGORY_TYPE_VALUES = ['sports', 'casual'];
@@ -284,6 +285,59 @@ const Products = () => {
     const fromDb = [...new Set(products.map((p) => p.color).filter(Boolean))];
     return fromDb.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [products]);
+
+  const categoryTypeFilterOptions = useMemo(
+    () => productCategoryTypes.map((ct) => ({ value: ct.value, label: ct.label })),
+    [productCategoryTypes],
+  );
+
+  const categoryFilterOptions = useMemo(
+    () =>
+      [...new Set(
+        products
+          .filter((p) => !filters.category_type || p.category_type === filters.category_type)
+          .map((p) => p.category)
+          .filter(Boolean),
+      )]
+        .sort((a, b) => String(a).localeCompare(String(b)))
+        .map((cat) => ({ value: cat, label: cat })),
+    [products, filters.category_type],
+  );
+
+  const brandFilterOptions = useMemo(
+    () => getUniqueValues(products, 'brand').map((brand) => ({ value: brand, label: brand })),
+    [products],
+  );
+
+  const modelFilterOptions = useMemo(
+    () => getUniqueValues(products, 'model').map((model) => ({ value: model, label: model })),
+    [products],
+  );
+
+  const sizeFilterOptions = useMemo(() => {
+    const sortedSizes = getUniqueValues(products, 'size');
+    const { letters, nums } = partitionSizesForUiGroups(sortedSizes);
+    return [...letters, ...nums].map((size) => ({ value: size, label: size }));
+  }, [products]);
+
+  const colorFilterOptions = useMemo(
+    () => getUniqueValues(products, 'color').map((color) => ({ value: color, label: color })),
+    [products],
+  );
+
+  const yearFilterOptions = useMemo(
+    () =>
+      Array.from({ length: 10 }, (_, i) => {
+        const year = (new Date().getFullYear() - i).toString();
+        return { value: year, label: year };
+      }),
+    [],
+  );
+
+  const monthFilterOptions = useMemo(
+    () => monthOptions.filter((o) => o.value).map((o) => ({ value: o.value, label: o.label })),
+    [monthOptions],
+  );
 
   const pickerColorOptions = useMemo(() => {
     const s = new Set([...colorOptions, ...selectedColors]);
@@ -1095,141 +1149,91 @@ const Products = () => {
         <div className="filter-toolbar">
           <div className="filter-field">
             <label>{t('categoryType')}</label>
-            <select
+            <FilterSearchableSelect
               value={filters.category_type}
-              onChange={(e) => setFilters({ ...filters, category_type: e.target.value })}
-            >
-              <option value="">{t('filters.allTypes')}</option>
-              {productCategoryTypes.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setFilters({ ...filters, category_type: v })}
+              options={categoryTypeFilterOptions}
+              emptyLabel={t('filters.allTypes')}
+              placeholder={t('filters.allTypes')}
+              aria-label={t('categoryType')}
+            />
           </div>
           <div className="filter-field">
             <label>{t('category')}</label>
-            <select
+            <FilterSearchableSelect
               value={filters.category}
-              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            >
-              <option value="">{t('filters.allCategories')}</option>
-              {[...new Set(
-                products
-                  .filter((p) => !filters.category_type || p.category_type === filters.category_type)
-                  .map((p) => p.category)
-                  .filter(Boolean),
-              )]
-                .sort()
-                .map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-            </select>
+              onChange={(v) => setFilters({ ...filters, category: v })}
+              options={categoryFilterOptions}
+              emptyLabel={t('filters.allCategories')}
+              placeholder={t('filters.allCategories')}
+              aria-label={t('category')}
+            />
           </div>
           <div className="filter-field">
             <label>{t('brand')}</label>
-            <select
+            <FilterSearchableSelect
               value={filters.brand}
-              onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
-            >
-              <option value="">{t('filters.allBrands')}</option>
-              {getUniqueValues(products, 'brand').map((brand) => (
-                <option key={brand} value={brand}>
-                  {brand}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setFilters({ ...filters, brand: v })}
+              options={brandFilterOptions}
+              emptyLabel={t('filters.allBrands')}
+              placeholder={t('filters.allBrands')}
+              aria-label={t('brand')}
+            />
           </div>
           <div className="filter-field">
             <label>{t('model')}</label>
-            <select
+            <FilterSearchableSelect
               value={filters.model}
-              onChange={(e) => setFilters({ ...filters, model: e.target.value })}
-            >
-              <option value="">{t('filters.allModels')}</option>
-              {getUniqueValues(products, 'model').map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setFilters({ ...filters, model: v })}
+              options={modelFilterOptions}
+              emptyLabel={t('filters.allModels')}
+              placeholder={t('filters.allModels')}
+              aria-label={t('model')}
+            />
           </div>
           <div className="filter-field">
             <label>{t('size')}</label>
-            <select
+            <FilterSearchableSelect
               value={filters.size}
-              onChange={(e) => setFilters({ ...filters, size: e.target.value })}
-            >
-              <option value="">{t('filters.allSizes')}</option>
-              {(() => {
-                const sortedSizes = getUniqueValues(products, 'size');
-                const { letters, nums } = partitionSizesForUiGroups(sortedSizes);
-                return (
-                  <>
-                    {letters.length > 0 ? (
-                      <optgroup label={t('form.letterSizes')}>
-                        {letters.map((size) => (
-                          <option key={size} value={size}>{size}</option>
-                        ))}
-                      </optgroup>
-                    ) : null}
-                    {nums.length > 0 ? (
-                      <optgroup label={t('form.numberSizes')}>
-                        {nums.map((size) => (
-                          <option key={size} value={size}>{size}</option>
-                        ))}
-                      </optgroup>
-                    ) : null}
-                  </>
-                );
-              })()}
-            </select>
+              onChange={(v) => setFilters({ ...filters, size: v })}
+              options={sizeFilterOptions}
+              emptyLabel={t('filters.allSizes')}
+              placeholder={t('filters.allSizes')}
+              aria-label={t('size')}
+            />
           </div>
           <div className="filter-field">
             <label>{t('color')}</label>
-            <select
+            <FilterSearchableSelect
               value={filters.color}
-              onChange={(e) => setFilters({ ...filters, color: e.target.value })}
-            >
-              <option value="">{t('filters.allColors')}</option>
-              {getUniqueValues(products, 'color').map((color) => (
-                <option key={color} value={color}>
-                  {color}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setFilters({ ...filters, color: v })}
+              options={colorFilterOptions}
+              emptyLabel={t('filters.allColors')}
+              placeholder={t('filters.allColors')}
+              aria-label={t('color')}
+            />
           </div>
           <div className="filter-field">
             <label>{t('filters.year', { ns: 'common' })}</label>
-            <select
+            <FilterSearchableSelect
               value={filters.year}
-              onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-            >
-              <option value="">{t('filters.allYears', { ns: 'common' })}</option>
-              {Array.from({ length: 10 }, (_, i) => {
-                const year = new Date().getFullYear() - i;
-                return (
-                  <option key={year} value={year.toString()}>
-                    {year}
-                  </option>
-                );
-              })}
-            </select>
+              onChange={(v) => setFilters({ ...filters, year: v })}
+              options={yearFilterOptions}
+              emptyLabel={t('filters.allYears', { ns: 'common' })}
+              placeholder={t('filters.allYears', { ns: 'common' })}
+              aria-label={t('filters.year', { ns: 'common' })}
+            />
           </div>
           <div className="filter-field">
             <label>{t('filters.month', { ns: 'common' })}</label>
-            <select
+            <FilterSearchableSelect
               value={filters.month}
-              onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-            >
-              {monthOptions.map((o) => (
-                <option key={o.value || 'all'} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => setFilters({ ...filters, month: v })}
+              options={monthFilterOptions}
+              emptyLabel={monthOptions[0]?.label || ''}
+              placeholder={monthOptions[0]?.label || ''}
+              aria-label={t('filters.month', { ns: 'common' })}
+            />
           </div>
           <div className="filter-toolbar__actions">
             <button

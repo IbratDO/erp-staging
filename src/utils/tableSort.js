@@ -57,8 +57,8 @@ function sortReducer(state, action) {
   return state;
 }
 
-export function useClientTableSort(accessors) {
-  const [sort, dispatch] = useReducer(sortReducer, initialSort);
+export function useClientTableSort(accessors, initial = initialSort) {
+  const [sort, dispatch] = useReducer(sortReducer, initial);
 
   const onHeaderClick = useCallback((col) => dispatch({ type: 'toggle', col }), []);
 
