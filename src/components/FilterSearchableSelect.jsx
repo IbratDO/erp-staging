@@ -16,6 +16,8 @@ export default function FilterSearchableSelect({
   options = [],
   emptyLabel = '',
   placeholder,
+  allowFreeText = false,
+  freeTextApplyLabel,
   'aria-label': ariaLabel,
   disabled = false,
 }) {
@@ -87,7 +89,11 @@ export default function FilterSearchableSelect({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  const display = selected ? selected.label : value === '' && emptyLabel ? emptyLabel : '';
+  const display = selected
+    ? selected.label
+    : value
+      ? String(value)
+      : emptyLabel || '';
   const resolvedPlaceholder = placeholder || emptyLabel || '—';
 
   const handlePick = (nextValue) => {
@@ -95,6 +101,20 @@ export default function FilterSearchableSelect({
     setOpen(false);
     setQuery('');
   };
+
+  const applyFreeText = (text) => {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return;
+    onChange(trimmed);
+    setOpen(false);
+    setQuery('');
+  };
+
+  const trimmedQuery = String(query || '').trim();
+  const freeTextHint =
+    allowFreeText && trimmedQuery
+      ? (freeTextApplyLabel || `Search: "${trimmedQuery}"`).replace(/\{\{query\}\}/g, trimmedQuery)
+      : '';
 
   const panel =
     open && panelPos
@@ -128,6 +148,11 @@ export default function FilterSearchableSelect({
                 autoComplete="off"
                 aria-label={ariaLabel}
                 onKeyDown={(e) => {
+                  if (e.key === 'Enter' && allowFreeText && trimmedQuery) {
+                    e.preventDefault();
+                    applyFreeText(trimmedQuery);
+                    return;
+                  }
                   if (e.key === 'Escape') {
                     e.stopPropagation();
                     setOpen(false);
@@ -156,6 +181,31 @@ export default function FilterSearchableSelect({
                 minHeight: 0,
               }}
             >
+              {allowFreeText && trimmedQuery ? (
+                <li>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={String(value) === trimmedQuery}
+                    onClick={() => applyFreeText(trimmedQuery)}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 10px',
+                      border: 'none',
+                      background: String(value) === trimmedQuery ? '#e8f5e9' : 'transparent',
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      fontFamily: 'inherit',
+                      color: '#2e7d32',
+                      borderRadius: 4,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {freeTextHint}
+                  </button>
+                </li>
+              ) : null}
               {showEmptyOption ? (
                 <li>
                   <button
@@ -228,7 +278,11 @@ export default function FilterSearchableSelect({
           if (disabled) return;
           setOpen((o) => {
             const next = !o;
-            if (next) setQuery('');
+            if (next) {
+              const q = String(value || '');
+              const hasExact = normalized.some((opt) => String(opt.value) === q);
+              setQuery(allowFreeText && q && !hasExact ? q : '');
+            }
             return next;
           });
         }}

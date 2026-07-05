@@ -127,9 +127,10 @@ const DASH_TAB_SALES = 'sales';
 const DASH_TAB_MANAGEMENT = 'management';
 
 const Dashboard = () => {
-  const { hasPermission } = usePermissions();
+  const { hasPermission, roleCode, isTargetolog, isAdmin } = usePermissions();
   const { t, monthOptions } = useAppTranslation(['dashboard', 'common']);
   const td = (key, opts) => t(key, { ns: 'dashboard', ...opts });
+  const targetologView = isTargetolog || roleCode === 'targetolog';
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -137,6 +138,12 @@ const Dashboard = () => {
   const [month, setMonth] = useState('');
   const [crossFilter, setCrossFilter] = useState(EMPTY_CROSS_FILTER);
   const [activeTab, setActiveTab] = useState(DASH_TAB_SALES);
+
+  useEffect(() => {
+    if (isAdmin) {
+      setActiveTab(DASH_TAB_MANAGEMENT);
+    }
+  }, [isAdmin]);
 
   const loadAnalytics = useCallback(async (y) => {
     try {
@@ -216,8 +223,9 @@ const Dashboard = () => {
 
   const kpis = analytics?.kpis;
   const filterHint = crossFilterSummary(crossFilter);
-  const canToggleDashboardTabs = hasPermission('dashboard.ceo');
+  const canToggleDashboardTabs = hasPermission('dashboard.ceo') && !targetologView;
   const isExecutiveView = canToggleDashboardTabs || Boolean(analytics?.company_wide);
+  const canViewMarketingKpis = hasPermission('marketing_analytics.view');
 
   if (loading) {
     return <div className="page-container">{td('loading')}</div>;
@@ -297,7 +305,7 @@ const Dashboard = () => {
       <header className="dash-header">
         <div>
           <p className="dash-subtitle dash-subtitle-section">
-            {td('kpisToday')}
+            {targetologView ? td('salesAnalyticsTitle') : td('kpisToday')}
           </p>
         </div>
         <div className="dash-filters">
@@ -337,7 +345,7 @@ const Dashboard = () => {
           label={td('soldUnitsToday')}
           value={(kpis?.net_sold_units ?? kpis?.sold_units ?? 0).toLocaleString()}
           sub={
-            (kpis?.total_returns ?? 0) > 0
+            !targetologView && (kpis?.total_returns ?? 0) > 0
               ? td('netUnitsSub', {
                   gross: (kpis?.sold_units ?? 0).toLocaleString(),
                   returned: (kpis?.total_returns ?? 0).toLocaleString(),
@@ -347,6 +355,7 @@ const Dashboard = () => {
                 : td('scopeAll')
           }
         />
+        {!targetologView ? (
         <KpiCard
           label={td('salesRevenueToday')}
           value={`$${(kpis?.net_revenue_usd ?? kpis?.revenue_usd ?? 0).toLocaleString(undefined, {
@@ -363,6 +372,7 @@ const Dashboard = () => {
                 : null
           }
         />
+        ) : null}
         <KpiCard
           label={td('ordersToday')}
           value={(kpis?.total_orders ?? 0).toLocaleString()}
@@ -371,7 +381,7 @@ const Dashboard = () => {
           label={td('returnsToday')}
           value={(kpis?.total_returns ?? 0).toLocaleString()}
           sub={
-            (kpis?.refunds_usd ?? 0) > 0 || (kpis?.refunds_uzs ?? 0) > 0
+            !targetologView && ((kpis?.refunds_usd ?? 0) > 0 || (kpis?.refunds_uzs ?? 0) > 0)
               ? td('returnsRefundSub', {
                   refunds: formatRefundSummary(kpis?.refunds_usd, kpis?.refunds_uzs),
                 })
@@ -385,6 +395,7 @@ const Dashboard = () => {
         <p className="dash-section-hint">{td('monthlyHint')}</p>
         <p className="dash-section-hint">{td('returnsChartHint')}</p>
         <div className="dash-charts-row">
+          {!targetologView ? (
           <ChartPanel
             emptyLabel={chartEmpty}
             title={td('chartUnitsByUser')}
@@ -395,6 +406,8 @@ const Dashboard = () => {
             onLegendClick={handleLegendUser}
             activeCross={crossFilter.salesman}
           />
+          ) : null}
+          {!targetologView ? (
           <ChartPanel
             emptyLabel={chartEmpty}
             title={td('chartUnitsByCategory')}
@@ -405,6 +418,7 @@ const Dashboard = () => {
             onLegendClick={handleLegendCategory}
             activeCross={crossFilter.category}
           />
+          ) : null}
           <ChartPanel
             emptyLabel={chartEmpty}
             title={td('chartNewVsExisting')}
@@ -422,6 +436,7 @@ const Dashboard = () => {
         <h2 className="dash-section-title">{td('weekdayAverages')}</h2>
         <p className="dash-section-hint">{td('weekdayHint')}</p>
         <div className="dash-charts-row">
+          {!targetologView ? (
           <ChartPanel
             emptyLabel={chartEmpty}
             title={td('chartAvgByUser')}
@@ -432,6 +447,8 @@ const Dashboard = () => {
             onLegendClick={handleLegendUser}
             activeCross={crossFilter.salesman}
           />
+          ) : null}
+          {!targetologView ? (
           <ChartPanel
             emptyLabel={chartEmpty}
             title={td('chartAvgByCategory')}
@@ -442,6 +459,7 @@ const Dashboard = () => {
             onLegendClick={handleLegendCategory}
             activeCross={crossFilter.category}
           />
+          ) : null}
           <ChartPanel
             emptyLabel={chartEmpty}
             title={td('chartAvgByCustomer')}
@@ -454,9 +472,18 @@ const Dashboard = () => {
           />
         </div>
       </section>
-      <PenaltyDashboardCard />
+      {!targetologView ? <PenaltyDashboardCard /> : null}
         </>
       )}
+
+      {targetologView && canViewMarketingKpis ? (
+        <ManagementKpisSection
+          roleCode={analytics?.role_code || roleCode}
+          availableYears={analytics?.available_years}
+          active
+          marketingOnly
+        />
+      ) : null}
 
     </div>
   );

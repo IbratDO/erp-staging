@@ -3,6 +3,8 @@ import api from '../utils/api';
 import { cashBalanceTotalByCurrency, formatDisplayAmount, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import SortableTh from '../components/SortableTh';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
+import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
+import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
 import { useClientTableSort, compareForSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
 import {
@@ -202,7 +204,7 @@ const Returns = () => {
     category: '',
     brand: '',
     model: '',
-    size: '',
+    sizes: [],
     color: '',
     reason: '',
     year: '',
@@ -326,31 +328,9 @@ const Returns = () => {
         (returnItem) => returnItem.product_detail?.category_type === filters.category_type,
       );
     }
-    if (filters.category) {
-      filtered = filtered.filter(returnItem =>
-        returnItem.product_detail?.category === filters.category
-      );
-    }
-    if (filters.brand) {
-      filtered = filtered.filter(returnItem => 
-        returnItem.product_detail?.brand === filters.brand
-      );
-    }
-    if (filters.model) {
-      filtered = filtered.filter(returnItem => 
-        returnItem.product_detail?.model === filters.model
-      );
-    }
-    if (filters.size) {
-      filtered = filtered.filter(returnItem => 
-        returnItem.product_detail?.size === filters.size
-      );
-    }
-    if (filters.color) {
-      filtered = filtered.filter(returnItem => 
-        returnItem.product_detail?.color === filters.color
-      );
-    }
+    filtered = filtered.filter((returnItem) =>
+      matchesProductCatalogFilters(returnItem.product_detail, filters),
+    );
     if (filters.reason) {
       filtered = filtered.filter(returnItem => returnItem.reason === filters.reason);
     }
@@ -586,7 +566,7 @@ const Returns = () => {
 
   const fetchCustomers = async () => {
     try {
-      const response = await api.get('/customers/');
+      const response = await api.get('/customers/', { params: { lite: 1 } });
       setCustomers(response.data.results || response.data);
     } catch (error) {
       console.error('Error fetching customers:', error);
@@ -1439,79 +1419,43 @@ const Returns = () => {
               ))}
             </select>
           </div>
-          <div className="filter-field">
-            <label>{t('filters.category')}</label>
-            <select
-              value={filters.category}
-              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            >
-              <option value="">{t('form.allCategories')}</option>
-              {[...new Set(
-                returns
-                  .filter((r) => !filters.category_type || r.product_detail?.category_type === filters.category_type)
-                  .map((r) => r.product_detail?.category)
-                  .filter(Boolean),
-              )].sort().map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.brand')}</label>
-            <select
-              value={filters.brand}
-              onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
-            >
-              <option value="">{t('filters.allBrands')}</option>
-              {getUniqueValues(returns, 'brand').map((brand) => (
-                <option key={brand} value={brand}>
-                  {brand}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.model')}</label>
-            <select
-              value={filters.model}
-              onChange={(e) => setFilters({ ...filters, model: e.target.value })}
-            >
-              <option value="">{t('filters.allModels')}</option>
-              {getUniqueValues(returns, 'model').map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.size')}</label>
-            <select
-              value={filters.size}
-              onChange={(e) => setFilters({ ...filters, size: e.target.value })}
-            >
-              <option value="">{t('filters.allSizes')}</option>
-              {getUniqueValues(returns, 'size').map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.color')}</label>
-            <select
-              value={filters.color}
-              onChange={(e) => setFilters({ ...filters, color: e.target.value })}
-            >
-              <option value="">{t('filters.allColors')}</option>
-              {getUniqueValues(returns, 'color').map((color) => (
-                <option key={color} value={color}>
-                  {color}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ProductCatalogFilterFields
+            filters={filters}
+            onFiltersChange={setFilters}
+            options={{
+              categories: [
+                ...new Set(
+                  returns
+                    .filter(
+                      (r) =>
+                        !filters.category_type ||
+                        r.product_detail?.category_type === filters.category_type,
+                    )
+                    .map((r) => r.product_detail?.category)
+                    .filter(Boolean),
+                ),
+              ].sort(),
+              brands: getUniqueValues(returns, 'brand'),
+              models: getUniqueValues(returns, 'model'),
+              sizes: getUniqueValues(returns, 'size'),
+              colors: getUniqueValues(returns, 'color'),
+            }}
+            t={t}
+            fieldLabels={{
+              category: t('filters.category'),
+              brand: t('filters.brand'),
+              model: t('filters.model'),
+              size: t('filters.size'),
+              color: t('filters.color'),
+            }}
+            emptyLabels={{
+              category: t('form.allCategories'),
+              brand: t('filters.allBrands'),
+              model: t('filters.allModels'),
+              size: t('filters.allSizes'),
+              color: t('filters.allColors'),
+            }}
+          />
           <div className="filter-field">
             <label>{t('filters.reason')}</label>
             <select
@@ -1563,7 +1507,7 @@ const Returns = () => {
                   category: '',
                   brand: '',
                   model: '',
-                  size: '',
+                  sizes: [],
                   color: '',
                   reason: '',
                   year: '',

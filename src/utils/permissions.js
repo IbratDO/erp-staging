@@ -41,6 +41,7 @@ export const ROLE_VISIBLE_MENU_PATHS = {
     '/dispatchers',
   ],
   dispatcher: ['/dispatchers'],
+  targetolog: ['/dashboard'],
 };
 
 /** Paths hidden for a role even when a permission would allow them. */
@@ -148,9 +149,13 @@ export function isInvestor(user) {
   return getRoleCode(user) === 'investor';
 }
 
-/** Investor and future observer roles — hide mutation controls in the UI. */
+export function isTargetolog(user) {
+  return getRoleCode(user) === 'targetolog';
+}
+
+/** Investor, Targetolog, and future observer roles — hide mutation controls in the UI. */
 export function isReadOnly(user) {
-  return isInvestor(user);
+  return isInvestor(user) || isTargetolog(user);
 }
 
 /** Admin, CEO, or Senior Sales Manager — full operational visibility (all sales/orders). */

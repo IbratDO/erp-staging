@@ -13,6 +13,8 @@ import { shopDeliverySettlementRequired } from '../utils/saleCompletePayHelpers'
 import ShopDeliverySettlementButtons from '../components/ShopDeliverySettlementButtons';
 import ProductSearchableSelect from '../components/ProductSearchableSelect';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
+import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
+import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
 import { layerSalePickerLabel, resolveLayerListPrice } from '../utils/productCost';
 import {
   computeAdvanceRemainingDue,
@@ -361,7 +363,7 @@ const Sales = () => {
     category: '',
     brand: '',
     model: '',
-    size: '',
+    sizes: [],
     color: '',
     status: '',
     sale_type: '',
@@ -417,7 +419,7 @@ const Sales = () => {
   
   const fetchCustomers = async () => {
     try {
-      const response = await api.get('/customers/');
+      const response = await api.get('/customers/', { params: { lite: 1 } });
       setCustomers(response.data.results || response.data);
     } catch (error) {
       console.error('Error fetching customers:', error);
@@ -498,31 +500,7 @@ const Sales = () => {
         (sale) => sale.product_detail?.category_type === filters.category_type,
       );
     }
-    if (filters.category) {
-      filtered = filtered.filter(sale =>
-        sale.product_detail?.category === filters.category
-      );
-    }
-    if (filters.brand) {
-      filtered = filtered.filter(sale => 
-        sale.product_detail?.brand === filters.brand
-      );
-    }
-    if (filters.model) {
-      filtered = filtered.filter(sale => 
-        sale.product_detail?.model === filters.model
-      );
-    }
-    if (filters.size) {
-      filtered = filtered.filter(sale => 
-        sale.product_detail?.size === filters.size
-      );
-    }
-    if (filters.color) {
-      filtered = filtered.filter(sale => 
-        sale.product_detail?.color === filters.color
-      );
-    }
+    filtered = filtered.filter((sale) => matchesProductCatalogFilters(sale.product_detail, filters));
     if (filters.status) {
       filtered = filtered.filter(sale => sale.status === filters.status);
     }
@@ -2085,19 +2063,17 @@ const Sales = () => {
               <div className="form-group">
                 <label>{t('batch.customerRequired')}</label>
                 <div className="sales-batch-header-row__customer">
-                  <select
-                    value={batchCustomer}
-                    onChange={(e) => setBatchCustomer(e.target.value)}
-                    style={{ flex: 1, borderColor: !batchCustomer ? '#f44336' : undefined }}
-                    required
-                  >
-                    <option value="">{t('batch.selectCustomer')}</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.telephone ? `(${c.telephone})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ flex: 1 }}>
+                    <CustomerSearchableSelect
+                      asyncSearch
+                      customers={customers}
+                      value={batchCustomer}
+                      onChange={setBatchCustomer}
+                      placeholder={t('batch.selectCustomer')}
+                      emptyLabel={t('batch.selectCustomer')}
+                      aria-label={t('batch.customerRequired')}
+                    />
+                  </div>
                   <button
                     type="button"
                     className="btn-edit"
@@ -2339,79 +2315,43 @@ const Sales = () => {
               ))}
             </select>
           </div>
-          <div className="filter-field">
-            <label>{t('table.category')}</label>
-            <select
-              value={filters.category}
-              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            >
-              <option value="">{t('filters.allCategories')}</option>
-              {[...new Set(
-                sales
-                  .filter((s) => !filters.category_type || s.product_detail?.category_type === filters.category_type)
-                  .map((s) => s.product_detail?.category)
-                  .filter(Boolean),
-              )].sort().map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('table.brand')}</label>
-            <select
-              value={filters.brand}
-              onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
-            >
-              <option value="">{t('filters.allBrands')}</option>
-              {getUniqueValues(sales, 'brand').map((brand) => (
-                <option key={brand} value={brand}>
-                  {brand}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('table.model')}</label>
-            <select
-              value={filters.model}
-              onChange={(e) => setFilters({ ...filters, model: e.target.value })}
-            >
-              <option value="">{t('filters.allModels')}</option>
-              {getUniqueValues(sales, 'model').map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('table.size')}</label>
-            <select
-              value={filters.size}
-              onChange={(e) => setFilters({ ...filters, size: e.target.value })}
-            >
-              <option value="">{t('filters.allSizes')}</option>
-              {getUniqueValues(sales, 'size').map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('table.color')}</label>
-            <select
-              value={filters.color}
-              onChange={(e) => setFilters({ ...filters, color: e.target.value })}
-            >
-              <option value="">{t('filters.allColors')}</option>
-              {getUniqueValues(sales, 'color').map((color) => (
-                <option key={color} value={color}>
-                  {color}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ProductCatalogFilterFields
+            filters={filters}
+            onFiltersChange={setFilters}
+            options={{
+              categories: [
+                ...new Set(
+                  sales
+                    .filter(
+                      (s) =>
+                        !filters.category_type ||
+                        s.product_detail?.category_type === filters.category_type,
+                    )
+                    .map((s) => s.product_detail?.category)
+                    .filter(Boolean),
+                ),
+              ].sort(),
+              brands: getUniqueValues(sales, 'brand'),
+              models: getUniqueValues(sales, 'model'),
+              sizes: getUniqueValues(sales, 'size'),
+              colors: getUniqueValues(sales, 'color'),
+            }}
+            t={t}
+            fieldLabels={{
+              category: t('table.category'),
+              brand: t('table.brand'),
+              model: t('table.model'),
+              size: t('table.size'),
+              color: t('table.color'),
+            }}
+            emptyLabels={{
+              category: t('filters.allCategories'),
+              brand: t('filters.allBrands'),
+              model: t('filters.allModels'),
+              size: t('filters.allSizes'),
+              color: t('filters.allColors'),
+            }}
+          />
           <div className="filter-field">
             <label>{t('table.status', { ns: 'common' })}</label>
             <select
@@ -2494,7 +2434,7 @@ const Sales = () => {
                   category: '',
                   brand: '',
                   model: '',
-                  size: '',
+                  sizes: [],
                   color: '',
                   status: '',
                   sale_type: '',

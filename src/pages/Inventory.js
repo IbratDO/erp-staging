@@ -3,6 +3,8 @@ import api from '../utils/api';
 import { productCostPickerLabel } from '../utils/productCost';
 import { plannedSellingSummary } from '../utils/orderPlannedPricing';
 import SortableTh from '../components/SortableTh';
+import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
+import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
 import { useClientTableSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
@@ -97,7 +99,7 @@ const Inventory = () => {
     category: '',
     brand: '',
     model: '',
-    size: '',
+    sizes: [],
     color: '',
     status: '',
     year: '',
@@ -147,31 +149,7 @@ const Inventory = () => {
         (item) => item.product_detail?.category_type === filters.category_type,
       );
     }
-    if (filters.category) {
-      filtered = filtered.filter(item =>
-        item.product_detail?.category === filters.category
-      );
-    }
-    if (filters.brand) {
-      filtered = filtered.filter(item => 
-        item.product_detail?.brand === filters.brand
-      );
-    }
-    if (filters.model) {
-      filtered = filtered.filter(item => 
-        item.product_detail?.model === filters.model
-      );
-    }
-    if (filters.size) {
-      filtered = filtered.filter(item => 
-        item.product_detail?.size === filters.size
-      );
-    }
-    if (filters.color) {
-      filtered = filtered.filter(item => 
-        item.product_detail?.color === filters.color
-      );
-    }
+    filtered = filtered.filter((item) => matchesProductCatalogFilters(item.product_detail, filters));
     if (filters.status) {
       filtered = filtered.filter(item => item.status === filters.status);
     }
@@ -492,87 +470,43 @@ const Inventory = () => {
               ))}
             </select>
           </div>
-          <div className="filter-field">
-            <label>{t('form.category')}</label>
-            <select
-              value={filters.category}
-              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            >
-              <option value="">{t('filters.allCategories')}</option>
-              {[...new Set(
-                inventory
-                  .filter(
-                    (i) =>
-                      !filters.category_type ||
-                      i.product_detail?.category_type === filters.category_type,
-                  )
-                  .map((i) => i.product_detail?.category)
-                  .filter(Boolean),
-              )]
-                .sort()
-                .map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('table.brand')}</label>
-            <select
-              value={filters.brand}
-              onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
-            >
-              <option value="">{t('filters.allBrands')}</option>
-              {getUniqueValues(inventory, 'brand').map((brand) => (
-                <option key={brand} value={brand}>
-                  {brand}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('table.model')}</label>
-            <select
-              value={filters.model}
-              onChange={(e) => setFilters({ ...filters, model: e.target.value })}
-            >
-              <option value="">{t('filters.allModels')}</option>
-              {getUniqueValues(inventory, 'model').map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('table.size')}</label>
-            <select
-              value={filters.size}
-              onChange={(e) => setFilters({ ...filters, size: e.target.value })}
-            >
-              <option value="">{t('filters.allSizes')}</option>
-              {getUniqueValues(inventory, 'size').map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('table.color')}</label>
-            <select
-              value={filters.color}
-              onChange={(e) => setFilters({ ...filters, color: e.target.value })}
-            >
-              <option value="">{t('filters.allColors')}</option>
-              {getUniqueValues(inventory, 'color').map((color) => (
-                <option key={color} value={color}>
-                  {color}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ProductCatalogFilterFields
+            filters={filters}
+            onFiltersChange={setFilters}
+            options={{
+              categories: [
+                ...new Set(
+                  inventory
+                    .filter(
+                      (i) =>
+                        !filters.category_type ||
+                        i.product_detail?.category_type === filters.category_type,
+                    )
+                    .map((i) => i.product_detail?.category)
+                    .filter(Boolean),
+                ),
+              ].sort(),
+              brands: getUniqueValues(inventory, 'brand'),
+              models: getUniqueValues(inventory, 'model'),
+              sizes: getUniqueValues(inventory, 'size'),
+              colors: getUniqueValues(inventory, 'color'),
+            }}
+            t={t}
+            fieldLabels={{
+              category: t('form.category'),
+              brand: t('table.brand'),
+              model: t('table.model'),
+              size: t('table.size'),
+              color: t('table.color'),
+            }}
+            emptyLabels={{
+              category: t('filters.allCategories'),
+              brand: t('filters.allBrands'),
+              model: t('filters.allModels'),
+              size: t('filters.allSizes'),
+              color: t('filters.allColors'),
+            }}
+          />
           <div className="filter-field">
             <label>{t('form.status')}</label>
             <select
@@ -627,7 +561,7 @@ const Inventory = () => {
                   category: '',
                   brand: '',
                   model: '',
-                  size: '',
+                  sizes: [],
                   color: '',
                   status: '',
                   year: '',

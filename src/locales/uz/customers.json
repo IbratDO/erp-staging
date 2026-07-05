@@ -89,6 +89,7 @@
     "searchPlaceholder": "Mijozlarni qidirish…",
     "searchAria": "Mijozlarni qidirish",
     "noMatches": "Mos keluvchi yo‘q",
+    "loading": "Qidirilmoqda…",
     "noCustomers": "Mijozlar topilmadi",
     "ariaLabel": "Mijozlar"
   },

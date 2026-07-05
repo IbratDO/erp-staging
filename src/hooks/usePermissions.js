@@ -10,6 +10,7 @@ import {
   isCEO,
   isAdmin,
   isInvestor,
+  isTargetolog,
   isReadOnly,
 } from '../utils/permissions';
 
@@ -24,6 +25,7 @@ export function usePermissions() {
       isCEO: isCEO(user),
       isAdmin: isAdmin(user),
       isInvestor: isInvestor(user),
+      isTargetolog: isTargetolog(user),
       isReadOnly: isReadOnly(user),
       hasPermission: (code) => hasPermission(user, code),
       hasAnyPermission: (codes) => hasAnyPermission(user, codes),

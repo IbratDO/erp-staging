@@ -17,6 +17,8 @@
     "allCategories": "All categories",
     "allBrands": "All brands",
     "allModels": "All models",
+    "modelSearch": "Search model…",
+    "modelSearchApply": "Search for \"{{query}}\"",
     "allSizes": "All sizes",
     "allColors": "All colors",
     "allStatuses": "All statuses"

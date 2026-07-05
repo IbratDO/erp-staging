@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import api from '../utils/api';
 import useAppTranslation from '../hooks/useAppTranslation';
 
 function customerLabel(c) {
@@ -29,6 +30,8 @@ export default function CustomerSearchableSelect({
   disabled = false,
   className = '',
   triggerClassName = '',
+  asyncSearch = false,
+  searchDebounceMs = 300,
   'aria-label': ariaLabel,
 }) {
   const { t } = useAppTranslation('customers');
@@ -39,6 +42,8 @@ export default function CustomerSearchableSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [panelPos, setPanelPos] = useState(null);
+  const [asyncCustomers, setAsyncCustomers] = useState([]);
+  const [asyncLoading, setAsyncLoading] = useState(false);
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
   const searchRef = useRef(null);
@@ -50,15 +55,37 @@ export default function CustomerSearchableSelect({
     [extraOptions, value],
   );
 
+  const sourceCustomers = asyncSearch ? asyncCustomers : customers;
+
   const selected = useMemo(
-    () => customers.find((c) => String(c.id) === String(value)),
-    [customers, value],
+    () => sourceCustomers.find((c) => String(c.id) === String(value))
+      || customers.find((c) => String(c.id) === String(value)),
+    [sourceCustomers, customers, value],
   );
 
   const filtered = useMemo(
-    () => customers.filter((c) => customerMatchesSearch(c, query)),
-    [customers, query],
+    () => (asyncSearch ? sourceCustomers : sourceCustomers.filter((c) => customerMatchesSearch(c, query))),
+    [asyncSearch, sourceCustomers, query],
   );
+
+  useEffect(() => {
+    if (!asyncSearch || !open) return undefined;
+    const q = String(query || '').trim();
+    const timer = setTimeout(async () => {
+      setAsyncLoading(true);
+      try {
+        const res = await api.get('/customers/', {
+          params: { search: q, limit: 50, lite: 1 },
+        });
+        setAsyncCustomers(res.data.results || res.data);
+      } catch {
+        setAsyncCustomers([]);
+      } finally {
+        setAsyncLoading(false);
+      }
+    }, searchDebounceMs);
+    return () => clearTimeout(timer);
+  }, [asyncSearch, open, query, searchDebounceMs]);
 
   const filteredExtraOptions = useMemo(() => {
     const q = String(query || '').trim().toLowerCase();
@@ -124,7 +151,7 @@ export default function CustomerSearchableSelect({
       : allowEmpty && value === ''
         ? resolvedEmptyLabel
         : '';
-  const noCustomers = !customers.length && !allowEmpty && !extraOptions.length;
+  const noCustomers = !asyncSearch && !customers.length && !allowEmpty && !extraOptions.length;
 
   const rootClassName = [className, isFilter ? 'filter-searchable-select' : ''].filter(Boolean).join(' ');
   const mergedTriggerClassName = [triggerClassName, isFilter ? 'filter-searchable-select__trigger' : '']
@@ -261,7 +288,10 @@ export default function CustomerSearchableSelect({
                   </li>
                 );
               })}
-              {filtered.length === 0 && !showEmptyOption && filteredExtraOptions.length === 0 ? (
+              {asyncLoading ? (
+                <li style={{ padding: '12px 10px', color: '#666', fontSize: 14 }}>{t('select.loading')}</li>
+              ) : null}
+              {!asyncLoading && filtered.length === 0 && !showEmptyOption && filteredExtraOptions.length === 0 ? (
                 <li style={{ padding: '12px 10px', color: '#666', fontSize: 14 }}>No matches</li>
               ) : (
                 filtered.map((c) => {

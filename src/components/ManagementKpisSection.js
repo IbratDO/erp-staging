@@ -74,9 +74,11 @@ function productLabel(p) {
   return [p.category_type, p.brand, p.model, p.color].filter(Boolean).join(' · ');
 }
 
-export default function ManagementKpisSection({ roleCode, availableYears, active }) {
+export default function ManagementKpisSection({ roleCode, availableYears, active, marketingOnly = false }) {
   const { t, monthOptions } = useAppTranslation(['dashboard', 'common']);
-  const show = roleCode === 'admin' || roleCode === 'ceo' || roleCode === 'investor';
+  const isTargetologRole = roleCode === 'targetolog';
+  const showFull = !marketingOnly && (roleCode === 'admin' || roleCode === 'ceo' || roleCode === 'investor');
+  const show = showFull || (marketingOnly && isTargetologRole);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [turnoverLoading, setTurnoverLoading] = useState(false);
@@ -89,21 +91,25 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
   const load = useCallback(async () => {
     if (!show || !active) return;
     setLoading(true);
-    setTurnoverLoading(true);
     setError(null);
     const params = {
       year,
       month: month || undefined,
       expenses_granularity: expensesGranularity,
       marketing_sold_granularity: marketingGranularity,
+      include_turnover: false,
     };
     try {
-      const res = await api.get('/dashboard/management-kpis/', {
-        params: { ...params, include_turnover: false },
-      });
+      const res = await api.get('/dashboard/management-kpis/', { params });
       setData(res.data);
       setLoading(false);
 
+      if (marketingOnly) {
+        setTurnoverLoading(false);
+        return;
+      }
+
+      setTurnoverLoading(true);
       api
         .get('/dashboard/management-kpis/', { params: { ...params, turnover_only: true } })
         .then((turnRes) => {
@@ -127,7 +133,7 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
       setLoading(false);
       setTurnoverLoading(false);
     }
-  }, [year, month, expensesGranularity, marketingGranularity, show, active, t]);
+  }, [year, month, expensesGranularity, marketingGranularity, show, active, marketingOnly, t]);
 
   useEffect(() => {
     if (show && active) load();
@@ -169,32 +175,115 @@ export default function ManagementKpisSection({ roleCode, availableYears, active
     );
   }
 
+  const filterBar = (
+    <div className="mgmt-section-header">
+      <div className="mgmt-filters">
+        <label>
+          {t('filters.year', { ns: 'common' })}
+          <select value={year} onChange={(e) => setYear(parseInt(e.target.value, 10))}>
+            {(availableYears || [year]).map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t('filters.month', { ns: 'common' })}
+          <select value={month} onChange={(e) => setMonth(e.target.value)}>
+            {monthOptions.map((o) => (
+              <option key={o.value || 'all'} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+
+  if (marketingOnly) {
+    return (
+      <section className="mgmt-section">
+        <h2 className="dash-section-title">{t('mgmt.marketingKpisTitle')}</h2>
+        {filterBar}
+        <div className="mgmt-charts-grid">
+          <MgmtChart
+            title={t('mgmt.marketingPerItem')}
+            controls={
+              <ToggleGroup
+                value={marketingGranularity}
+                onChange={setMarketingGranularity}
+                options={[
+                  { value: 'weekly', label: t('mgmt.weekly') },
+                  { value: 'monthly', label: t('mgmt.monthly') },
+                ]}
+              />
+            }
+          >
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={data?.marketing_per_sold_item?.points || []}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const p = payload[0]?.payload;
+                    return (
+                      <div style={tooltipStyle} className="mgmt-tooltip">
+                        <div><strong>{label}</strong></div>
+                        <div>{t('mgmt.marketing')} {fmtUsd(p?.marketing_expenses_usd)}</div>
+                        <div>{t('mgmt.soldUnits')} {p?.sold_units}</div>
+                        <div>
+                          {t('mgmt.perItem')}{' '}
+                          {p?.value_na ? 'N/A' : fmtUsd(p?.value)}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+                <Bar dataKey="value" name={t('mgmt.usdPerUnit')} fill="#10b981" />
+              </BarChart>
+            </ResponsiveContainer>
+          </MgmtChart>
+
+          <MgmtChart title={t('mgmt.marketingPerCustomer')}>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={data?.marketing_per_new_customer_weekly || []}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const p = payload[0]?.payload;
+                    return (
+                      <div style={tooltipStyle}>
+                        <div><strong>{label}</strong></div>
+                        <div>{t('mgmt.marketing')} {fmtUsd(p?.marketing_expenses_usd)}</div>
+                        <div>{t('mgmt.newCustomers')} {p?.new_customers}</div>
+                        <div>
+                          {t('mgmt.perCustomer')} {p?.value_na ? 'N/A' : fmtUsd(p?.value)}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+                <Bar dataKey="value" name={t('mgmt.usdPerCustomer')} fill="#6366f1" />
+              </BarChart>
+            </ResponsiveContainer>
+          </MgmtChart>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="mgmt-section">
-      <div className="mgmt-section-header">
-        <div className="mgmt-filters">
-          <label>
-            {t('filters.year', { ns: 'common' })}
-            <select value={year} onChange={(e) => setYear(parseInt(e.target.value, 10))}>
-              {(availableYears || [year]).map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t('filters.month', { ns: 'common' })}
-            <select value={month} onChange={(e) => setMonth(e.target.value)}>
-              {monthOptions.map((o) => (
-                <option key={o.value || 'all'} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
+      {filterBar}
 
       <div className="mgmt-cards-row">
         <MgmtCard

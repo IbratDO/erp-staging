@@ -6,6 +6,8 @@ import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
 import FilterSearchableSelect from '../components/FilterSearchableSelect';
+import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
+import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
 import './TablePage.css';
 
 const PRODUCT_CATEGORY_TYPE_VALUES = ['sports', 'casual'];
@@ -136,7 +138,7 @@ const Products = () => {
     category: '',
     brand: '',
     model: '',
-    size: '',
+    sizes: [],
     color: '',
     year: '',
     month: '',
@@ -242,21 +244,7 @@ const Products = () => {
     if (filters.category_type) {
       filtered = filtered.filter((p) => p.category_type === filters.category_type);
     }
-    if (filters.category) {
-      filtered = filtered.filter(p => p.category === filters.category);
-    }
-    if (filters.brand) {
-      filtered = filtered.filter(p => p.brand === filters.brand);
-    }
-    if (filters.model) {
-      filtered = filtered.filter(p => p.model === filters.model);
-    }
-    if (filters.size) {
-      filtered = filtered.filter(p => p.size === filters.size);
-    }
-    if (filters.color) {
-      filtered = filtered.filter(p => p.color === filters.color);
-    }
+    filtered = filtered.filter((p) => matchesProductCatalogFilters(p, filters));
     if (filters.year) {
       filtered = filtered.filter(p => {
         const productYear = new Date(p.created_at || p.updated_at).getFullYear();
@@ -1158,61 +1146,32 @@ const Products = () => {
               aria-label={t('categoryType')}
             />
           </div>
-          <div className="filter-field">
-            <label>{t('category')}</label>
-            <FilterSearchableSelect
-              value={filters.category}
-              onChange={(v) => setFilters({ ...filters, category: v })}
-              options={categoryFilterOptions}
-              emptyLabel={t('filters.allCategories')}
-              placeholder={t('filters.allCategories')}
-              aria-label={t('category')}
-            />
-          </div>
-          <div className="filter-field">
-            <label>{t('brand')}</label>
-            <FilterSearchableSelect
-              value={filters.brand}
-              onChange={(v) => setFilters({ ...filters, brand: v })}
-              options={brandFilterOptions}
-              emptyLabel={t('filters.allBrands')}
-              placeholder={t('filters.allBrands')}
-              aria-label={t('brand')}
-            />
-          </div>
-          <div className="filter-field">
-            <label>{t('model')}</label>
-            <FilterSearchableSelect
-              value={filters.model}
-              onChange={(v) => setFilters({ ...filters, model: v })}
-              options={modelFilterOptions}
-              emptyLabel={t('filters.allModels')}
-              placeholder={t('filters.allModels')}
-              aria-label={t('model')}
-            />
-          </div>
-          <div className="filter-field">
-            <label>{t('size')}</label>
-            <FilterSearchableSelect
-              value={filters.size}
-              onChange={(v) => setFilters({ ...filters, size: v })}
-              options={sizeFilterOptions}
-              emptyLabel={t('filters.allSizes')}
-              placeholder={t('filters.allSizes')}
-              aria-label={t('size')}
-            />
-          </div>
-          <div className="filter-field">
-            <label>{t('color')}</label>
-            <FilterSearchableSelect
-              value={filters.color}
-              onChange={(v) => setFilters({ ...filters, color: v })}
-              options={colorFilterOptions}
-              emptyLabel={t('filters.allColors')}
-              placeholder={t('filters.allColors')}
-              aria-label={t('color')}
-            />
-          </div>
+          <ProductCatalogFilterFields
+            filters={filters}
+            onFiltersChange={setFilters}
+            options={{
+              categories: categoryFilterOptions.map((o) => o.value),
+              brands: brandFilterOptions.map((o) => o.value),
+              models: modelFilterOptions.map((o) => o.value),
+              sizes: sizeFilterOptions.map((o) => o.value),
+              colors: colorFilterOptions.map((o) => o.value),
+            }}
+            t={t}
+            fieldLabels={{
+              category: t('category'),
+              brand: t('brand'),
+              model: t('model'),
+              size: t('size'),
+              color: t('color'),
+            }}
+            emptyLabels={{
+              category: t('filters.allCategories'),
+              brand: t('filters.allBrands'),
+              model: t('filters.allModels'),
+              size: t('filters.allSizes'),
+              color: t('filters.allColors'),
+            }}
+          />
           <div className="filter-field">
             <label>{t('filters.year', { ns: 'common' })}</label>
             <FilterSearchableSelect
@@ -1245,7 +1204,7 @@ const Products = () => {
                   category: '',
                   brand: '',
                   model: '',
-                  size: '',
+                  sizes: [],
                   color: '',
                   year: '',
                   month: '',

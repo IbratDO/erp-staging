@@ -17,6 +17,8 @@
     "allCategories": "Barcha kategoriyalar",
     "allBrands": "Barcha brendlar",
     "allModels": "Barcha modellar",
+    "modelSearch": "Model bo‘yicha qidirish…",
+    "modelSearchApply": "«{{query}}» bo‘yicha qidirish",
     "allSizes": "Barcha o‘lchamlar",
     "allColors": "Barcha ranglar",
     "allStatuses": "Barcha holatlar"

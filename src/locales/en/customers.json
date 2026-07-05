@@ -89,6 +89,7 @@
     "searchPlaceholder": "Search customers…",
     "searchAria": "Search customers",
     "noMatches": "No matches",
+    "loading": "Searching…",
     "noCustomers": "No customers found",
     "ariaLabel": "Customers"
   },

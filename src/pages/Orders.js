@@ -15,6 +15,8 @@ import {
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { usePermissions } from '../hooks/usePermissions';
+import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
+import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import { useClientTableSort, compareForSort } from '../utils/tableSort';
 import useAppTranslation from '../hooks/useAppTranslation';
@@ -420,7 +422,7 @@ const Orders = () => {
     category: '',
     brand: '',
     model: '',
-    size: '',
+    sizes: [],
     color: '',
     order_type: '',
     status: '',
@@ -540,7 +542,7 @@ const Orders = () => {
 
   const fetchCustomers = async () => {
     try {
-      const response = await api.get('/customers/');
+      const response = await api.get('/customers/', { params: { lite: 1 } });
       setCustomers(response.data.results || response.data);
     } catch (error) {
       console.error('Error fetching customers:', error);
@@ -612,31 +614,7 @@ const Orders = () => {
         (order) => order.product_detail?.category_type === filters.category_type,
       );
     }
-    if (filters.category) {
-      filtered = filtered.filter(order =>
-        order.product_detail?.category === filters.category
-      );
-    }
-    if (filters.brand) {
-      filtered = filtered.filter(order => 
-        order.product_detail?.brand === filters.brand
-      );
-    }
-    if (filters.model) {
-      filtered = filtered.filter(order => 
-        order.product_detail?.model === filters.model
-      );
-    }
-    if (filters.size) {
-      filtered = filtered.filter(order => 
-        order.product_detail?.size === filters.size
-      );
-    }
-    if (filters.color) {
-      filtered = filtered.filter(order => 
-        order.product_detail?.color === filters.color
-      );
-    }
+    filtered = filtered.filter((order) => matchesProductCatalogFilters(order.product_detail, filters));
     if (filters.order_type) {
       filtered = filtered.filter(order => order.order_type === filters.order_type);
     }
@@ -2203,83 +2181,41 @@ const Orders = () => {
               ))}
             </select>
           </div>
-          <div className="filter-field">
-            <label>{t('filters.category', { ns: 'orders' })}</label>
-            <select
-              value={filters.category}
-              onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-            >
-              <option value="">{t('filters.allCategories', { ns: 'orders' })}</option>
-              {[...new Set(
-                products
-                  .filter((p) => !filters.category_type || p.category_type === filters.category_type)
-                  .map((p) => p.category)
-                  .filter(Boolean),
-              )]
-                .sort()
-                .map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.brand', { ns: 'orders' })}</label>
-            <select
-              value={filters.brand}
-              onChange={(e) => setFilters({ ...filters, brand: e.target.value })}
-            >
-              <option value="">{t('filters.allBrands', { ns: 'orders' })}</option>
-              {getUniqueValues(orders, 'brand').map((brand) => (
-                <option key={brand} value={brand}>
-                  {brand}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.model', { ns: 'orders' })}</label>
-            <select
-              value={filters.model}
-              onChange={(e) => setFilters({ ...filters, model: e.target.value })}
-            >
-              <option value="">{t('filters.allModels', { ns: 'orders' })}</option>
-              {getUniqueValues(orders, 'model').map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.size', { ns: 'orders' })}</label>
-            <select
-              value={filters.size}
-              onChange={(e) => setFilters({ ...filters, size: e.target.value })}
-            >
-              <option value="">{t('filters.allSizes', { ns: 'orders' })}</option>
-              {getUniqueValues(orders, 'size').map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.color', { ns: 'orders' })}</label>
-            <select
-              value={filters.color}
-              onChange={(e) => setFilters({ ...filters, color: e.target.value })}
-            >
-              <option value="">{t('filters.allColors', { ns: 'orders' })}</option>
-              {getUniqueValues(orders, 'color').map((color) => (
-                <option key={color} value={color}>
-                  {color}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ProductCatalogFilterFields
+            filters={filters}
+            onFiltersChange={setFilters}
+            options={{
+              categories: [
+                ...new Set(
+                  products
+                    .filter(
+                      (p) => !filters.category_type || p.category_type === filters.category_type,
+                    )
+                    .map((p) => p.category)
+                    .filter(Boolean),
+                ),
+              ].sort(),
+              brands: getUniqueValues(orders, 'brand'),
+              models: getUniqueValues(orders, 'model'),
+              sizes: getUniqueValues(orders, 'size'),
+              colors: getUniqueValues(orders, 'color'),
+            }}
+            t={(key, opts) => t(key, { ns: 'orders', ...opts })}
+            fieldLabels={{
+              category: t('filters.category', { ns: 'orders' }),
+              brand: t('filters.brand', { ns: 'orders' }),
+              model: t('filters.model', { ns: 'orders' }),
+              size: t('filters.size', { ns: 'orders' }),
+              color: t('filters.color', { ns: 'orders' }),
+            }}
+            emptyLabels={{
+              category: t('filters.allCategories', { ns: 'orders' }),
+              brand: t('filters.allBrands', { ns: 'orders' }),
+              model: t('filters.allModels', { ns: 'orders' }),
+              size: t('filters.allSizes', { ns: 'orders' }),
+              color: t('filters.allColors', { ns: 'orders' }),
+            }}
+          />
           {canManageStockOrders && (
           <div className="filter-field">
             <label>{t('filters.orderType', { ns: 'orders' })}</label>
@@ -2361,7 +2297,7 @@ const Orders = () => {
                   category: '',
                   brand: '',
                   model: '',
-                  size: '',
+                  sizes: [],
                   color: '',
                   order_type: '',
                   status: '',

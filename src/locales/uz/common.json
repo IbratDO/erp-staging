@@ -52,7 +52,8 @@
     "senior_sales_manager": "Katta sotuv menejeri",
     "sales_manager": "Sotuv menejeri",
     "dispatcher": "Yetkazib beruvchi",
-    "investor": "Investor"
+    "investor": "Investor",
+    "targetolog": "Targetolog"
   },
   "actions": {
     "add": "Qo‘shish",
@@ -100,6 +101,9 @@
     "allMonths": "Barcha oylar",
     "allDays": "Barcha kunlar",
     "allTypes": "Barcha turlar",
+    "modelSearch": "Model bo‘yicha qidirish…",
+    "modelSearchApply": "«{{query}}» bo‘yicha qidirish",
+    "searchApply": "«{{query}}» bo‘yicha qidirish",
     "currency": "Valyuta",
     "all": "Hammasi"
   },
