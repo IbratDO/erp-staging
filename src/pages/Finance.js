@@ -10,6 +10,7 @@ import {
   financeRecordLegKey,
 } from '../utils/tableTotals';
 import PageTitle from '../components/PageTitle';
+import FormSearchableSelect from '../components/FormSearchableSelect';
 import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
@@ -405,18 +406,17 @@ const Finance = () => {
               {(expenseFormData.expense_type === 'salary' || expenseFormData.expense_type === 'lunch') && (
                 <div className="form-group">
                   <label>{t('expenseForm.recipient')}</label>
-                  <select
+                  <FormSearchableSelect
                     value={expenseFormData.recipient}
-                    onChange={(e) => setExpenseFormData({ ...expenseFormData, recipient: e.target.value })}
-                    required
-                  >
-                    <option value="">{t('expenseForm.selectRecipient')}</option>
-                    {workers.map((worker) => (
-                      <option key={worker.id} value={worker.id}>
-                        {worker.name} {worker.telephone ? `(${worker.telephone})` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setExpenseFormData({ ...expenseFormData, recipient: v })}
+                    options={workers.map((worker) => ({
+                      value: String(worker.id),
+                      label: `${worker.name}${worker.telephone ? ` (${worker.telephone})` : ''}`,
+                    }))}
+                    emptyLabel={t('expenseForm.selectRecipient')}
+                    placeholder={t('expenseForm.selectRecipient')}
+                    aria-label={t('expenseForm.recipient')}
+                  />
                 </div>
               )}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>

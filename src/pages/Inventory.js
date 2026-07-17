@@ -4,11 +4,12 @@ import { productCostPickerLabel } from '../utils/productCost';
 import { plannedSellingSummary } from '../utils/orderPlannedPricing';
 import SortableTh from '../components/SortableTh';
 import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
-import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
+import { matchesProductCatalogFilters, getCascadedFilterOptions, getCascadedDateOptions } from '../utils/productFilterUtils';
 import { useClientTableSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
+import FormSearchableSelect from '../components/FormSearchableSelect';
 import './TablePage.css';
 
 const PRODUCT_CATEGORY_TYPE_VALUES = ['sports', 'casual'];
@@ -133,13 +134,7 @@ const Inventory = () => {
     }
   };
 
-  // Extract unique values for dropdowns
-  const getUniqueValues = (inventoryList, field) => {
-    const values = inventoryList
-      .map(item => item.product_detail?.[field])
-      .filter(Boolean);
-    return [...new Set(values)].sort();
-  };
+
 
   const applyFilters = (inventoryList) => {
     let filtered = inventoryList;
@@ -288,21 +283,18 @@ const Inventory = () => {
                     {t('filters.filterProductsHint')}
                   </span>
                 </label>
-                <select
+                <FormSearchableSelect
                   value={formCategoryType}
-                  onChange={(e) => {
-                    setFormCategoryType(e.target.value);
+                  onChange={(v) => {
+                    setFormCategoryType(v);
                     setFormCategory('');
                     setFormData({ ...formData, product: '' });
                   }}
-                >
-                  <option value="">{t('filters.allTypes')}</option>
-                  {productCategoryTypes.map((ct) => (
-                    <option key={ct.value} value={ct.value}>
-                      {ct.label}
-                    </option>
-                  ))}
-                </select>
+                  options={productCategoryTypes}
+                  emptyLabel={t('filters.allTypes')}
+                  placeholder={t('filters.allTypes')}
+                  aria-label={t('form.categoryType')}
+                />
               </div>
               <div className="form-group">
                 <label>
@@ -311,31 +303,25 @@ const Inventory = () => {
                     {t('filters.filterProductsHint')}
                   </span>
                 </label>
-                <select
+                <FormSearchableSelect
                   value={formCategory}
-                  onChange={(e) => { setFormCategory(e.target.value); setFormData({ ...formData, product: '' }); }}
-                >
-                  <option value="">{t('filters.allCategories')}</option>
-                  {[...new Set(
+                  onChange={(v) => { setFormCategory(v); setFormData({ ...formData, product: '' }); }}
+                  options={[...new Set(
                     products
                       .filter((p) => !formCategoryType || p.category_type === formCategoryType)
                       .map((p) => p.category)
                       .filter(Boolean),
-                  )]
-                    .sort()
-                    .map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                </select>
+                  )].sort()}
+                  emptyLabel={t('filters.allCategories')}
+                  placeholder={t('filters.allCategories')}
+                  aria-label={t('form.category')}
+                />
               </div>
               <div className="form-group">
                 <label>{t('form.product')}</label>
-                <select
+                <FormSearchableSelect
                   value={formData.product}
-                  onChange={(e) => {
-                    const pid = e.target.value;
+                  onChange={(pid) => {
                     const p = products.find((x) => String(x.id) === pid);
                     const sp = p?.selling_price != null ? parseFloat(p.selling_price) : NaN;
                     setFormData({
@@ -345,10 +331,7 @@ const Inventory = () => {
                         Number.isFinite(sp) && sp > 0 ? sp.toFixed(2) : formData.selling_usd_per_unit,
                     });
                   }}
-                  required
-                >
-                  <option value="">{t('form.selectProduct')}</option>
-                  {products
+                  options={products
                     .filter(
                       (p) =>
                         (!formCategoryType || p.category_type === formCategoryType) &&
@@ -356,12 +339,14 @@ const Inventory = () => {
                     )
                     .slice()
                     .sort((a, b) => b.id - a.id)
-                    .map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {productCostPickerLabel(product)}
-                      </option>
-                    ))}
-                </select>
+                    .map((product) => ({
+                      value: String(product.id),
+                      label: productCostPickerLabel(product),
+                    }))}
+                  emptyLabel={t('form.selectProduct')}
+                  placeholder={t('form.selectProduct')}
+                  aria-label={t('form.product')}
+                />
               </div>
               <div className="form-group">
                 <label>{t('quantity')}</label>
@@ -473,24 +458,18 @@ const Inventory = () => {
           <ProductCatalogFilterFields
             filters={filters}
             onFiltersChange={setFilters}
-            options={{
-              categories: [
-                ...new Set(
-                  inventory
-                    .filter(
-                      (i) =>
-                        !filters.category_type ||
-                        i.product_detail?.category_type === filters.category_type,
-                    )
-                    .map((i) => i.product_detail?.category)
-                    .filter(Boolean),
-                ),
-              ].sort(),
-              brands: getUniqueValues(inventory, 'brand'),
-              models: getUniqueValues(inventory, 'model'),
-              sizes: getUniqueValues(inventory, 'size'),
-              colors: getUniqueValues(inventory, 'color'),
-            }}
+            options={getCascadedFilterOptions(inventory, filters, (i) => i.product_detail, null, (item, _excl) => {
+              const d = item.created_at || item.updated_at;
+              if (filters.year) {
+                const y = new Date(d).getFullYear().toString();
+                if (y !== filters.year) return false;
+              }
+              if (filters.month) {
+                const m = (new Date(d).getMonth() + 1).toString();
+                if (m !== filters.month) return false;
+              }
+              return true;
+            })}
             t={t}
             fieldLabels={{
               category: t('form.category'),
@@ -521,36 +500,41 @@ const Inventory = () => {
               ))}
             </select>
           </div>
-          <div className="filter-field">
-            <label>{t('filters.year', { ns: 'common' })}</label>
-            <select
-              value={filters.year}
-              onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-            >
-              <option value="">{t('filters.allYears', { ns: 'common' })}</option>
-              {Array.from({ length: 10 }, (_, i) => {
-                const year = new Date().getFullYear() - i;
-                return (
-                  <option key={year} value={year.toString()}>
-                    {year}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.month', { ns: 'common' })}</label>
-            <select
-              value={filters.month}
-              onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-            >
-              {monthOptions.map((o) => (
-                <option key={o.value || 'all'} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {(() => {
+            const invDateAccessor = (item) => item.created_at || item.updated_at;
+            const dateOpts = getCascadedDateOptions(inventory, filters, invDateAccessor, (i) => i.product_detail);
+            return (
+              <>
+                <div className="filter-field">
+                  <label>{t('filters.year', { ns: 'common' })}</label>
+                  <select
+                    value={filters.year}
+                    onChange={(e) => setFilters({ ...filters, year: e.target.value })}
+                  >
+                    <option value="">{t('filters.allYears', { ns: 'common' })}</option>
+                    {dateOpts.years.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label>{t('filters.month', { ns: 'common' })}</label>
+                  <select
+                    value={filters.month}
+                    onChange={(e) => setFilters({ ...filters, month: e.target.value })}
+                  >
+                    <option value="">{monthOptions[0]?.label || t('filters.allMonths', { ns: 'common' })}</option>
+                    {dateOpts.months.map((m) => {
+                      const mo = monthOptions.find((o) => o.value === m);
+                      return (
+                        <option key={m} value={m}>{mo ? mo.label : m}</option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </>
+            );
+          })()}
           <div className="filter-toolbar__actions">
             <button
               type="button"

@@ -5,6 +5,122 @@ export function matchesPartialText(fieldValue, filterValue) {
   return String(fieldValue ?? '').toLowerCase().includes(q.toLowerCase());
 }
 
+/**
+ * Build cascading dropdown options for product-catalog filters.
+ *
+ * For each field (category, brand, model, size, color) the options are
+ * derived from the subset of `items` that match *all other* active filters
+ * — so selecting Brand = "Nike" narrows the Size dropdown to only sizes
+ * that exist for Nike products.
+ *
+ * @param {Array}    items          Full (unfiltered) dataset.
+ * @param {Object}   filters        Current filter state (category_type, category, brand, model, sizes/size, color).
+ * @param {Function} [detailAccessor]  Extracts the product-detail object from a row.
+ *                                     Defaults to `(item) => item.product_detail ?? item`.
+ * @param {Function} [sortSize]     Optional custom sort for sizes (e.g. sortSizesCanonical).
+ * @param {Function} [extraFilter]  Optional predicate `(item, excludeField) => bool` for non-product
+ *                                  filters (year, month, status, customer…).  Called with the
+ *                                  field currently being extracted so the page can skip that
+ *                                  dimension when building its options.
+ * @returns {{ categories: string[], brands: string[], models: string[], sizes: string[], colors: string[] }}
+ */
+export function getCascadedFilterOptions(items, filters, detailAccessor, sortSize, extraFilter) {
+  const detail = detailAccessor || ((item) => item.product_detail ?? item);
+
+  const FIELDS = ['category', 'brand', 'model', 'size', 'color'];
+
+  const matchesExcluding = (item, excludeField) => {
+    if (extraFilter && !extraFilter(item, excludeField)) return false;
+    const d = detail(item);
+    if (!d) return false;
+    if (filters.category_type && d.category_type !== filters.category_type) return false;
+    for (const f of FIELDS) {
+      if (f === excludeField) continue;
+      if (f === 'size') {
+        const sizes = selectedSizesFromFilters(filters);
+        if (sizes.length && !matchesAnySelected(d.size, sizes)) return false;
+      } else if (filters[f] && !matchesPartialText(d[f], filters[f])) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const uniqueSorted = (list) => [...new Set(list.filter(Boolean))].sort(
+    (a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }),
+  );
+
+  const extract = (field) => {
+    const matching = items.filter((item) => matchesExcluding(item, field));
+    const values = matching.map((item) => detail(item)?.[field]).filter(Boolean);
+    if (field === 'size' && sortSize) return sortSize([...new Set(values)]);
+    return uniqueSorted(values);
+  };
+
+  return {
+    categories: extract('category'),
+    brands: extract('brand'),
+    models: extract('model'),
+    sizes: extract('size'),
+    colors: extract('color'),
+  };
+}
+
+/**
+ * Build cascaded year and month dropdown options from a dated dataset.
+ *
+ * Years/months are extracted only from items matching all active product-catalog
+ * filters (and any extra non-date filters the page applies), so selecting
+ * Brand = "Nike" narrows years to only those with Nike sales.
+ *
+ * @param {Array}    items           Full dataset.
+ * @param {Object}   filters         Current filter state.
+ * @param {Function} dateAccessor    `(item) => dateString`  e.g. `(s) => s.sale_date`.
+ * @param {Function} [detailAccessor]
+ * @param {Function} [extraRowFilter] Additional per-row filter (status, customer…).
+ *                                    Receives `(item)` — return false to exclude.
+ * @returns {{ years: string[], months: string[] }}
+ */
+export function getCascadedDateOptions(items, filters, dateAccessor, detailAccessor, extraRowFilter) {
+  const detail = detailAccessor || ((item) => item.product_detail ?? item);
+
+  const matchesProductFilters = (item) => {
+    const d = detail(item);
+    if (!d) return false;
+    return matchesProductCatalogFilters(d, filters);
+  };
+
+  const baseForYear = items.filter((item) => {
+    if (!matchesProductFilters(item)) return false;
+    if (extraRowFilter && !extraRowFilter(item)) return false;
+    if (filters.month) {
+      const m = new Date(dateAccessor(item)).getMonth() + 1;
+      if (m.toString() !== filters.month) return false;
+    }
+    return true;
+  });
+
+  const baseForMonth = items.filter((item) => {
+    if (!matchesProductFilters(item)) return false;
+    if (extraRowFilter && !extraRowFilter(item)) return false;
+    if (filters.year) {
+      const y = new Date(dateAccessor(item)).getFullYear();
+      if (y.toString() !== filters.year) return false;
+    }
+    return true;
+  });
+
+  const years = [...new Set(
+    baseForYear.map((item) => new Date(dateAccessor(item)).getFullYear().toString()),
+  )].sort((a, b) => b.localeCompare(a));
+
+  const months = [...new Set(
+    baseForMonth.map((item) => (new Date(dateAccessor(item)).getMonth() + 1).toString()),
+  )].sort((a, b) => Number(a) - Number(b));
+
+  return { years, months };
+}
+
 /** OR match for multi-select filters (e.g. several sizes at once). */
 export function matchesAnySelected(fieldValue, selectedValues) {
   const list = selectedValues ?? [];

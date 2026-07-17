@@ -4,7 +4,8 @@ import { cashBalanceTotalByCurrency, formatDisplayAmount, formatInsufficientLedg
 import SortableTh from '../components/SortableTh';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
-import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
+import FormSearchableSelect from '../components/FormSearchableSelect';
+import { matchesProductCatalogFilters, getCascadedFilterOptions, getCascadedDateOptions } from '../utils/productFilterUtils';
 import { useClientTableSort, compareForSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
 import {
@@ -312,13 +313,7 @@ const Returns = () => {
     }
   };
 
-  // Extract unique values for dropdowns
-  const getUniqueValues = (returnsList, field) => {
-    const values = returnsList
-      .map(returnItem => returnItem.product_detail?.[field])
-      .filter(Boolean);
-    return [...new Set(values)].sort();
-  };
+
 
   const applyFilters = (returnsList) => {
     let filtered = returnsList;
@@ -928,10 +923,9 @@ const Returns = () => {
                         {t('form.filterHint')}
                       </span>
                     </label>
-                    <select
+                    <FormSearchableSelect
                       value={formCategory}
-                      onChange={(e) => {
-                        const nextCat = e.target.value;
+                      onChange={(nextCat) => {
                         setProductSearch('');
                         setProductDropdownOpen(false);
                         setFormCategory(nextCat);
@@ -948,12 +942,11 @@ const Returns = () => {
                           ),
                         );
                       }}
-                    >
-                      <option value="">{t('form.allCategories')}</option>
-                      {newReturnFormCategories.map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
+                      options={newReturnFormCategories}
+                      emptyLabel={t('form.allCategories')}
+                      placeholder={t('form.allCategories')}
+                      aria-label={t('form.categoryFilter')}
+                    />
                   </div>
                   <div className="form-group" ref={productDropdownRef} style={{ position: 'relative' }}>
                     <label>{t('form.product')}</label>
@@ -1102,11 +1095,9 @@ const Returns = () => {
                 <label>
                   {t('form.saleRequired')} <span style={{ color: '#e53e3e' }}>*</span>
                 </label>
-                <select
+                <FormSearchableSelect
                   value={formData.sale}
-                  required
-                  onChange={(e) => {
-                    const saleId = e.target.value;
+                  onChange={(saleId) => {
                     const sale = saleId
                       ? sales.find((s) => s.id === parseInt(saleId, 10))
                       : null;
@@ -1120,19 +1111,19 @@ const Returns = () => {
                     );
                     setRefundAmountTouched(false);
                   }}
-                >
-                  <option value="">{t('form.selectSale')}</option>
-                  {newReturnEligibleSales.map((sale) => (
-                    <option key={sale.id} value={sale.id}>
-                      {t('form.saleOption', {
-                        id: sale.id,
-                        brand: sale.product_detail?.brand ?? '',
-                        model: sale.product_detail?.model ?? '',
-                        customer: sale.customer_detail?.name ? ` (${sale.customer_detail.name})` : '',
-                      })}
-                    </option>
-                  ))}
-                </select>
+                  options={newReturnEligibleSales.map((sale) => ({
+                    value: String(sale.id),
+                    label: t('form.saleOption', {
+                      id: sale.id,
+                      brand: sale.product_detail?.brand ?? '',
+                      model: sale.product_detail?.model ?? '',
+                      customer: sale.customer_detail?.name ? ` (${sale.customer_detail.name})` : '',
+                    }),
+                  }))}
+                  emptyLabel={t('form.selectSale')}
+                  placeholder={t('form.selectSale')}
+                  aria-label={t('form.saleRequired')}
+                />
                 {(formData.customer || formData.product || formCategory) && (
                   <small style={{ color: '#666', marginTop: '4px', display: 'block' }}>
                     {t('form.filteredBy')}{' '}
@@ -1422,24 +1413,17 @@ const Returns = () => {
           <ProductCatalogFilterFields
             filters={filters}
             onFiltersChange={setFilters}
-            options={{
-              categories: [
-                ...new Set(
-                  returns
-                    .filter(
-                      (r) =>
-                        !filters.category_type ||
-                        r.product_detail?.category_type === filters.category_type,
-                    )
-                    .map((r) => r.product_detail?.category)
-                    .filter(Boolean),
-                ),
-              ].sort(),
-              brands: getUniqueValues(returns, 'brand'),
-              models: getUniqueValues(returns, 'model'),
-              sizes: getUniqueValues(returns, 'size'),
-              colors: getUniqueValues(returns, 'color'),
-            }}
+            options={getCascadedFilterOptions(returns, filters, (r) => r.product_detail, null, (ret, _excl) => {
+              if (filters.year) {
+                const y = new Date(ret.return_date).getFullYear().toString();
+                if (y !== filters.year) return false;
+              }
+              if (filters.month) {
+                const m = (new Date(ret.return_date).getMonth() + 1).toString();
+                if (m !== filters.month) return false;
+              }
+              return true;
+            })}
             t={t}
             fieldLabels={{
               category: t('filters.category'),
@@ -1468,35 +1452,40 @@ const Returns = () => {
               ))}
             </select>
           </div>
-          <div className="filter-field">
-            <label>{t('filters.year')}</label>
-            <select
-              value={filters.year}
-              onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-            >
-              <option value="">{t('filters.allYears')}</option>
-              {Array.from({ length: 10 }, (_, i) => {
-                const year = new Date().getFullYear() - i;
-                return (
-                  <option key={year} value={year.toString()}>
-                    {year}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.month')}</label>
-            <select
-              value={filters.month}
-              onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-            >
-              <option value="">{t('filters.allMonths')}</option>
-              {monthOptions.filter((o) => o.value).map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
+          {(() => {
+            const dateOpts = getCascadedDateOptions(returns, filters, (r) => r.return_date, (r) => r.product_detail);
+            return (
+              <>
+                <div className="filter-field">
+                  <label>{t('filters.year')}</label>
+                  <select
+                    value={filters.year}
+                    onChange={(e) => setFilters({ ...filters, year: e.target.value })}
+                  >
+                    <option value="">{t('filters.allYears')}</option>
+                    {dateOpts.years.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label>{t('filters.month')}</label>
+                  <select
+                    value={filters.month}
+                    onChange={(e) => setFilters({ ...filters, month: e.target.value })}
+                  >
+                    <option value="">{t('filters.allMonths')}</option>
+                    {dateOpts.months.map((m) => {
+                      const mo = monthOptions.find((o) => o.value === m);
+                      return (
+                        <option key={m} value={m}>{mo ? mo.label : m}</option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </>
+            );
+          })()}
           <div className="filter-toolbar__actions">
             <button
               type="button"

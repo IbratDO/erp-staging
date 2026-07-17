@@ -6,8 +6,9 @@ import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
 import FilterSearchableSelect from '../components/FilterSearchableSelect';
+import FormSearchableSelect from '../components/FormSearchableSelect';
 import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
-import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
+import { matchesProductCatalogFilters, getCascadedFilterOptions, getCascadedDateOptions } from '../utils/productFilterUtils';
 import './TablePage.css';
 
 const PRODUCT_CATEGORY_TYPE_VALUES = ['sports', 'casual'];
@@ -152,9 +153,6 @@ const Products = () => {
     size: '',
     color: '',
   });
-  const [isNewBrand, setIsNewBrand] = useState(false);
-  const [isNewModel, setIsNewModel] = useState(false);
-  const [isNewCategory, setIsNewCategory] = useState(false);
   const [selectedSizes, setSelectedSizes] = useState([]);
   const [selectedColors, setSelectedColors] = useState([]);
   const [pendingCustomColor, setPendingCustomColor] = useState('');
@@ -228,15 +226,7 @@ const Products = () => {
     }
   };
 
-  // Extract unique values for dropdowns
-  const getUniqueValues = (productsList, field) => {
-    const values = productsList.map((p) => p[field]).filter(Boolean);
-    const uniq = [...new Set(values)];
-    if (field === 'size') return sortSizesCanonical(uniq);
-    return uniq.sort((a, b) =>
-      String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }),
-    );
-  };
+
 
   const applyFilters = (productsList) => {
     let filtered = productsList;
@@ -279,52 +269,63 @@ const Products = () => {
     [productCategoryTypes],
   );
 
+  const productDateAccessor = (p) => p.created_at || p.updated_at;
+  const cascadedProductOptions = useMemo(
+    () => getCascadedFilterOptions(products, filters, (p) => p, sortSizesCanonical, (p, _excl) => {
+      if (filters.year) {
+        const y = new Date(productDateAccessor(p)).getFullYear().toString();
+        if (y !== filters.year) return false;
+      }
+      if (filters.month) {
+        const m = (new Date(productDateAccessor(p)).getMonth() + 1).toString();
+        if (m !== filters.month) return false;
+      }
+      return true;
+    }),
+    [products, filters],
+  );
+
   const categoryFilterOptions = useMemo(
-    () =>
-      [...new Set(
-        products
-          .filter((p) => !filters.category_type || p.category_type === filters.category_type)
-          .map((p) => p.category)
-          .filter(Boolean),
-      )]
-        .sort((a, b) => String(a).localeCompare(String(b)))
-        .map((cat) => ({ value: cat, label: cat })),
-    [products, filters.category_type],
+    () => cascadedProductOptions.categories.map((v) => ({ value: v, label: v })),
+    [cascadedProductOptions],
   );
 
   const brandFilterOptions = useMemo(
-    () => getUniqueValues(products, 'brand').map((brand) => ({ value: brand, label: brand })),
-    [products],
+    () => cascadedProductOptions.brands.map((v) => ({ value: v, label: v })),
+    [cascadedProductOptions],
   );
 
   const modelFilterOptions = useMemo(
-    () => getUniqueValues(products, 'model').map((model) => ({ value: model, label: model })),
-    [products],
+    () => cascadedProductOptions.models.map((v) => ({ value: v, label: v })),
+    [cascadedProductOptions],
   );
 
   const sizeFilterOptions = useMemo(() => {
-    const sortedSizes = getUniqueValues(products, 'size');
-    const { letters, nums } = partitionSizesForUiGroups(sortedSizes);
+    const { letters, nums } = partitionSizesForUiGroups(cascadedProductOptions.sizes);
     return [...letters, ...nums].map((size) => ({ value: size, label: size }));
-  }, [products]);
+  }, [cascadedProductOptions]);
 
   const colorFilterOptions = useMemo(
-    () => getUniqueValues(products, 'color').map((color) => ({ value: color, label: color })),
-    [products],
+    () => cascadedProductOptions.colors.map((v) => ({ value: v, label: v })),
+    [cascadedProductOptions],
+  );
+
+  const cascadedDateOpts = useMemo(
+    () => getCascadedDateOptions(products, filters, productDateAccessor, (p) => p),
+    [products, filters],
   );
 
   const yearFilterOptions = useMemo(
-    () =>
-      Array.from({ length: 10 }, (_, i) => {
-        const year = (new Date().getFullYear() - i).toString();
-        return { value: year, label: year };
-      }),
-    [],
+    () => cascadedDateOpts.years.map((y) => ({ value: y, label: y })),
+    [cascadedDateOpts],
   );
 
   const monthFilterOptions = useMemo(
-    () => monthOptions.filter((o) => o.value).map((o) => ({ value: o.value, label: o.label })),
-    [monthOptions],
+    () => cascadedDateOpts.months.map((m) => {
+      const mo = monthOptions.find((o) => o.value === m);
+      return { value: m, label: mo ? mo.label : m };
+    }),
+    [cascadedDateOpts, monthOptions],
   );
 
   const pickerColorOptions = useMemo(() => {
@@ -467,9 +468,6 @@ const Products = () => {
       }
       setShowForm(false);
       setEditingProduct(null);
-      setIsNewBrand(false);
-      setIsNewModel(false);
-      setIsNewCategory(false);
       setSelectedSizes([]);
       setSelectedColors([]);
       setPendingCustomColor('');
@@ -497,9 +495,6 @@ const Products = () => {
 
   const handleEdit = (product) => {
     setEditingProduct(product);
-    setIsNewBrand(false);
-    setIsNewModel(false);
-    setIsNewCategory(false);
     setSelectedSizes([]);
     const initialColor = product.color != null ? String(product.color).trim() : '';
     setSelectedColors(initialColor ? [initialColor] : []);
@@ -561,9 +556,6 @@ const Products = () => {
           // Clear editing state and reset form when canceling or opening new form
           if (showForm || !showForm) {
             setEditingProduct(null);
-            setIsNewBrand(false);
-            setIsNewModel(false);
-            setIsNewCategory(false);
             setSelectedSizes([]);
             setSelectedColors([]);
             setPendingCustomColor('');
@@ -619,154 +611,46 @@ const Products = () => {
                     <span style={{ color: '#e53e3e' }}>*</span>
                   )}
                 </label>
-                {!isNewCategory ? (
-                  <select
-                    value={formData.category}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setIsNewCategory(true);
-                        setFormData({ ...formData, category: '' });
-                      } else {
-                        setFormData({ ...formData, category: e.target.value });
-                      }
-                    }}
-                    required={!editingProduct}
-                  >
-                    {editingProduct ? <option value="">{t('form.none')}</option> : null}
-                    {!editingProduct ? <option value="">{t('form.selectCategory')}</option> : null}
-                    {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                    <option value="__new__">{t('form.addNewCategory')}</option>
-                  </select>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder={t('form.categoryPlaceholder')}
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      required={!editingProduct}
-                      autoFocus
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => { setIsNewCategory(false); setFormData({ ...formData, category: '' }); }}
-                      style={{ padding: '0 10px', background: '#eee', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                    >
-                      {t('form.back')}
-                    </button>
-                  </div>
-                )}
+                <FormSearchableSelect
+                  value={formData.category}
+                  onChange={(v) => setFormData({ ...formData, category: v })}
+                  options={[...new Set(products.map(p => p.category).filter(Boolean))].sort()}
+                  emptyLabel={editingProduct ? t('form.none') : t('form.selectCategory')}
+                  placeholder={t('form.categoryPlaceholder')}
+                  allowFreeText
+                  freeTextApplyLabel={t('form.addNewCategory') + ': "{{query}}"'}
+                  aria-label={t('category')}
+                />
               </div>
               <div className="form-group">
                 <label>
                   {t('brand')} {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
                 </label>
-                {!isNewBrand ? (
-                  <select
-                    value={formData.brand}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setIsNewBrand(true);
-                        setFormData({ ...formData, brand: '' });
-                      } else {
-                        setFormData({ ...formData, brand: e.target.value });
-                      }
-                    }}
-                    required
-                  >
-                    <option value="">{t('form.selectBrand')}</option>
-                    {[...new Set(products.map(p => p.brand).filter(Boolean))].sort().map(brand => (
-                      <option key={brand} value={brand}>{brand}</option>
-                    ))}
-                    <option value="__new__">{t('form.addNewBrand')}</option>
-                  </select>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder={t('form.brandPlaceholder')}
-                      value={formData.brand}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                      required
-                      autoFocus
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNewBrand(false);
-                        setFormData({ ...formData, brand: '' });
-                      }}
-                      style={{
-                        padding: '0 10px',
-                        background: '#eee',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {t('form.back')}
-                    </button>
-                  </div>
-                )}
+                <FormSearchableSelect
+                  value={formData.brand}
+                  onChange={(v) => setFormData({ ...formData, brand: v })}
+                  options={[...new Set(products.map(p => p.brand).filter(Boolean))].sort()}
+                  emptyLabel={t('form.selectBrand')}
+                  placeholder={t('form.brandPlaceholder')}
+                  allowFreeText
+                  freeTextApplyLabel={t('form.addNewBrand') + ': "{{query}}"'}
+                  aria-label={t('brand')}
+                />
               </div>
               <div className="form-group">
                 <label>
                   {t('model')} {!editingProduct && <span style={{ color: '#e53e3e' }}>*</span>}
                 </label>
-                {!isNewModel ? (
-                  <select
-                    value={formData.model}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setIsNewModel(true);
-                        setFormData({ ...formData, model: '' });
-                      } else {
-                        setFormData({ ...formData, model: e.target.value });
-                      }
-                    }}
-                    required
-                  >
-                    <option value="">{t('form.selectModel')}</option>
-                    {[...new Set(products.map(p => p.model).filter(Boolean))].sort().map(model => (
-                      <option key={model} value={model}>{model}</option>
-                    ))}
-                    <option value="__new__">{t('form.addNewModel')}</option>
-                  </select>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder={t('form.modelPlaceholder')}
-                      value={formData.model}
-                      onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                      required
-                      autoFocus
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNewModel(false);
-                        setFormData({ ...formData, model: '' });
-                      }}
-                      style={{
-                        padding: '0 10px',
-                        background: '#eee',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {t('form.back')}
-                    </button>
-                  </div>
-                )}
+                <FormSearchableSelect
+                  value={formData.model}
+                  onChange={(v) => setFormData({ ...formData, model: v })}
+                  options={[...new Set(products.map(p => p.model).filter(Boolean))].sort()}
+                  emptyLabel={t('form.selectModel')}
+                  placeholder={t('form.modelPlaceholder')}
+                  allowFreeText
+                  freeTextApplyLabel={t('form.addNewModel') + ': "{{query}}"'}
+                  aria-label={t('model')}
+                />
               </div>
               <div className="form-group">
                 <label>

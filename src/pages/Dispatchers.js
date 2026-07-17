@@ -11,6 +11,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
 import { formatAppNumber, formatAppDateTime } from '../utils/localeFormat';
+import FormSearchableSelect from '../components/FormSearchableSelect';
 
 const saleReadyToComplete = (sale) => !!(sale && sale.status === 'dispatched');
 
@@ -1076,20 +1077,16 @@ const Dispatchers = () => {
                       <td style={{ whiteSpace: 'nowrap', fontSize: '0.9rem' }}>{formatCost(row, uzsLabel)}</td>
                       <td>
                         {canManagePartners ? (
-                        <select
-                          value={row.dispatcher || ''}
-                          onChange={(e) => {
-                            const v = e.target.value;
+                        <FormSearchableSelect
+                          value={row.dispatcher ? String(row.dispatcher) : ''}
+                          onChange={(v) => {
                             patchDispatch(row.id, { dispatcher: v ? parseInt(v, 10) : null });
                           }}
-                        >
-                          <option value="">{t('workspace.unassigned')}</option>
-                          {activeDispatchers.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </select>
+                          options={activeDispatchers.map((d) => ({ value: String(d.id), label: d.name }))}
+                          emptyLabel={t('workspace.unassigned')}
+                          placeholder={t('workspace.unassigned')}
+                          aria-label={t('workspace.dispatcher')}
+                        />
                         ) : (
                           row.dispatcher_detail?.name || '—'
                         )}

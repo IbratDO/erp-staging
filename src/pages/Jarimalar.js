@@ -4,6 +4,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
 import { formatAppNumber } from '../utils/localeFormat';
+import FormSearchableSelect from '../components/FormSearchableSelect';
 import './TablePage.css';
 
 const EMPTY_FILTERS = {
@@ -196,18 +197,17 @@ const Jarimalar = () => {
             <div className="form-grid">
               <div className="form-group">
                 <label>{t('form.manager')}</label>
-                <select
+                <FormSearchableSelect
                   value={form.employee}
-                  onChange={(e) => setForm({ ...form, employee: e.target.value })}
-                  required
-                >
-                  <option value="">{t('form.selectManager')}</option>
-                  {managers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {managerOptionLabel(m)} ({m.role_name || m.role_code})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setForm({ ...form, employee: v })}
+                  options={managers.map((m) => ({
+                    value: String(m.id),
+                    label: `${managerOptionLabel(m)} (${m.role_name || m.role_code})`,
+                  }))}
+                  emptyLabel={t('form.selectManager')}
+                  placeholder={t('form.selectManager')}
+                  aria-label={t('form.manager')}
+                />
               </div>
               <div className="form-group">
                 <label>{t('form.date')}</label>

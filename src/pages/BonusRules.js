@@ -4,6 +4,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
 import { formatAppDateTime } from '../utils/localeFormat';
+import FormSearchableSelect from '../components/FormSearchableSelect';
 import './TablePage.css';
 
 const emptyRule = () => ({
@@ -135,21 +136,25 @@ const BonusRules = () => {
             <div className="form-grid">
               <label>
                 {t('form.salesManager')}
-                <select required value={formData.user} onChange={(e) => setFormData({ ...formData, user: e.target.value })}>
-                  <option value="">{t('form.selectUser')}</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>{u.username} ({u.role_name || u.role_code})</option>
-                  ))}
-                </select>
+                <FormSearchableSelect
+                  value={formData.user}
+                  onChange={(v) => setFormData({ ...formData, user: v })}
+                  options={users.map((u) => ({ value: String(u.id), label: `${u.username} (${u.role_name || u.role_code})` }))}
+                  emptyLabel={t('form.selectUser')}
+                  placeholder={t('form.selectUser')}
+                  aria-label={t('form.salesManager')}
+                />
               </label>
               <label>
                 {t('form.productOptional')}
-                <select value={formData.product} onChange={(e) => setFormData({ ...formData, product: e.target.value })}>
-                  <option value="">{t('form.anyProduct')}</option>
-                  {products.map((p) => (
-                    <option key={p.id} value={p.id}>{p.brand} {p.model}</option>
-                  ))}
-                </select>
+                <FormSearchableSelect
+                  value={formData.product}
+                  onChange={(v) => setFormData({ ...formData, product: v })}
+                  options={products.map((p) => ({ value: String(p.id), label: `${p.brand} ${p.model}` }))}
+                  emptyLabel={t('form.anyProduct')}
+                  placeholder={t('form.anyProduct')}
+                  aria-label={t('form.productOptional')}
+                />
               </label>
               <label>
                 {t('form.categoryOptional')}

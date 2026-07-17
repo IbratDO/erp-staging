@@ -16,7 +16,8 @@ import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { usePermissions } from '../hooks/usePermissions';
 import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
-import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
+import FormSearchableSelect from '../components/FormSearchableSelect';
+import { matchesProductCatalogFilters, getCascadedFilterOptions, getCascadedDateOptions } from '../utils/productFilterUtils';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import { useClientTableSort, compareForSort } from '../utils/tableSort';
 import useAppTranslation from '../hooks/useAppTranslation';
@@ -450,9 +451,6 @@ const Orders = () => {
   const [showCargoForm, setShowCargoForm] = useState(false);
   
   const [showMoveToInventoryForm, setShowMoveToInventoryForm] = useState(false);
-  const [isNewEshop, setIsNewEshop] = useState(false);
-  const [isNewCountry, setIsNewCountry] = useState(false);
-  const [isNewCargo, setIsNewCargo] = useState(false);
   const [formCategoryType, setFormCategoryType] = useState('');
   const [formCategory, setFormCategory] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -580,13 +578,7 @@ const Orders = () => {
     }
   };
 
-  // Extract unique values for dropdowns
-  const getUniqueValues = (ordersList, field) => {
-    const values = ordersList
-      .map(order => order.product_detail?.[field])
-      .filter(Boolean);
-    return [...new Set(values)].sort();
-  };
+
 
   const customerFilterOptions = useMemo(() => {
     const map = new Map();
@@ -898,9 +890,6 @@ const Orders = () => {
 
       await api.post('/orders/', orderData);
       setShowForm(false);
-      setIsNewEshop(false);
-      setIsNewCountry(false);
-      setIsNewCargo(false);
       setFormCategoryType('');
       setFormCategory('');
       setProductSearch('');
@@ -1584,21 +1573,19 @@ const Orders = () => {
               </div>
               <div className="form-group">
                 <label>{t('form.category')} <span style={{ color: '#e53e3e' }}>*</span> <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>({t('form.categoryFilter')})</span></label>
-                <select
+                <FormSearchableSelect
                   value={formCategory}
-                  onChange={(e) => { setFormCategory(e.target.value); setProductSearch(''); setProductDropdownOpen(false); setFormData({ ...formData, product: '', supplier_country: '', selling_usd_per_unit: '', selling_uzs_per_unit: '', cost_usd_per_unit: '', cost_uzs_per_unit: '' }); }}
-                  required
-                >
-                  <option value="">{t('form.selectCategory')}</option>
-                  {[...new Set(
+                  onChange={(v) => { setFormCategory(v); setProductSearch(''); setProductDropdownOpen(false); setFormData({ ...formData, product: '', supplier_country: '', selling_usd_per_unit: '', selling_uzs_per_unit: '', cost_usd_per_unit: '', cost_uzs_per_unit: '' }); }}
+                  options={[...new Set(
                     products
                       .filter((p) => !formCategoryType || p.category_type === formCategoryType)
                       .map((p) => p.category)
                       .filter(Boolean),
-                  )].sort().map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                  )].sort()}
+                  emptyLabel={t('form.selectCategory')}
+                  placeholder={t('form.selectCategory')}
+                  aria-label={t('form.category')}
+                />
               </div>
               <div className="form-group" ref={productDropdownRef} style={{ position: 'relative' }}>
                 <label>{t('form.product')}</label>
@@ -1679,8 +1666,6 @@ const Orders = () => {
                                 <div
                                   key={product.id}
                                   onClick={() => {
-                                    setIsNewCountry(false);
-      setIsNewCargo(false);
                                     const psp = parseFloat(product.selling_price);
                                     const sellingUsd = psp > 0 && !Number.isNaN(psp) ? psp.toFixed(2) : '';
                                     setFormData({
@@ -1717,190 +1702,71 @@ const Orders = () => {
               </div>
               <div className="form-group">
                 <label>{t('form.supplierCountry')} <span style={{ color: '#e53e3e' }}>*</span></label>
-                {!isNewCountry ? (
-                  <select
-                    value={formData.supplier_country}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setIsNewCountry(true);
-                        setFormData({ ...formData, supplier_country: '' });
-                      } else {
-                        setFormData({ ...formData, supplier_country: e.target.value });
-                      }
-                    }}
-                    required
-                  >
-                    <option value="">{t('form.selectCountry')}</option>
-                    {uniqueSupplierCountriesFromOrdersAndProducts(orders, products).map((country) => (
-                      <option key={country} value={country}>
-                        {country.charAt(0).toUpperCase() + country.slice(1)}
-                      </option>
-                    ))}
-                    <option value="__new__">{t('form.addCountry')}</option>
-                  </select>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder={t('form.enterCountry')}
-                      value={formData.supplier_country}
-                      onChange={(e) => setFormData({ ...formData, supplier_country: e.target.value })}
-                      required
-                      autoFocus
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNewCountry(false);
-      setIsNewCargo(false);
-                        setFormData({ ...formData, supplier_country: '' });
-                      }}
-                      style={{
-                        padding: '0 10px',
-                        background: '#eee',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      ← {t('actions.back', { ns: 'common' })}
-                    </button>
-                  </div>
-                )}
+                <FormSearchableSelect
+                  value={formData.supplier_country}
+                  onChange={(v) => setFormData({ ...formData, supplier_country: v })}
+                  options={uniqueSupplierCountriesFromOrdersAndProducts(orders, products).map((country) => ({
+                    value: country,
+                    label: country.charAt(0).toUpperCase() + country.slice(1),
+                  }))}
+                  emptyLabel={t('form.selectCountry')}
+                  placeholder={t('form.enterCountry')}
+                  allowFreeText
+                  freeTextApplyLabel={t('form.addCountry') + ': "{{query}}"'}
+                  aria-label={t('form.supplierCountry')}
+                />
               </div>
               <div className="form-group">
                 <label>{t('form.supplierCargo')} <span style={{ color: '#888', fontWeight: 400, fontSize: '0.85em' }}>({t('form.optional')})</span></label>
-                {!isNewCargo ? (
-                  <select
-                    value={formData.supplier_cargo}
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setIsNewCargo(true);
-                        setFormData({ ...formData, supplier_cargo: '' });
-                      } else {
-                        setFormData({ ...formData, supplier_cargo: e.target.value });
-                      }
-                    }}
-                  >
-                    <option value="">{t('form.none')}</option>
-                    {uniqueSupplierCargosFromOrders(orders).map((cargo) => (
-                      <option key={cargo} value={cargo}>
-                        {cargo.charAt(0).toUpperCase() + cargo.slice(1)}
-                      </option>
-                    ))}
-                    <option value="__new__">{t('form.addCargo')}</option>
-                  </select>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder={t('form.enterCargo')}
-                      value={formData.supplier_cargo}
-                      onChange={(e) => setFormData({ ...formData, supplier_cargo: e.target.value })}
-                      autoFocus
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNewCargo(false);
-                        setFormData({ ...formData, supplier_cargo: '' });
-                      }}
-                      style={{
-                        padding: '0 10px',
-                        background: '#eee',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      ← {t('actions.back', { ns: 'common' })}
-                    </button>
-                  </div>
-                )}
+                <FormSearchableSelect
+                  value={formData.supplier_cargo}
+                  onChange={(v) => setFormData({ ...formData, supplier_cargo: v })}
+                  options={uniqueSupplierCargosFromOrders(orders).map((cargo) => ({
+                    value: cargo,
+                    label: cargo.charAt(0).toUpperCase() + cargo.slice(1),
+                  }))}
+                  emptyLabel={t('form.none')}
+                  placeholder={t('form.enterCargo')}
+                  allowFreeText
+                  freeTextApplyLabel={t('form.addCargo') + ': "{{query}}"'}
+                  aria-label={t('form.supplierCargo')}
+                />
               </div>
               </div>
 
               <div className="orders-new-order-row orders-new-order-row--eshop-prices">
               <div className="form-group">
                 <label>{t('form.eshop')} <span style={{ color: '#e53e3e' }}>*</span></label>
-                {!isNewEshop ? (
-                  <select
-                    value={formData.eshop}
-                    required
-                    onChange={(e) => {
-                      if (e.target.value === '__new__') {
-                        setIsNewEshop(true);
-                        setFormData({ ...formData, eshop: '' });
-                      } else {
-                        const v = e.target.value;
-                        setFormData({
-                          ...formData,
-                          eshop: v,
-                          ...(!isClientEshopSlug(v) ? { client_eshop_notes: '' } : {}),
-                        });
-                      }
-                    }}
-                  >
-                    <option value="">{t('form.selectEshop')}</option>
-                    <option value="zalando">{t('eshops.zalando', { ns: 'orders' })}</option>
-                    <option value="best_secret">{t('eshops.best_secret', { ns: 'orders' })}</option>
-                    <option value="adidas">{t('eshops.adidas', { ns: 'orders' })}</option>
-                    <option value="unidays">{t('eshops.unidays', { ns: 'orders' })}</option>
-                    <option value="nike">{t('eshops.nike', { ns: 'orders' })}</option>
-                    <option value="asos">{t('eshops.asos', { ns: 'orders' })}</option>
-                    {/* Custom eshops added by users (from existing orders) */}
-                    {[...new Set(
+                <FormSearchableSelect
+                  value={formData.eshop}
+                  onChange={(v) => {
+                    setFormData({
+                      ...formData,
+                      eshop: v,
+                      ...(!isClientEshopSlug(v) ? { client_eshop_notes: '' } : {}),
+                    });
+                  }}
+                  options={[
+                    { value: 'zalando', label: t('eshops.zalando', { ns: 'orders' }) },
+                    { value: 'best_secret', label: t('eshops.best_secret', { ns: 'orders' }) },
+                    { value: 'adidas', label: t('eshops.adidas', { ns: 'orders' }) },
+                    { value: 'unidays', label: t('eshops.unidays', { ns: 'orders' }) },
+                    { value: 'nike', label: t('eshops.nike', { ns: 'orders' }) },
+                    { value: 'asos', label: t('eshops.asos', { ns: 'orders' }) },
+                    ...[...new Set(
                       orders
                         .map(o => o.eshop)
                         .filter((e) => e && !BUILTIN_ESHOP_SLUGS.has(String(e).toLowerCase()))
-                    )].sort().map(eshop => (
-                      <option key={eshop} value={eshop}>{eshop}</option>
-                    ))}
-                    <option value="client">{t('eshops.client', { ns: 'orders' })}</option>
-                    <option value="other">{t('eshops.other', { ns: 'orders' })}</option>
-                    <option value="__new__">{t('form.addEshop')}</option>
-                  </select>
-                ) : (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input
-                      type="text"
-                      placeholder={t('form.enterEshop')}
-                      value={formData.eshop}
-                      required
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setFormData({
-                          ...formData,
-                          eshop: v,
-                          ...(!isClientEshopSlug(v) ? { client_eshop_notes: '' } : {}),
-                        });
-                      }}
-                      autoFocus
-                      style={{ flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsNewEshop(false);
-                        setFormData({ ...formData, eshop: '' });
-                      }}
-                      style={{
-                        padding: '0 10px',
-                        background: '#eee',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      ← {t('actions.back', { ns: 'common' })}
-                    </button>
-                  </div>
-                )}
+                    )].sort().map(eshop => ({ value: eshop, label: eshop })),
+                    { value: 'client', label: t('eshops.client', { ns: 'orders' }) },
+                    { value: 'other', label: t('eshops.other', { ns: 'orders' }) },
+                  ]}
+                  emptyLabel={t('form.selectEshop')}
+                  placeholder={t('form.enterEshop')}
+                  allowFreeText
+                  freeTextApplyLabel={t('form.addEshop') + ': "{{query}}"'}
+                  aria-label={t('form.eshop')}
+                />
               </div>
               <div className="form-group orders-new-order-field--qty">
                 <label>{t('form.orderedQuantity')}</label>
@@ -2081,11 +1947,8 @@ const Orders = () => {
                 disabled={orderCreating}
                 onClick={() => {
                   setShowForm(false);
-                  setIsNewEshop(false);
-                  setIsNewCountry(false);
-      setIsNewCargo(false);
                   setFormCategoryType('');
-      setFormCategory('');
+                  setFormCategory('');
                   setProductSearch('');
                   setProductDropdownOpen(false);
                   setFormData(newOrderFormDefaults());
@@ -2184,22 +2047,17 @@ const Orders = () => {
           <ProductCatalogFilterFields
             filters={filters}
             onFiltersChange={setFilters}
-            options={{
-              categories: [
-                ...new Set(
-                  products
-                    .filter(
-                      (p) => !filters.category_type || p.category_type === filters.category_type,
-                    )
-                    .map((p) => p.category)
-                    .filter(Boolean),
-                ),
-              ].sort(),
-              brands: getUniqueValues(orders, 'brand'),
-              models: getUniqueValues(orders, 'model'),
-              sizes: getUniqueValues(orders, 'size'),
-              colors: getUniqueValues(orders, 'color'),
-            }}
+            options={getCascadedFilterOptions(orders, filters, (o) => o.product_detail, null, (order, _excl) => {
+              if (filters.year) {
+                const y = new Date(order.order_date).getFullYear().toString();
+                if (y !== filters.year) return false;
+              }
+              if (filters.month) {
+                const m = (new Date(order.order_date).getMonth() + 1).toString();
+                if (m !== filters.month) return false;
+              }
+              return true;
+            })}
             t={(key, opts) => t(key, { ns: 'orders', ...opts })}
             fieldLabels={{
               category: t('filters.category', { ns: 'orders' }),
@@ -2257,36 +2115,40 @@ const Orders = () => {
               onChange={(customerId) => setFilters({ ...filters, customer: customerId })}
             />
           </div>
-          <div className="filter-field">
-            <label>{t('filters.year', { ns: 'orders' })}</label>
-            <select
-              value={filters.year}
-              onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-            >
-              <option value="">{t('filters.allYears', { ns: 'common' })}</option>
-              {Array.from({ length: 10 }, (_, i) => {
-                const year = new Date().getFullYear() - i;
-                return (
-                  <option key={year} value={year.toString()}>
-                    {year}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.month', { ns: 'orders' })}</label>
-            <select
-              value={filters.month}
-              onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-            >
-              {monthOptions.map((m) => (
-                <option key={m.value || 'all'} value={m.value}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {(() => {
+            const dateOpts = getCascadedDateOptions(orders, filters, (o) => o.order_date, (o) => o.product_detail);
+            return (
+              <>
+                <div className="filter-field">
+                  <label>{t('filters.year', { ns: 'orders' })}</label>
+                  <select
+                    value={filters.year}
+                    onChange={(e) => setFilters({ ...filters, year: e.target.value })}
+                  >
+                    <option value="">{t('filters.allYears', { ns: 'common' })}</option>
+                    {dateOpts.years.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label>{t('filters.month', { ns: 'orders' })}</label>
+                  <select
+                    value={filters.month}
+                    onChange={(e) => setFilters({ ...filters, month: e.target.value })}
+                  >
+                    <option value="">{monthOptions[0]?.label || t('filters.allMonths', { ns: 'common' })}</option>
+                    {dateOpts.months.map((m) => {
+                      const mo = monthOptions.find((o) => o.value === m);
+                      return (
+                        <option key={m} value={m}>{mo ? mo.label : m}</option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </>
+            );
+          })()}
           <div className="filter-toolbar__actions">
             <button
               type="button"

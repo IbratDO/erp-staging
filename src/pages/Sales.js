@@ -14,7 +14,8 @@ import ShopDeliverySettlementButtons from '../components/ShopDeliverySettlementB
 import ProductSearchableSelect from '../components/ProductSearchableSelect';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
-import { matchesProductCatalogFilters } from '../utils/productFilterUtils';
+import FormSearchableSelect from '../components/FormSearchableSelect';
+import { matchesProductCatalogFilters, getCascadedFilterOptions, getCascadedDateOptions } from '../utils/productFilterUtils';
 import { layerSalePickerLabel, resolveLayerListPrice } from '../utils/productCost';
 import {
   computeAdvanceRemainingDue,
@@ -470,13 +471,7 @@ const Sales = () => {
     }
   };
 
-  // Extract unique values for dropdowns
-  const getUniqueValues = (salesList, field) => {
-    const values = salesList
-      .map(sale => sale.product_detail?.[field])
-      .filter(Boolean);
-    return [...new Set(values)].sort();
-  };
+
 
   const customerFilterOptions = useMemo(() => {
     const map = new Map();
@@ -783,15 +778,16 @@ const Sales = () => {
     const items = withProduct.map((l) => {
       const itemQty = parseInt(String(l.quantity), 10) || 1;
       const activeLines = (l.packageLines || []).filter((pl) => pl.package_type && pl.quantity > 0);
-      const sellingForApi = parsePriceNum(l.selling_price);
+      const disc = parsePriceNum(l.discount_price) || 0;
+      const priceForApi = parsePriceNum(disc > 0 ? l.list_price : l.selling_price);
       const row = {
         product: parseInt(l.product, 10),
         quantity: itemQty,
         selling_price:
-          sellingForApi != null
+          priceForApi != null
             ? batchDefaults.sale_currency === 'UZS'
-              ? String(Math.round(sellingForApi))
-              : sellingForApi.toFixed(2)
+              ? String(Math.round(priceForApi))
+              : priceForApi.toFixed(2)
             : String(l.selling_price || '').trim(),
         package_type: null,
         package_quantity: null,
@@ -799,7 +795,6 @@ const Sales = () => {
       if (l.inventory_batch_id) {
         row.inventory_batch_id = parseInt(l.inventory_batch_id, 10);
       }
-      const disc = parsePriceNum(l.discount_price) || 0;
       if (disc > 0) {
         row.discount_price = l.discount_price;
       }
@@ -1630,18 +1625,14 @@ const Sales = () => {
               {dispatchFormData.dispatch_type === 'dostavshik' && (
                 <div className="form-group">
                   <label>{t('dispatch.dispatcher')}</label>
-                  <select
+                  <FormSearchableSelect
                     value={dispatchFormData.dispatcher}
-                    onChange={(e) => setDispatchFormData({ ...dispatchFormData, dispatcher: e.target.value })}
-                    required
-                  >
-                    <option value="">{t('dispatch.selectDispatcher')}</option>
-                    {dispatchersList.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setDispatchFormData({ ...dispatchFormData, dispatcher: v })}
+                    options={dispatchersList.map((d) => ({ value: String(d.id), label: d.name }))}
+                    emptyLabel={t('dispatch.selectDispatcher')}
+                    placeholder={t('dispatch.selectDispatcher')}
+                    aria-label={t('dispatch.dispatcher')}
+                  />
                 </div>
               )}
               <div className="form-group">
@@ -2048,17 +2039,14 @@ const Sales = () => {
             <div className="sales-batch-header-row">
               <div className="form-group">
                 <label>{t('batch.filterCategory')}</label>
-                <select
+                <FormSearchableSelect
                   value={batchFormCategory}
-                  onChange={(e) => setBatchFormCategory(e.target.value)}
-                >
-                  <option value="">{t('batch.allCategories')}</option>
-                  {[...new Set(productsAvailableForSale.map((p) => p.category).filter(Boolean))].sort().map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setBatchFormCategory}
+                  options={[...new Set(productsAvailableForSale.map((p) => p.category).filter(Boolean))].sort()}
+                  emptyLabel={t('batch.allCategories')}
+                  placeholder={t('batch.allCategories')}
+                  aria-label={t('batch.filterCategory')}
+                />
               </div>
               <div className="form-group">
                 <label>{t('batch.customerRequired')}</label>
@@ -2318,24 +2306,17 @@ const Sales = () => {
           <ProductCatalogFilterFields
             filters={filters}
             onFiltersChange={setFilters}
-            options={{
-              categories: [
-                ...new Set(
-                  sales
-                    .filter(
-                      (s) =>
-                        !filters.category_type ||
-                        s.product_detail?.category_type === filters.category_type,
-                    )
-                    .map((s) => s.product_detail?.category)
-                    .filter(Boolean),
-                ),
-              ].sort(),
-              brands: getUniqueValues(sales, 'brand'),
-              models: getUniqueValues(sales, 'model'),
-              sizes: getUniqueValues(sales, 'size'),
-              colors: getUniqueValues(sales, 'color'),
-            }}
+            options={getCascadedFilterOptions(sales, filters, (s) => s.product_detail, null, (sale, _excl) => {
+              if (filters.year) {
+                const y = new Date(sale.sale_date).getFullYear().toString();
+                if (y !== filters.year) return false;
+              }
+              if (filters.month) {
+                const m = (new Date(sale.sale_date).getMonth() + 1).toString();
+                if (m !== filters.month) return false;
+              }
+              return true;
+            })}
             t={t}
             fieldLabels={{
               category: t('table.category'),
@@ -2394,36 +2375,40 @@ const Sales = () => {
               onChange={(customerId) => setFilters({ ...filters, customer: customerId })}
             />
           </div>
-          <div className="filter-field">
-            <label>{t('filters.year', { ns: 'common' })}</label>
-            <select
-              value={filters.year}
-              onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-            >
-              <option value="">{t('filters.allYears', { ns: 'common' })}</option>
-              {Array.from({ length: 10 }, (_, i) => {
-                const year = new Date().getFullYear() - i;
-                return (
-                  <option key={year} value={year.toString()}>
-                    {year}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-          <div className="filter-field">
-            <label>{t('filters.month', { ns: 'common' })}</label>
-            <select
-              value={filters.month}
-              onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-            >
-              {monthOptions.map((mo) => (
-                <option key={mo.value || 'all'} value={mo.value}>
-                  {mo.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {(() => {
+            const dateOpts = getCascadedDateOptions(sales, filters, (s) => s.sale_date, (s) => s.product_detail);
+            return (
+              <>
+                <div className="filter-field">
+                  <label>{t('filters.year', { ns: 'common' })}</label>
+                  <select
+                    value={filters.year}
+                    onChange={(e) => setFilters({ ...filters, year: e.target.value })}
+                  >
+                    <option value="">{t('filters.allYears', { ns: 'common' })}</option>
+                    {dateOpts.years.map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="filter-field">
+                  <label>{t('filters.month', { ns: 'common' })}</label>
+                  <select
+                    value={filters.month}
+                    onChange={(e) => setFilters({ ...filters, month: e.target.value })}
+                  >
+                    <option value="">{monthOptions[0]?.label || t('filters.allMonths', { ns: 'common' })}</option>
+                    {dateOpts.months.map((m) => {
+                      const mo = monthOptions.find((o) => o.value === m);
+                      return (
+                        <option key={m} value={m}>{mo ? mo.label : m}</option>
+                      );
+                    })}
+                  </select>
+                </div>
+              </>
+            );
+          })()}
           <div className="filter-toolbar__actions">
             <button
               type="button"
