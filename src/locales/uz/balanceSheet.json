@@ -54,7 +54,8 @@
     "total": "JAMI KAPITAL",
     "ownerCapital": "Egasi kapitali (sof hissalar)",
     "retainedEarnings": "Saqlangan daromad (oldingi davrlar)",
-    "currentPeriodPl": "Joriy davr foyda / zarari (F&Z)"
+    "currentPeriodPl": "Joriy davr foyda / zarari (F&Z)",
+    "currencyConversionPl": "Valyuta operatsiyalari orqali yuzaga kelgan joriy farq (foyda/zarar)"
   },
   "notes": "Izohlar"
 }

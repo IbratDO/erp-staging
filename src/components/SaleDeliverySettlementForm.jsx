@@ -8,7 +8,7 @@ import {
   buildPaymentFormDataFromSale,
   deliveryStep2PaymentFromStep1,
   computeAdvanceRemainingDue,
-  computePaymentShortfallMeta,
+  computePaymentDifferenceMeta,
   emptyPaymentFormState,
   paymentNeedsCbuConversion,
 } from '../utils/saleCompletePayHelpers';
@@ -210,8 +210,8 @@ export default function SaleDeliverySettlementForm({
 
   if (!sale || saleLoading) return null;
 
-  const meta1 = computePaymentShortfallMeta(sale, step1, cbuRate);
-  const meta2 = computePaymentShortfallMeta(sale, step2, cbuRate);
+  const meta1 = computePaymentDifferenceMeta(sale, step1, cbuRate);
+  const meta2 = computePaymentDifferenceMeta(sale, step2, cbuRate);
   const step3CombinedTotal =
     dispatchFeeDue > 0
       ? combinedPaymentInSaleCurrency(
@@ -510,12 +510,55 @@ export default function SaleDeliverySettlementForm({
                   </p>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                     <input
-                      type="radio"
-                      name="delivery_settlement_shortfall"
+                      type="checkbox"
                       checked={step2.balance_shortfall_type === 'discount'}
-                      onChange={() => setStep2({ ...step2, balance_shortfall_type: 'discount' })}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        const def =
+                          meta2.short > 0
+                            ? (meta2.sc === 'UZS'
+                              ? String(Math.round(meta2.short))
+                              : meta2.short.toFixed(2))
+                            : '';
+                        setStep2({
+                          ...step2,
+                          balance_shortfall_type: checked ? 'discount' : '',
+                          balance_shortfall_amount: checked
+                            ? (step2.balance_shortfall_amount || def)
+                            : '',
+                        });
+                      }}
                     />
-                    <span>{t('deliverySettlement.discountRemainder')}</span>
+                    <span>{t('completePay.discountOption')}</span>
+                  </label>
+                  {step2.balance_shortfall_type === 'discount' && (
+                    <div style={{ marginTop: 10, maxWidth: 280 }}>
+                      <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>
+                        {t('completePay.discountAmountLabel', { currency: meta2.sc })}
+                      </label>
+                      <input
+                        type="number"
+                        step={meta2.sc === 'UZS' ? '1' : '0.01'}
+                        min="0"
+                        value={step2.balance_shortfall_amount ?? ''}
+                        onChange={(e) =>
+                          setStep2({ ...step2, balance_shortfall_amount: e.target.value })
+                        }
+                      />
+                    </div>
+                  )}
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginTop: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!step2.apply_currency_conversion_difference}
+                      onChange={(e) =>
+                        setStep2({
+                          ...step2,
+                          apply_currency_conversion_difference: e.target.checked,
+                        })
+                      }
+                    />
+                    <span>{t('completePay.conversionDifferenceOption')}</span>
                   </label>
                 </div>
               )}

@@ -5,7 +5,7 @@ import useAppTranslation from '../hooks/useAppTranslation';
 import {
   emptyPaymentFormState,
   buildPaymentFormDataFromSale,
-  computePaymentShortfallMeta,
+  computePaymentDifferenceMeta,
   buildCompleteSaleRequest,
   buildGroupCompleteRequests,
   validateAdvanceCompletionPayment,
@@ -58,7 +58,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   if (!sale) return null;
 
   const cbuRate = exchangeRate?.rate ?? null;
-  const shortfallMeta = computePaymentShortfallMeta(sale, paymentFormData, cbuRate);
+  const shortfallMeta = computePaymentDifferenceMeta(sale, paymentFormData, cbuRate);
   const sc = paymentFormData.sale_currency || sale.sale_currency || 'USD';
   const listUnit = paymentFormData.list_unit_price ?? (parseFloat(sale.selling_price) || 0);
   const discountAmountPerUnit = paymentFormData.discount_amount_per_unit ?? (parseFloat(sale.discount_price) || 0);
@@ -74,7 +74,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const meta = computePaymentShortfallMeta(sale, paymentFormData, cbuRate);
+      const meta = computePaymentDifferenceMeta(sale, paymentFormData, cbuRate);
       const uzsT = parseFloat(paymentFormData.uzs) || 0;
       const usdT = parseFloat(paymentFormData.usd) || 0;
       const advanceCheck = validateAdvanceCompletionPayment(
@@ -148,7 +148,15 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         }
       }
 
-      if (meta.needs && paymentFormData.balance_shortfall_type !== 'discount') {
+      if (
+        paymentFormData.balance_shortfall_type === 'discount'
+        && !(parseFloat(paymentFormData.balance_shortfall_amount) > 0)
+      ) {
+        showNotification(t('completePay.errDiscountAmount'), 'error');
+        return;
+      }
+
+      if (meta.differenceNeedsClassification) {
         showNotification(t('completePay.errShortfall'), 'error');
         return;
       }
@@ -306,15 +314,79 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
               </p>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <input
-                  type="radio"
-                  name="sale_complete_shortfall"
+                  type="checkbox"
                   checked={paymentFormData.balance_shortfall_type === 'discount'}
-                  onChange={() =>
-                    setPaymentFormData({ ...paymentFormData, balance_shortfall_type: 'discount' })
-                  }
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    const defaultDisc =
+                      shortfallMeta.short != null && shortfallMeta.short > 0
+                        ? (shortfallMeta.sc === 'UZS'
+                          ? String(Math.round(shortfallMeta.short))
+                          : shortfallMeta.short.toFixed(2))
+                        : '';
+                    setPaymentFormData({
+                      ...paymentFormData,
+                      balance_shortfall_type: checked ? 'discount' : '',
+                      balance_shortfall_amount: checked
+                        ? (paymentFormData.balance_shortfall_amount || defaultDisc)
+                        : '',
+                    });
+                  }}
                 />
                 <span>{t('completePay.discountOption')}</span>
               </label>
+              {paymentFormData.balance_shortfall_type === 'discount' && (
+                <div style={{ marginTop: 10, maxWidth: 280 }}>
+                  <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>
+                    {t('completePay.discountAmountLabel', { currency: shortfallMeta.sc })}
+                  </label>
+                  <input
+                    type="number"
+                    step={shortfallMeta.sc === 'UZS' ? '1' : '0.01'}
+                    min="0"
+                    value={paymentFormData.balance_shortfall_amount ?? ''}
+                    onChange={(e) =>
+                      setPaymentFormData({
+                        ...paymentFormData,
+                        balance_shortfall_amount: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              )}
+              <label
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  cursor: 'pointer',
+                  marginTop: 12,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!paymentFormData.apply_currency_conversion_difference}
+                  onChange={(e) =>
+                    setPaymentFormData({
+                      ...paymentFormData,
+                      apply_currency_conversion_difference: e.target.checked,
+                    })
+                  }
+                />
+                <span>{t('completePay.conversionDifferenceOption')}</span>
+              </label>
+              {paymentFormData.apply_currency_conversion_difference
+                && shortfallMeta.remainingAfterDiscount != null && (
+                <p style={{ margin: '8px 0 0', fontSize: '0.85em', color: '#555' }}>
+                  {t('completePay.conversionDifferenceValue', {
+                    amount:
+                      shortfallMeta.sc === 'UZS'
+                        ? Math.round(shortfallMeta.remainingAfterDiscount).toLocaleString()
+                        : shortfallMeta.remainingAfterDiscount.toFixed(2),
+                    currency: shortfallMeta.sc,
+                  })}
+                </p>
+              )}
             </div>
           )}
 

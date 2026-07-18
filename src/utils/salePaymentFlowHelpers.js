@@ -4,7 +4,7 @@
 
 import i18n from '../i18n';
 import {
-  computePaymentShortfallMeta,
+  computePaymentDifferenceMeta,
   validateAdvanceCompletionPayment,
   buildCrossCurrencyAdvanceConfirmMessage,
   buildSplitCurrencyConfirmMessage,
@@ -32,7 +32,7 @@ export async function runSalePaymentSubmitFlow({
   allowDiscount = true,
 }) {
   const cbuRate = exchangeRate?.rate ?? null;
-  const meta = computePaymentShortfallMeta(sale, paymentFormData, cbuRate);
+  const meta = computePaymentDifferenceMeta(sale, paymentFormData, cbuRate);
   const uzsT = parseFloat(paymentFormData.uzs) || 0;
   const usdT = parseFloat(paymentFormData.usd) || 0;
 
@@ -106,7 +106,16 @@ export async function runSalePaymentSubmitFlow({
     return { ok: false };
   }
 
-  if (allowDiscount && meta.needs && paymentFormData.balance_shortfall_type !== 'discount') {
+  if (
+    allowDiscount
+    && paymentFormData.balance_shortfall_type === 'discount'
+    && !(parseFloat(paymentFormData.balance_shortfall_amount) > 0)
+  ) {
+    showNotification?.(cp('errDiscountAmount'), 'error');
+    return { ok: false };
+  }
+
+  if (allowDiscount && meta.differenceNeedsClassification) {
     showNotification?.(cp('errShortfall'), 'error');
     return { ok: false };
   }

@@ -54,7 +54,8 @@
     "total": "TOTAL EQUITY",
     "ownerCapital": "Owner capital (net contributions)",
     "retainedEarnings": "Retained earnings (prior periods)",
-    "currentPeriodPl": "Current period profit / loss (P&L)"
+    "currentPeriodPl": "Current period profit / loss (P&L)",
+    "currencyConversionPl": "Current difference from currency operations (profit/loss)"
   },
   "notes": "Notes"
 }

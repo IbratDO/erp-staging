@@ -931,6 +931,8 @@ const Sales = () => {
     uzs: '',
     usd: '',
     balance_shortfall_type: '',
+    balance_shortfall_amount: '',
+    apply_currency_conversion_difference: false,
   });
   
   /** When set, shows shared Complete & Pay form (same flow as Dispatchers tab). */
@@ -1366,6 +1368,8 @@ const Sales = () => {
         uzs: remUzs,
         usd: remUsd,
         balance_shortfall_type: '',
+        balance_shortfall_amount: '',
+        apply_currency_conversion_difference: false,
       });
       setShowSellReservedForm(true);
     }
@@ -1413,8 +1417,15 @@ const Sales = () => {
           return;
         }
       }
-      if (meta.needsDiscountChoice && sellReservedData.balance_shortfall_type !== 'discount') {
-        showNotification(t('sellReserved.errDiscount'), 'error');
+      const wantDisc = sellReservedData.balance_shortfall_type === 'discount';
+      const wantFx = !!sellReservedData.apply_currency_conversion_difference;
+      const discAmt = parseFloat(sellReservedData.balance_shortfall_amount) || 0;
+      if (wantDisc && discAmt <= 0) {
+        showNotification(t('completePay.errDiscountAmount'), 'error');
+        return;
+      }
+      if (meta.needsDiscountChoice && !wantDisc && !wantFx) {
+        showNotification(t('completePay.errShortfall'), 'error');
         return;
       }
       const payload = {
@@ -1424,12 +1435,19 @@ const Sales = () => {
       if (sellReservedExchangeRate?.rate && (meta.splitCurrency || meta.crossCurrency)) {
         payload.exchange_rate = sellReservedExchangeRate.rate;
       }
-      if (meta.needsDiscountChoice) {
+      if (wantDisc) {
         payload.balance_shortfall_type = 'discount';
+        payload.balance_shortfall_amount = discAmt;
+      }
+      if (wantFx) {
+        payload.apply_currency_conversion_difference = true;
       }
       await api.post(`/sales/${sellReservedData.saleId}/sell_reserved/`, payload);
       setShowSellReservedForm(false);
-      setSellReservedData({ saleId: null, uzs: '', usd: '', balance_shortfall_type: '' });
+      setSellReservedData({
+        saleId: null, uzs: '', usd: '', balance_shortfall_type: '',
+        balance_shortfall_amount: '', apply_currency_conversion_difference: false,
+      });
       fetchSales();
       showNotification(t('sellReserved.success'), 'success');
     } catch (error) {
@@ -2102,18 +2120,62 @@ const Sales = () => {
               {sellReservedPayMeta.needsDiscountChoice && (
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <p style={{ margin: '0 0 10px 0', fontSize: '0.9em', color: '#555', lineHeight: 1.45 }}>
-                    {t('sellReserved.discountHint')}
+                    {t('completePay.shortfallHint')}
                   </p>
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                     <input
-                      type="radio"
-                      name="sell_reserved_shortfall"
+                      type="checkbox"
                       checked={sellReservedData.balance_shortfall_type === 'discount'}
-                      onChange={() =>
-                        setSellReservedData({ ...sellReservedData, balance_shortfall_type: 'discount' })
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        const def =
+                          sellReservedPayMeta.short > 0
+                            ? (sellReservedPayMeta.sc === 'UZS'
+                              ? String(Math.round(sellReservedPayMeta.short))
+                              : sellReservedPayMeta.short.toFixed(2))
+                            : '';
+                        setSellReservedData({
+                          ...sellReservedData,
+                          balance_shortfall_type: checked ? 'discount' : '',
+                          balance_shortfall_amount: checked
+                            ? (sellReservedData.balance_shortfall_amount || def)
+                            : '',
+                        });
+                      }}
+                    />
+                    <span>{t('completePay.discountOption')}</span>
+                  </label>
+                  {sellReservedData.balance_shortfall_type === 'discount' && (
+                    <div style={{ marginTop: 10, maxWidth: 280 }}>
+                      <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>
+                        {t('completePay.discountAmountLabel', { currency: sellReservedPayMeta.sc })}
+                      </label>
+                      <input
+                        type="number"
+                        step={sellReservedPayMeta.sc === 'UZS' ? '1' : '0.01'}
+                        min="0"
+                        value={sellReservedData.balance_shortfall_amount ?? ''}
+                        onChange={(e) =>
+                          setSellReservedData({
+                            ...sellReservedData,
+                            balance_shortfall_amount: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  )}
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginTop: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!sellReservedData.apply_currency_conversion_difference}
+                      onChange={(e) =>
+                        setSellReservedData({
+                          ...sellReservedData,
+                          apply_currency_conversion_difference: e.target.checked,
+                        })
                       }
                     />
-                    <span>{t('sellReserved.discountOption')}</span>
+                    <span>{t('completePay.conversionDifferenceOption')}</span>
                   </label>
                 </div>
               )}
@@ -2127,7 +2189,10 @@ const Sales = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowSellReservedForm(false);
-                  setSellReservedData({ saleId: null, uzs: '', usd: '', balance_shortfall_type: '' });
+                  setSellReservedData({
+                    saleId: null, uzs: '', usd: '', balance_shortfall_type: '',
+                    balance_shortfall_amount: '', apply_currency_conversion_difference: false,
+                  });
                 }}
               >
                 {t('actions.cancel', { ns: 'common' })}

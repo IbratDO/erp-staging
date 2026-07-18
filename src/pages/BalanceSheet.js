@@ -329,6 +329,11 @@ const BalanceSheet = () => {
                       value={formatUsd(equity?.current_period_profit_usd)}
                       indent={1}
                     />
+                    <LineRow
+                      label={t('equity.currencyConversionPl')}
+                      value={formatUsd(equity?.currency_conversion_pl_usd)}
+                      indent={1}
+                    />
                     <TotalRow label={t('equity.total')} value={formatUsd(equity?.total_equity_usd)} />
                   </tbody>
                 </table>

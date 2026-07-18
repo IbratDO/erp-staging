@@ -348,6 +348,8 @@ export const emptyPaymentFormState = () => ({
   dispatch_payment_amount: '',
   dispatch_payment_currency: 'UZS',
   balance_shortfall_type: '',
+  balance_shortfall_amount: '',
+  apply_currency_conversion_difference: false,
   completion_notes: '',
 });
 
@@ -446,6 +448,48 @@ export function buildPaymentFormDataFromSale(sale, cbuRate) {
         : 'USD'
       : 'UZS',
     balance_shortfall_type: '',
+    balance_shortfall_amount: '',
+    apply_currency_conversion_difference: false,
+  };
+}
+
+/**
+ * Payment difference after optional manual discount.
+ * remaining = paid - (due - discount); negative = underpayment still unexplained without FX.
+ */
+export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
+  const base = computePaymentShortfallMeta(sale, paymentFormData, cbuRate);
+  if (base.mixed || base.due == null || base.paid == null) {
+    return {
+      ...base,
+      discountAmount: 0,
+      remainingAfterDiscount: null,
+      conversionDifference: null,
+      differenceNeedsClassification: false,
+    };
+  }
+  const wantDiscount = paymentFormData.balance_shortfall_type === 'discount';
+  let discountAmount = 0;
+  if (wantDiscount) {
+    const entered = parseFloat(paymentFormData.balance_shortfall_amount);
+    discountAmount = Number.isFinite(entered) && entered > 0 ? entered : 0;
+  }
+  const remainingAfterDiscount = base.paid - (base.due - discountAmount);
+  const tol = (base.sc || 'USD').toUpperCase() === 'UZS' ? 1 : PAYMENT_SHORTFALL_TOLERANCE;
+  const wantFx = !!paymentFormData.apply_currency_conversion_difference;
+  const unexplained = wantFx ? 0 : remainingAfterDiscount;
+  const differenceNeedsClassification = Math.abs(unexplained) > tol;
+
+  return {
+    ...base,
+    discountAmount,
+    remainingAfterDiscount,
+    conversionDifference: wantFx ? remainingAfterDiscount : null,
+    differenceNeedsClassification,
+    // Surplus classified as FX is not a generic overpayment confirm.
+    hasOverpayment: wantFx ? false : base.hasOverpayment,
+    overpaymentAmount: wantFx ? null : base.overpaymentAmount,
+    exceedsRemainingDue: wantFx ? false : base.exceedsRemainingDue,
   };
 }
 
@@ -506,7 +550,10 @@ export function computePaymentShortfallMeta(sale, paymentFormData, cbuRate) {
   const hasOverpayment =
     !hasAdvance && !!overpaymentAmount && overpaymentAmount > PAYMENT_SHORTFALL_TOLERANCE;
   const needs =
-    paid != null && !payingOtherCurrency && paymentHasShortfall(due, paid, sc);
+    paid != null && !payingOtherCurrency && (
+      paymentHasShortfall(due, paid, sc)
+      || (!!overpaymentAmount && overpaymentAmount > PAYMENT_SHORTFALL_TOLERANCE)
+    );
 
   return {
     needs,
@@ -587,6 +634,13 @@ export function buildCompleteSaleRequest(paymentFormData, meta, exchangeRate) {
   };
   if (paymentFormData.balance_shortfall_type === 'discount') {
     requestData.balance_shortfall_type = 'discount';
+    const disc = parseFloat(paymentFormData.balance_shortfall_amount);
+    if (Number.isFinite(disc) && disc > 0) {
+      requestData.balance_shortfall_amount = disc;
+    }
+  }
+  if (paymentFormData.apply_currency_conversion_difference) {
+    requestData.apply_currency_conversion_difference = true;
   }
   const uzsT = requestData.uzs;
   const usdT = requestData.usd;
