@@ -40,6 +40,10 @@ function formatOrderStatus(status, tStatus) {
   return String(status ?? '').replace(/_/g, ' ');
 }
 
+function showMarkAsOrderedAction(order) {
+  return order.status === 'order_created';
+}
+
 function showMarkAsReceivedAction(order) {
   return (
     (order.status === 'ordered' || order.status === 'order_paid') &&
@@ -59,9 +63,10 @@ function orderReadyForInventoryActions(order) {
 const ORDER_TERMINAL_STATUSES = new Set(['in_inventory', 'sold', 'cancelled']);
 
 const ORDER_OPEN_STATUS_RANK = {
-  ordered: 0,
-  order_paid: 1,
-  received: 2,
+  order_created: 0,
+  ordered: 1,
+  order_paid: 2,
+  received: 3,
 };
 
 function compareActiveOrdersFirst(a, b) {
@@ -360,6 +365,7 @@ const Orders = () => {
 
   const orderStatusFilterOptions = useMemo(
     () => [
+      { value: 'order_created', label: tStatus('order_created', 'order') },
       { value: 'ordered', label: tStatus('ordered', 'order') },
       { value: 'order_paid', label: tStatus('order_paid', 'order') },
       { value: 'received', label: tStatus('received', 'order') },
@@ -376,6 +382,7 @@ const Orders = () => {
   const canMoveInventory = hasPermission('orders.move_to_inventory');
   const canSellProduct = hasPermission('orders.sell_product');
   const canUpdateStatus = hasPermission('orders.update_status');
+  const canMarkAsOrdered = hasPermission('orders.mark_as_ordered');
   const canPostOrderStatus = hasAnyPermission(['orders.update_status', 'orders.move_to_inventory']);
   const canManageStockOrders = canUpdateStatus || isOperationalSenior(user);
   const orderTableColumnCount = canManageStockOrders ? 24 : 23;
@@ -401,7 +408,7 @@ const Orders = () => {
       advance_payment_amount: '',
       advance_payment_currency: 'USD',
       advance_payment_type: 'cash',
-      status: 'ordered',
+      status: 'order_created',
     }),
     [canManageStockOrders],
   );
@@ -420,11 +427,11 @@ const Orders = () => {
   const [showForm, setShowForm] = useState(false);
   const [filters, setFilters] = useState({
     category_type: '',
-    category: '',
-    brand: '',
-    model: '',
+    category: [],
+    brand: [],
+    model: [],
     sizes: [],
-    color: '',
+    color: [],
     order_type: '',
     status: '',
     customer: '',
@@ -927,6 +934,24 @@ const Orders = () => {
     } catch (error) {
       console.error('Error updating status:', error);
       showNotification(error.response?.data?.error || error.response?.data?.detail || t('notifications.statusUpdateError'), 'error');
+    }
+  };
+
+  const handleMarkAsOrdered = async (orderId) => {
+    try {
+      if (!canMarkAsOrdered) {
+        showNotification(t('notifications.noStatusPermission'), 'error');
+        return;
+      }
+      await api.post(`/orders/${orderId}/mark_as_ordered/`, { notes: '' });
+      await fetchOrders();
+      showNotification(t('notifications.statusUpdated'), 'success');
+    } catch (error) {
+      console.error('Error marking order as ordered:', error);
+      showNotification(
+        error.response?.data?.error || error.response?.data?.detail || t('notifications.statusUpdateError'),
+        'error',
+      );
     }
   };
 
@@ -2156,11 +2181,11 @@ const Orders = () => {
               onClick={() =>
                 setFilters({
                   category_type: '',
-                  category: '',
-                  brand: '',
-                  model: '',
+                  category: [],
+                  brand: [],
+                  model: [],
                   sizes: [],
-                  color: '',
+                  color: [],
                   order_type: '',
                   status: '',
                   customer: '',
@@ -2226,6 +2251,15 @@ const Orders = () => {
                   <td>#{order.id}</td>
                   <td>
                     {/* Show status update buttons based on current status */}
+                    {showMarkAsOrderedAction(order) && canMarkAsOrdered && (
+                      <button
+                        className="btn-status"
+                        onClick={() => handleMarkAsOrdered(order.id)}
+                        style={{ marginRight: '5px' }}
+                      >
+                        {t('actions.markAsOrdered', { ns: 'orders' })}
+                      </button>
+                    )}
                     {showMarkAsReceivedAction(order) && canUpdateStatus && (
                       <button
                         className="btn-status"
@@ -2235,7 +2269,7 @@ const Orders = () => {
                         {t('actions.markReceived', { ns: 'orders' })}
                       </button>
                     )}
-                    {!order.order_is_paid && canPayOrder && (
+                    {!order.order_is_paid && canPayOrder && order.status !== 'order_created' && (
                       <button
                         className="btn-status"
                         onClick={() => handlePayOrder(order.id)}
@@ -2244,7 +2278,7 @@ const Orders = () => {
                         {t('actions.payOrder', { ns: 'orders' })}
                       </button>
                     )}
-                    {!order.cargo_is_paid && canPayCargo && (
+                    {!order.cargo_is_paid && canPayCargo && order.status !== 'order_created' && (
                       <button
                         className="btn-status"
                         onClick={() => handlePayCargo(order.id)}

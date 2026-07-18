@@ -29,6 +29,15 @@ export const ROUTE_PERMISSIONS = {
 
 /** Paths each role may see in the sidebar (null = permission-based only). */
 export const ROLE_VISIBLE_MENU_PATHS = {
+  sales_manager: [
+    '/dashboard',
+    '/products',
+    '/inventory/products',
+    '/orders',
+    '/sales',
+    '/returns',
+    '/customers',
+  ],
   senior_sales_manager: [
     '/dashboard',
     '/products',
@@ -42,14 +51,24 @@ export const ROLE_VISIBLE_MENU_PATHS = {
   ],
   dispatcher: ['/dispatchers'],
   targetolog: ['/dashboard'],
+  purchasing_agent: ['/orders'],
 };
 
 /** Paths hidden for a role even when a permission would allow them. */
 export const ROLE_HIDDEN_MENU_PATHS = {
-  ceo: ['/users', '/audit-logs', '/workers', '/bonus-rules', '/equity', '/fixed-assets'],
+  ceo: [
+    '/users',
+    '/audit-logs',
+    '/workers',
+    '/bonus-rules',
+    '/equity',
+    '/fixed-assets',
+    '/receivables-payables',
+    '/balance-sheet',
+  ],
   admin: ['/bonus-rules'],
   investor: ['/users', '/workers', '/audit-logs', '/bonus-rules'],
-  sales_manager: ['/customers', '/inventory/packages'],
+  sales_manager: ['/inventory/packages'],
 };
 
 /** Sidebar menu definitions — labelKey resolved via i18n (common.nav.*) */

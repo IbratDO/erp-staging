@@ -51,6 +51,7 @@
   "actions": {
     "payOrder": "Pay for the Order",
     "payCargo": "Pay for the Cargo",
+    "markAsOrdered": "Mark as Ordered",
     "markReceived": "Mark as Received",
     "moveToInventory": "Move to Inventory",
     "sellProduct": "Sell the Product",

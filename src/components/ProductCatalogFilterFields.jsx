@@ -1,9 +1,8 @@
 import React from 'react';
-import FilterSearchableSelect from './FilterSearchableSelect';
 import FilterMultiSelect from './FilterMultiSelect';
 
 /**
- * Shared product-attribute filters: searchable dropdowns + model free-text + size multi-select.
+ * Shared product-attribute filters: all fields are multi-select with checkbox dropdown.
  */
 export default function ProductCatalogFilterFields({
   filters,
@@ -18,23 +17,17 @@ export default function ProductCatalogFilterFields({
   const lbl = (key, fallback) => fieldLabels[key] ?? fallback;
   const empty = (key, fallback) => emptyLabels[key] ?? fallback;
 
-  const modelSearchPlaceholder = t('filters.modelSearch', { ns: 'common', defaultValue: 'Search model…' });
-  const modelSearchApply = t('filters.modelSearchApply', { ns: 'common', defaultValue: 'Search for "{{query}}"' });
-  const searchApply = t('filters.searchApply', { ns: 'common', defaultValue: 'Search for "{{query}}"' });
-
   return (
     <>
       {options.categories != null ? (
         <div className="filter-field">
           <label>{lbl('category', t('table.category', { defaultValue: 'Category' }))}</label>
-          <FilterSearchableSelect
-            value={filters.category}
+          <FilterMultiSelect
+            values={Array.isArray(filters.category) ? filters.category : filters.category ? [filters.category] : []}
             onChange={(category) => set({ category })}
             options={options.categories}
             emptyLabel={empty('category', t('filters.allCategories', { defaultValue: 'All categories' }))}
             placeholder={empty('category', t('filters.allCategories', { defaultValue: 'All categories' }))}
-            allowFreeText
-            freeTextApplyLabel={searchApply}
             aria-label={lbl('category', 'Category')}
           />
         </div>
@@ -43,14 +36,12 @@ export default function ProductCatalogFilterFields({
       {options.brands != null ? (
         <div className="filter-field">
           <label>{lbl('brand', t('table.brand', { defaultValue: 'Brand' }))}</label>
-          <FilterSearchableSelect
-            value={filters.brand}
+          <FilterMultiSelect
+            values={Array.isArray(filters.brand) ? filters.brand : filters.brand ? [filters.brand] : []}
             onChange={(brand) => set({ brand })}
             options={options.brands}
             emptyLabel={empty('brand', t('filters.allBrands', { defaultValue: 'All brands' }))}
             placeholder={empty('brand', t('filters.allBrands', { defaultValue: 'All brands' }))}
-            allowFreeText
-            freeTextApplyLabel={searchApply}
             aria-label={lbl('brand', 'Brand')}
           />
         </div>
@@ -59,14 +50,12 @@ export default function ProductCatalogFilterFields({
       {options.models != null ? (
         <div className="filter-field">
           <label>{lbl('model', t('table.model', { defaultValue: 'Model' }))}</label>
-          <FilterSearchableSelect
-            value={filters.model}
+          <FilterMultiSelect
+            values={Array.isArray(filters.model) ? filters.model : filters.model ? [filters.model] : []}
             onChange={(model) => set({ model })}
             options={options.models}
             emptyLabel={empty('model', t('filters.allModels', { defaultValue: 'All models' }))}
-            placeholder={modelSearchPlaceholder}
-            allowFreeText
-            freeTextApplyLabel={modelSearchApply}
+            placeholder={empty('model', t('filters.allModels', { defaultValue: 'All models' }))}
             aria-label={lbl('model', 'Model')}
           />
         </div>
@@ -89,14 +78,12 @@ export default function ProductCatalogFilterFields({
       {options.colors != null ? (
         <div className="filter-field">
           <label>{lbl('color', t('table.color', { defaultValue: 'Color' }))}</label>
-          <FilterSearchableSelect
-            value={filters.color}
+          <FilterMultiSelect
+            values={Array.isArray(filters.color) ? filters.color : filters.color ? [filters.color] : []}
             onChange={(color) => set({ color })}
             options={options.colors}
             emptyLabel={empty('color', t('filters.allColors', { defaultValue: 'All colors' }))}
             placeholder={empty('color', t('filters.allColors', { defaultValue: 'All colors' }))}
-            allowFreeText
-            freeTextApplyLabel={searchApply}
             aria-label={lbl('color', 'Color')}
           />
         </div>

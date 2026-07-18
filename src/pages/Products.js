@@ -136,11 +136,11 @@ const Products = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [filters, setFilters] = useState({
     category_type: '',
-    category: '',
-    brand: '',
-    model: '',
+    category: [],
+    brand: [],
+    model: [],
     sizes: [],
-    color: '',
+    color: [],
     year: '',
     month: '',
   });
@@ -1085,11 +1085,11 @@ const Products = () => {
               onClick={() =>
                 setFilters({
                   category_type: '',
-                  category: '',
-                  brand: '',
-                  model: '',
+                  category: [],
+                  brand: [],
+                  model: [],
                   sizes: [],
-                  color: '',
+                  color: [],
                   year: '',
                   month: '',
                 })

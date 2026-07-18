@@ -113,7 +113,9 @@ const Finance = () => {
     return leg;
   };
   const { hasPermission } = useAuth();
-  const canCreateManual = hasPermission('finance.create_manual');
+  const canCreateExpense = hasPermission('finance.create_manual');
+  const canCreateIncome = hasPermission('finance.create_income');
+  const canCreateManual = canCreateExpense || canCreateIncome;
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
@@ -336,12 +338,16 @@ const Finance = () => {
         <PageTitle ns="finance" />
         {canCreateManual && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-primary" onClick={() => { setShowIncomeForm(!showIncomeForm); setShowExpenseForm(false); }}>
-              {showIncomeForm ? t('actions.cancel', { ns: 'common' }) : t('addIncome')}
-            </button>
-            <button className="btn-edit" onClick={() => { setShowExpenseForm(!showExpenseForm); setShowIncomeForm(false); }}>
-              {showExpenseForm ? t('actions.cancel', { ns: 'common' }) : t('addExpense')}
-            </button>
+            {canCreateIncome && (
+              <button className="btn-primary" onClick={() => { setShowIncomeForm(!showIncomeForm); setShowExpenseForm(false); }}>
+                {showIncomeForm ? t('actions.cancel', { ns: 'common' }) : t('addIncome')}
+              </button>
+            )}
+            {canCreateExpense && (
+              <button className="btn-edit" onClick={() => { setShowExpenseForm(!showExpenseForm); setShowIncomeForm(false); }}>
+                {showExpenseForm ? t('actions.cancel', { ns: 'common' }) : t('addExpense')}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -350,7 +356,7 @@ const Finance = () => {
         <Trans i18nKey="intro" ns="finance" components={{ strong: <strong /> }} />
       </p>
 
-      {showExpenseForm && canCreateManual && (
+      {showExpenseForm && canCreateExpense && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>{t('expenseForm.title')}</h2>
           <form onSubmit={handleExpenseSubmit}>
@@ -459,7 +465,7 @@ const Finance = () => {
         </div>
       )}
 
-      {showIncomeForm && canCreateManual && (
+      {showIncomeForm && canCreateIncome && (
         <div className="form-card" style={{ marginBottom: '20px' }}>
           <h2>{t('incomeForm.title')}</h2>
           <form onSubmit={handleIncomeSubmit}>

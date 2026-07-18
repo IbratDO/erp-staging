@@ -51,6 +51,7 @@
   "actions": {
     "payOrder": "Buyurtmani to‘lash",
     "payCargo": "Yukni to‘lash",
+    "markAsOrdered": "Buyurtma berildi deb belgilash",
     "markReceived": "Qabul qilindi deb belgilash",
     "moveToInventory": "Omborga o‘tkazish",
     "sellProduct": "Mahsulotni sotish",

@@ -431,6 +431,11 @@
   color: #0c5460;
 }
 
+.status-badge.order_created {
+  background-color: #e7e9fd;
+  color: #2c3e8c;
+}
+
 .status-badge.ordered {
   background-color: #e2e3e5;
   color: #383d41;

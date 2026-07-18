@@ -97,11 +97,11 @@ const Inventory = () => {
   const [formCategory, setFormCategory] = useState('');
   const [filters, setFilters] = useState({
     category_type: '',
-    category: '',
-    brand: '',
-    model: '',
+    category: [],
+    brand: [],
+    model: [],
     sizes: [],
-    color: '',
+    color: [],
     status: '',
     year: '',
     month: '',
@@ -542,11 +542,11 @@ const Inventory = () => {
               onClick={() =>
                 setFilters({
                   category_type: '',
-                  category: '',
-                  brand: '',
-                  model: '',
+                  category: [],
+                  brand: [],
+                  model: [],
                   sizes: [],
-                  color: '',
+                  color: [],
                   status: '',
                   year: '',
                   month: '',

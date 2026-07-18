@@ -15,11 +15,13 @@ import ProductSearchableSelect from '../components/ProductSearchableSelect';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
 import FormSearchableSelect from '../components/FormSearchableSelect';
+import FormMultiSelect from '../components/FormMultiSelect';
 import { matchesProductCatalogFilters, getCascadedFilterOptions, getCascadedDateOptions } from '../utils/productFilterUtils';
 import { layerSalePickerLabel, resolveLayerListPrice } from '../utils/productCost';
 import {
   computeAdvanceRemainingDue,
   saleHasOrderAdvance,
+  getAdvanceCurrency,
   computeReservedPaymentMeta,
   buildSplitCurrencyConfirmMessage,
 } from '../utils/saleCompletePayHelpers';
@@ -352,7 +354,7 @@ const Sales = () => {
   const [loading, setLoading] = useState(true);
 
   const [showBatchForm, setShowBatchForm] = useState(false);
-  const [batchFormCategory, setBatchFormCategory] = useState('');
+  const [batchFormCategory, setBatchFormCategory] = useState([]);
   const [batchCustomer, setBatchCustomer] = useState('');
   const [batchDefaults, setBatchDefaults] = useState({
     sale_type: 'bought_from_shop',
@@ -361,11 +363,11 @@ const Sales = () => {
   const [batchLines, setBatchLines] = useState([]);
   const [filters, setFilters] = useState({
     category_type: '',
-    category: '',
-    brand: '',
-    model: '',
+    category: [],
+    brand: [],
+    model: [],
     sizes: [],
-    color: '',
+    color: [],
     status: '',
     sale_type: '',
     customer: '',
@@ -609,14 +611,14 @@ const Sales = () => {
     [products, productIdsWithPositiveInventory]
   );
 
-  const batchLayerPickerItems = useMemo(
+  // All available layers regardless of category filter — used for stock validation.
+  const allBatchLayerPickerItems = useMemo(
     () =>
       inventory
         .filter((layer) => Number(layer.quantity) > 0)
         .map((layer) => {
           const p = productForLayer(layer, products);
           if (!p) return null;
-          if (batchFormCategory && p.category !== batchFormCategory) return null;
           return {
             value: String(layer.batch_id),
             label: layerSalePickerLabel(p, layer),
@@ -629,13 +631,24 @@ const Sales = () => {
           (a, b) =>
             Number(b.product.id) - Number(a.product.id) || a.label.localeCompare(b.label)
         ),
-    [inventory, products, batchFormCategory]
+    [inventory, products]
   );
 
+  // Category-filtered view — shown in the per-line picker dropdown only.
+  const batchLayerPickerItems = useMemo(
+    () =>
+      batchFormCategory.length
+        ? allBatchLayerPickerItems.filter((item) => batchFormCategory.includes(item.product.category))
+        : allBatchLayerPickerItems,
+    [allBatchLayerPickerItems, batchFormCategory]
+  );
+
+  // Clear lines only when a layer truly disappears from inventory (stock ran out),
+  // NOT when the category filter changes.
   useEffect(() => {
     if (!showBatchForm) return;
     setBatchLines((lines) => {
-      const allowed = new Set(batchLayerPickerItems.map((item) => item.value));
+      const allowed = new Set(allBatchLayerPickerItems.map((item) => item.value));
       let changed = false;
       const next = lines.map((line) => {
         if (!line.layer) return line;
@@ -656,7 +669,7 @@ const Sales = () => {
       });
       return changed ? next : lines;
     });
-  }, [showBatchForm, batchLayerPickerItems]);
+  }, [showBatchForm, allBatchLayerPickerItems]);
 
   const fetchProducts = async () => {
     try {
@@ -864,7 +877,7 @@ const Sales = () => {
       });
       showNotification(data.message || t('notifications.batchCreated', { count: data.count }), 'success');
       setShowBatchForm(false);
-      setBatchFormCategory('');
+      setBatchFormCategory([]);
       setBatchCustomer('');
       setBatchLines([]);
       fetchSales();
@@ -923,6 +936,33 @@ const Sales = () => {
     deposit_amount: '',
     deposit_currency: 'USD',
   });
+
+  // Prefill remaining payment after advance (CBU-convert when advance currency ≠ sale currency).
+  useEffect(() => {
+    if (!showCompleteFromOrderForm || !completeFromOrderData.saleId) return;
+    const sale = sales.find((s) => s.id === completeFromOrderData.saleId);
+    if (!sale || !saleHasOrderAdvance(sale)) return;
+    const cbuRate = cfoExchangeRate?.rate ?? null;
+    const remaining = computeAdvanceRemainingDue(
+      sale,
+      completeFromOrderData.selling_price,
+      cbuRate,
+    );
+    if (remaining == null) return;
+    const sc = (sale.sale_currency || 'USD').toUpperCase();
+    const nextUzs = sc === 'UZS' && remaining > 0 ? String(Math.round(remaining)) : sc === 'UZS' ? '0' : '';
+    const nextUsd = sc === 'USD' && remaining > 0 ? remaining.toFixed(2) : sc === 'USD' ? '0' : '';
+    setCompleteFromOrderData((prev) => {
+      if (prev.now_uzs === nextUzs && prev.now_usd === nextUsd) return prev;
+      return { ...prev, now_uzs: nextUzs, now_usd: nextUsd };
+    });
+  }, [
+    showCompleteFromOrderForm,
+    completeFromOrderData.saleId,
+    completeFromOrderData.selling_price,
+    cfoExchangeRate?.rate,
+    sales,
+  ]);
 
   const openDeliverySettlementModal = async (saleId) => {
     try {
@@ -1107,9 +1147,6 @@ const Sales = () => {
   const handleCompleteFromOrder = async (saleId) => {
     const sale = sales.find(s => s.id === saleId);
     if (sale) {
-      const totalAmount = parseFloat(sale.selling_price) * sale.quantity;
-      const advancePayment = sale.advance_payment_received || 0;
-      const nowPaidAmount = totalAmount - advancePayment;
       setCompleteFromOrderPackageLines(EMPTY_PKG_LINES());
       setCompleteFromOrderData({
         saleId: saleId,
@@ -1120,7 +1157,7 @@ const Sales = () => {
             : '',
         sale_type: 'bought_from_shop',
         now_uzs: '',
-        now_usd: nowPaidAmount > 0 ? nowPaidAmount.toFixed(2) : '0',
+        now_usd: '',
         deposit_received: false,
         deposit_amount: '',
         deposit_currency: 'USD',
@@ -1565,11 +1602,11 @@ const Sales = () => {
             onClick={() => {
               if (showBatchForm) {
                 setShowBatchForm(false);
-                setBatchFormCategory('');
+                setBatchFormCategory([]);
                 setBatchLines([]);
               } else {
                 setShowBatchForm(true);
-                setBatchFormCategory('');
+                setBatchFormCategory([]);
                 setBatchCustomer('');
                 setBatchDefaults({
                   sale_type: 'bought_from_shop',
@@ -1746,19 +1783,9 @@ const Sales = () => {
                   min="0"
                   value={completeFromOrderData.selling_price ?? ''}
                   onChange={(e) => {
-                    const sellingPrice = parseFloat(e.target.value) || 0;
-                    const sale = sales.find(s => s.id === completeFromOrderData.saleId);
-                    const advancePayment = sale?.advance_payment_received || 0;
-                    const depositAmount = parseFloat(completeFromOrderData.deposit_amount || 0);
-                    const totalAmount = sellingPrice * (sale?.quantity || 1);
-                    // For reserved sales, calculate remaining after deposit
-                    const nowPaid = completeFromOrderData.sale_type === 'reserved' 
-                      ? totalAmount - advancePayment - depositAmount
-                      : totalAmount - advancePayment;
                     setCompleteFromOrderData({
                       ...completeFromOrderData,
                       selling_price: e.target.value,
-                      now_paid_amount: nowPaid > 0 ? nowPaid.toFixed(2) : '0',
                     });
                   }}
                   required
@@ -1767,12 +1794,12 @@ const Sales = () => {
               <div className="form-group">
                 <label>{t('completeFromOrder.advanceAuto')}</label>
                 <input
-                  type="number"
-                  step="0.01"
+                  type="text"
                   value={(() => {
-                    const adv = sales.find((s) => s.id === completeFromOrderData.saleId)?.advance_payment_received;
+                    const saleRow = sales.find((s) => s.id === completeFromOrderData.saleId);
+                    const adv = saleRow?.advance_payment_received;
                     if (adv == null || adv === '') return '';
-                    return String(adv);
+                    return formatDisplayAmount(adv, getAdvanceCurrency(saleRow));
                   })()}
                   readOnly
                   style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
@@ -1878,16 +1905,26 @@ const Sales = () => {
               {(() => {
                 const saleRow = sales.find((s) => s.id === completeFromOrderData.saleId);
                 if (!saleHasOrderAdvance(saleRow)) return null;
-                const remaining = computeAdvanceRemainingDue(saleRow, completeFromOrderData.selling_price);
+                const remaining = computeAdvanceRemainingDue(
+                  saleRow,
+                  completeFromOrderData.selling_price,
+                  cfoExchangeRate?.rate ?? null,
+                );
                 const sc = (saleRow?.sale_currency || 'USD').toUpperCase();
                 const otherCurrency = sc === 'USD' ? t('currency.uzs', { ns: 'common' }) : t('currency.usd', { ns: 'common' });
                 return (
                   <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                     <p style={{ margin: 0, fontSize: '0.9em', color: '#444' }}>
                       <strong>{t('completeFromOrder.remainingDue')}</strong>{' '}
-                      {formatDisplayAmount(remaining, sc)}
-                      {' '}
-                      {t('completeFromOrder.remainingHint', { currency: sc, otherCurrency })}
+                      {remaining == null
+                        ? (cfoExchangeRateError || t('completePay.errCbuRate'))
+                        : formatDisplayAmount(remaining, sc)}
+                      {remaining != null ? (
+                        <>
+                          {' '}
+                          {t('completeFromOrder.remainingHint', { currency: sc, otherCurrency })}
+                        </>
+                      ) : null}
                     </p>
                   </div>
                 );
@@ -2039,8 +2076,8 @@ const Sales = () => {
             <div className="sales-batch-header-row">
               <div className="form-group">
                 <label>{t('batch.filterCategory')}</label>
-                <FormSearchableSelect
-                  value={batchFormCategory}
+                <FormMultiSelect
+                  values={batchFormCategory}
                   onChange={setBatchFormCategory}
                   options={[...new Set(productsAvailableForSale.map((p) => p.category).filter(Boolean))].sort()}
                   emptyLabel={t('batch.allCategories')}
@@ -2416,11 +2453,11 @@ const Sales = () => {
               onClick={() =>
                 setFilters({
                   category_type: '',
-                  category: '',
-                  brand: '',
-                  model: '',
+                  category: [],
+                  brand: [],
+                  model: [],
                   sizes: [],
-                  color: '',
+                  color: [],
                   status: '',
                   sale_type: '',
                   customer: '',
@@ -2516,6 +2553,7 @@ const Sales = () => {
                         <strong>{t('multipleItems')}</strong>
                         <span style={{ color: '#666', fontSize: '0.85em' }}> ({row.sales.length})</span>
                       </td>
+                      <td>—</td>
                       <td>—</td>
                       <td>—</td>
                       <td>—</td>

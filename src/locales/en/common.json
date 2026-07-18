@@ -53,7 +53,8 @@
     "sales_manager": "Sotuv menejeri",
     "dispatcher": "Yetkazib beruvchi",
     "investor": "Investor",
-    "targetolog": "Targetolog"
+    "targetolog": "Targetolog",
+    "purchasing_agent": "Purchasing Agent"
   },
   "actions": {
     "add": "Add",

@@ -128,9 +128,10 @@ export default function SaleDeliverySettlementForm({
 
   useEffect(() => {
     if (!sale?.id || saleLoading) return;
-    if (formInitSaleIdRef.current === sale.id) return;
+    if (formInitSaleIdRef.current === sale.id && !cbuRate) return;
+    const alreadyInit = formInitSaleIdRef.current === sale.id;
     formInitSaleIdRef.current = sale.id;
-    const fd = buildPaymentFormDataFromSale(sale);
+    const fd = buildPaymentFormDataFromSale(sale, cbuRate);
     fd.dispatch_payment_needed = false;
     fd.dispatch_payment_amount = '';
     const step2FromStep1 = deliveryStep2PaymentFromStep1(sale);
@@ -140,20 +141,33 @@ export default function SaleDeliverySettlementForm({
         ? { ...fd, uzs: step2FromStep1.uzs, usd: step2FromStep1.usd }
         : { ...fd },
     );
-  }, [sale?.id, saleLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+    // When CBU arrives after first init, refresh remaining prefill for open step1 only.
+    if (alreadyInit && cbuRate && !sale.delivery_customer_paid_at) {
+      const due = computeAdvanceRemainingDue(sale, null, cbuRate);
+      const sc = (sale.sale_currency || 'USD').toUpperCase();
+      if (due != null && due > 0) {
+        setStep1((prev) => ({
+          ...prev,
+          uzs: sc === 'UZS' ? String(Math.round(due)) : '',
+          usd: sc === 'USD' ? due.toFixed(2) : '',
+        }));
+      }
+    }
+  }, [sale?.id, saleLoading, cbuRate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!sale?.id || saleLoading || sale.delivery_customer_paid_at) return;
     if (step1PrefillSaleIdRef.current === sale.id) return;
     step1PrefillSaleIdRef.current = sale.id;
-    const due = computeAdvanceRemainingDue(sale);
+    const due = computeAdvanceRemainingDue(sale, null, cbuRate);
+    if (due == null) return;
     const sc = sale.sale_currency || 'USD';
     if (sc === 'UZS' && due > 0) {
       setStep1((prev) => ({ ...prev, uzs: String(Math.round(due)), usd: '' }));
     } else if (due > 0) {
       setStep1((prev) => ({ ...prev, usd: due.toFixed(2), uzs: '' }));
     }
-  }, [sale?.id, saleLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sale?.id, saleLoading, cbuRate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!sale?.id) return;

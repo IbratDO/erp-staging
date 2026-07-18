@@ -16,6 +16,40 @@ export function saleHasOrderAdvance(sale) {
   return advance > 0 && (sale.sale_type === 'from_order' || sale.order != null);
 }
 
+/** Currency in which the customer advance was booked (from linked order when available). */
+export function getAdvanceCurrency(sale) {
+  const fromApiOrOrder =
+    sale?.advance_payment_currency ||
+    sale?.order_detail?.advance_payment_currency ||
+    (typeof sale?.order === 'object' ? sale?.order?.advance_payment_currency : null);
+  const advance = parseFloat(sale?.advance_payment_received) || 0;
+  const sc = String(sale?.sale_currency || 'USD').toUpperCase();
+
+  // Large advances on USD sales are almost always UZS (soum), even if currency was stored/sent as USD.
+  if (sc === 'USD' && advance >= 1000) return 'UZS';
+  if (sc === 'UZS' && advance > 0 && advance < 1000) return 'USD';
+
+  if (fromApiOrOrder) return String(fromApiOrOrder).toUpperCase();
+  return sc;
+}
+
+/**
+ * Order advance expressed in the sale's list currency.
+ * Returns null when CBU conversion is required but rate is not available yet.
+ */
+export function advanceAmountInSaleCurrency(sale, cbuRate) {
+  if (!sale) return 0;
+  const advance = parseFloat(sale.advance_payment_received) || 0;
+  if (advance <= 0) return 0;
+  const sc = (sale.sale_currency || 'USD').toUpperCase();
+  const ac = getAdvanceCurrency(sale);
+  if (ac === sc) return advance;
+  if (!cbuRate) return null;
+  if (ac === 'UZS' && sc === 'USD') return uzsToUsd(advance, cbuRate);
+  if (ac === 'USD' && sc === 'UZS') return usdToUzs(advance, cbuRate);
+  return advance;
+}
+
 /** Per-unit price customer pays: selling_price minus discount amount. */
 export function saleEffectiveUnitPrice(sale) {
   if (!sale) return 0;
@@ -91,7 +125,7 @@ function formatAmountForCurrency(amount, currency) {
   return `$${amount.toFixed(2)} USD`;
 }
 
-export function computeAdvanceRemainingDue(sale, sellingPriceOverride) {
+export function computeAdvanceRemainingDue(sale, sellingPriceOverride, cbuRate) {
   if (!sale) return 0;
   let total;
   if (sellingPriceOverride != null && sellingPriceOverride !== '') {
@@ -103,7 +137,8 @@ export function computeAdvanceRemainingDue(sale, sellingPriceOverride) {
     const qty = parseFloat(sale.quantity) || 0;
     total = saleEffectiveUnitPrice(sale) * qty;
   }
-  const advance = parseFloat(sale.advance_payment_received) || 0;
+  const advance = advanceAmountInSaleCurrency(sale, cbuRate);
+  if (advance == null) return null;
   return Math.max(0, (Number.isFinite(total) ? total : 0) - advance);
 }
 
@@ -120,10 +155,16 @@ export function validateAdvanceCompletionPayment(sale, uzsStr, usdStr, sellingPr
   if (!saleHasOrderAdvance(sale)) {
     return { ok: true };
   }
-  const due = computeAdvanceRemainingDue(sale, sellingPriceOverride);
+  const due = computeAdvanceRemainingDue(sale, sellingPriceOverride, cbuRate);
   const sc = (sale.sale_currency || 'USD').toUpperCase();
   const uzsT = parseFloat(uzsStr) || 0;
   const usdT = parseFloat(usdStr) || 0;
+  const advCcy = getAdvanceCurrency(sale);
+  const needsAdvCbu = advCcy !== sc;
+
+  if (due == null || (needsAdvCbu && !cbuRate)) {
+    return { ok: false, error: cp('errRateLoading') };
+  }
 
   if (uzsT > 0 && usdT > 0) {
     if (!cbuRate) {
@@ -329,14 +370,16 @@ export function deliveryStep2PaymentFromStep1(sale) {
   };
 }
 
-export function buildPaymentFormDataFromSale(sale) {
+export function buildPaymentFormDataFromSale(sale, cbuRate) {
   if (!sale) return emptyPaymentFormState();
 
   const unitPrice = saleEffectiveUnitPrice(sale);
   const quantity = parseFloat(sale.quantity || 0);
   const totalAmount = !isNaN(unitPrice * quantity) ? unitPrice * quantity : 0;
-  const advancePayment = parseFloat(sale.advance_payment_received || 0);
-  const nowBeingPaid = totalAmount - advancePayment;
+  const advancePaymentRaw = parseFloat(sale.advance_payment_received || 0);
+  const advanceInSc = advanceAmountInSaleCurrency(sale, cbuRate);
+  const nowBeingPaid =
+    advanceInSc == null ? null : Math.max(0, totalAmount - advanceInSc);
 
   const dispatch = sale.dispatch_info;
   const uzsV = dispatch ? parseFloat(dispatch.delivery_cost_uzs || 0) : 0;
@@ -353,29 +396,47 @@ export function buildPaymentFormDataFromSale(sale) {
         : ''
     : '';
 
-  const isFromOrder = !!(sale.order || advancePayment > 0 || sale.sale_type === 'from_order');
-  const sc = sale.sale_currency || 'USD';
+  const isFromOrder = !!(sale.order || advancePaymentRaw > 0 || sale.sale_type === 'from_order');
+  const sc = (sale.sale_currency || 'USD').toUpperCase();
   const listUnit = parseFloat(sale.selling_price) || 0;
   const discountAmountPerUnit = saleDiscountAmountPerUnit(sale);
   const finalUnit = saleEffectiveUnitPrice(sale);
   const listTotal = listUnit * quantity;
   const discountTotal = discountAmountPerUnit * quantity;
 
+  let uzs = '';
+  let usd = '';
+  if (isFromOrder) {
+    if (nowBeingPaid != null && nowBeingPaid > 0) {
+      if (sc === 'UZS') uzs = String(Math.round(nowBeingPaid));
+      else usd = nowBeingPaid.toFixed(2);
+    } else if (nowBeingPaid === 0) {
+      if (sc === 'UZS') uzs = '0';
+      else usd = '0';
+    }
+    // nowBeingPaid == null → wait for CBU; leave payment fields empty
+  } else if (sc === 'UZS') {
+    uzs = String(Math.round(totalAmount));
+  } else {
+    usd = totalAmount.toFixed(2);
+  }
+
   return {
     saleId: sale.id,
     completion_notes: '',
-    uzs: '',
-    usd: isFromOrder
-      ? (nowBeingPaid > 0 ? nowBeingPaid.toFixed(2) : '0')
-      : totalAmount.toFixed(2),
-    prepayment_amount: isFromOrder && advancePayment > 0 ? advancePayment.toFixed(2) : '',
-    total_sale_amount: isFromOrder && advancePayment > 0 ? totalAmount.toFixed(2) : '',
+    uzs,
+    usd,
+    prepayment_amount:
+      isFromOrder && advancePaymentRaw > 0 ? String(advancePaymentRaw) : '',
+    prepayment_currency: isFromOrder && advancePaymentRaw > 0 ? getAdvanceCurrency(sale) : '',
+    total_sale_amount: isFromOrder && advancePaymentRaw > 0 ? totalAmount.toFixed(2) : '',
     list_unit_price: listUnit,
     discount_amount_per_unit: discountAmountPerUnit,
     final_unit_price: finalUnit,
     list_total_amount: listTotal,
     sale_discount_total: discountTotal,
-    final_amount_due: nowBeingPaid > 0 ? nowBeingPaid : totalAmount,
+    final_amount_due:
+      nowBeingPaid != null ? (nowBeingPaid > 0 ? nowBeingPaid : totalAmount) : totalAmount,
     sale_currency: sc,
     dispatch_payment_needed: !!dispatchPaymentNeeded,
     dispatch_payment_amount: dispatchPaymentNeeded ? dispatchAmountForForm : '',
@@ -406,7 +467,7 @@ export function computePaymentShortfallMeta(sale, paymentFormData, cbuRate) {
       overpaymentAmount: null,
     };
   }
-  const due = computeAdvanceRemainingDue(sale);
+  const due = computeAdvanceRemainingDue(sale, null, cbuRate);
   const uzsT = parseFloat(paymentFormData.uzs) || 0;
   const usdT = parseFloat(paymentFormData.usd) || 0;
   const sc = (sale.sale_currency || 'USD').toUpperCase();
@@ -414,8 +475,9 @@ export function computePaymentShortfallMeta(sale, paymentFormData, cbuRate) {
   const splitCurrency = uzsT > 0 && usdT > 0;
   const needsCbu = paymentNeedsCbuConversion(uzsT, usdT, sc);
   const crossCurrency = needsCbu && !splitCurrency;
+  const advNeedsCbu = hasAdvance && getAdvanceCurrency(sale) !== sc;
 
-  if (needsCbu && !cbuRate && (uzsT > 0 || usdT > 0)) {
+  if ((needsCbu && !cbuRate && (uzsT > 0 || usdT > 0)) || (advNeedsCbu && due == null)) {
     return {
       needs: false,
       mixed: true,
@@ -547,7 +609,8 @@ export function buildCompleteSaleRequest(paymentFormData, meta, exchangeRate) {
 /** Split one group payment across line items (remainder on last sale to avoid rounding drift). */
 export function buildGroupCompleteRequests(groupSales, paymentFormData, meta, exchangeRate) {
   if (!groupSales?.length) return [];
-  const dues = groupSales.map((sale) => computeAdvanceRemainingDue(sale));
+  const cbuRate = exchangeRate?.rate ?? null;
+  const dues = groupSales.map((sale) => computeAdvanceRemainingDue(sale, null, cbuRate) || 0);
   const totalDue = dues.reduce((sum, d) => sum + d, 0);
   const uzsIn = parseFloat(paymentFormData.uzs) || 0;
   const usdIn = parseFloat(paymentFormData.usd) || 0;

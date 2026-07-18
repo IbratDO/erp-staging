@@ -39,8 +39,9 @@ export function getCascadedFilterOptions(items, filters, detailAccessor, sortSiz
       if (f === 'size') {
         const sizes = selectedSizesFromFilters(filters);
         if (sizes.length && !matchesAnySelected(d.size, sizes)) return false;
-      } else if (filters[f] && !matchesPartialText(d[f], filters[f])) {
-        return false;
+      } else {
+        const vals = selectedValuesFromFilter(filters[f]);
+        if (vals.length && !matchesAnySelected(d[f], vals)) return false;
       }
     }
     return true;
@@ -136,17 +137,33 @@ export function selectedSizesFromFilters(filters) {
 }
 
 /**
+ * Normalize a multi-select filter field.
+ * Accepts an array (new) or a plain string (legacy / backward-compat).
+ */
+export function selectedValuesFromFilter(val) {
+  if (Array.isArray(val)) return val;
+  if (val && typeof val === 'string') return [val];
+  return [];
+}
+
+/**
  * Match a product row or `product_detail` object against catalog filters.
- * Model, brand, color, category use partial text; size uses multi-select OR.
+ * Category, brand, color use multi-select OR logic.
+ * Model uses partial-text free search.
+ * Size uses multi-select OR logic via selectedSizesFromFilters.
  */
 export function matchesProductCatalogFilters(detail, filters) {
   if (!detail) return false;
   if (filters.category_type && detail.category_type !== filters.category_type) return false;
-  if (filters.category && !matchesPartialText(detail.category, filters.category)) return false;
-  if (filters.brand && !matchesPartialText(detail.brand, filters.brand)) return false;
-  if (filters.model && !matchesPartialText(detail.model, filters.model)) return false;
+  const cats = selectedValuesFromFilter(filters.category);
+  if (cats.length && !matchesAnySelected(detail.category, cats)) return false;
+  const brands = selectedValuesFromFilter(filters.brand);
+  if (brands.length && !matchesAnySelected(detail.brand, brands)) return false;
+  const models = selectedValuesFromFilter(filters.model);
+  if (models.length && !matchesAnySelected(detail.model, models)) return false;
   const sizes = selectedSizesFromFilters(filters);
   if (sizes.length && !matchesAnySelected(detail.size, sizes)) return false;
-  if (filters.color && !matchesPartialText(detail.color, filters.color)) return false;
+  const colors = selectedValuesFromFilter(filters.color);
+  if (colors.length && !matchesAnySelected(detail.color, colors)) return false;
   return true;
 }

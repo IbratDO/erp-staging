@@ -26,19 +26,14 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   const [exchangeRateError, setExchangeRateError] = useState(null);
 
   useEffect(() => {
-    if (sale) {
-      setPaymentFormData(buildPaymentFormDataFromSale(sale));
-    } else {
-      setPaymentFormData(emptyPaymentFormState());
-    }
-  }, [sale]);
-
-  useEffect(() => {
     if (!sale) {
       setExchangeRate(null);
       setExchangeRateError(null);
+      setPaymentFormData(emptyPaymentFormState());
       return;
     }
+    // Prefill immediately (same-currency advances work without rate); rebuild when CBU loads.
+    setPaymentFormData(buildPaymentFormDataFromSale(sale, null));
     let cancelled = false;
     api
       .get('/exchange-rate/')
@@ -46,6 +41,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         if (!cancelled) {
           setExchangeRate(res.data);
           setExchangeRateError(null);
+          setPaymentFormData(buildPaymentFormDataFromSale(sale, res.data?.rate ?? null));
         }
       })
       .catch(() => {
@@ -232,9 +228,11 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label>{t('completePay.prepayment')}</label>
               <input
-                type="number"
-                step="0.01"
-                value={paymentFormData.prepayment_amount ?? ''}
+                type="text"
+                value={formatDisplayAmount(
+                  paymentFormData.prepayment_amount,
+                  paymentFormData.prepayment_currency || sc,
+                )}
                 readOnly
                 style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
               />

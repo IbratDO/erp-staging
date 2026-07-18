@@ -10,6 +10,7 @@
     "inactive": "Nofaol"
   },
   "order": {
+    "order_created": "Buyurtma yaratildi",
     "ordered": "Buyurtma berildi",
     "order_paid": "Buyurtma to‘langan",
     "received": "Qabul qilindi",

@@ -10,6 +10,7 @@
     "inactive": "Inactive"
   },
   "order": {
+    "order_created": "Order Created",
     "ordered": "Ordered",
     "order_paid": "Order paid",
     "received": "Received",
