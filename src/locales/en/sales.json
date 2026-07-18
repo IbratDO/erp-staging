@@ -47,7 +47,8 @@
     "completePay": "Complete & pay",
     "completeSale": "Complete sale",
     "sell": "Sell",
-    "cancelReserved": "Cancel reservation"
+    "cancelReserved": "Cancel reservation",
+    "cancelSale": "Cancel sale"
   },
   "table": {
     "actions": "Actions",
@@ -303,6 +304,11 @@
     "confirmCancelReserved": "Are you sure you want to cancel this reserved sale? The item will be returned to inventory.",
     "cancelReservedSuccess": "Reserved sale cancelled successfully. Item returned to inventory.",
     "errCancelReserved": "Error cancelling reserved sale",
+    "confirmCancelSale": "Cancel this in-progress sale? The sale record will be kept. Completed sales must use Returns instead.",
+    "confirmCancelSaleGroup": "Cancel all {{count}} items in this multi-item sale? Every in-progress line will be cancelled. Completed sales must use Returns instead.",
+    "cancelSaleSuccess": "Sale cancelled successfully.",
+    "cancelSaleGroupSuccess": "Cancelled {{count}} items in this multi-item sale.",
+    "errCancelSale": "Error cancelling sale",
     "errPkgNotExist": "Package type \"{{type}}\" does not exist.",
     "errPkgInsufficient": "Insufficient stock for package \"{{type}}\": need {{need}}, have {{have}}."
   }

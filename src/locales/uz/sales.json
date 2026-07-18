@@ -47,7 +47,8 @@
     "completePay": "To‘lov bilan yakunlash",
     "completeSale": "Sotuvni yakunlash",
     "sell": "Sotish",
-    "cancelReserved": "Band qilishni bekor qilish"
+    "cancelReserved": "Band qilishni bekor qilish",
+    "cancelSale": "Sotuvni bekor qilish"
   },
   "table": {
     "actions": "Amallar",
@@ -303,6 +304,11 @@
     "confirmCancelReserved": "Ushbu band qilingan sotuvni bekor qilasizmi? Mahsulot omborga qaytariladi.",
     "cancelReservedSuccess": "Band qilingan sotuv bekor qilindi. Mahsulot omborga qaytarildi.",
     "errCancelReserved": "Band qilingan sotuvni bekor qilishda xatolik",
+    "confirmCancelSale": "Ushbu jarayondagi sotuv bekor qilinsinmi? Yozuv saqlanadi. Yakunlangan sotuvlar uchun Qaytarishlar moduli ishlatiladi.",
+    "confirmCancelSaleGroup": "Ushbu ko‘p mahsulotli sotuvdagi barcha {{count}} ta pozitsiya bekor qilinsinmi? Jarayondagi har bir qator bekor qilinadi. Yakunlangan sotuvlar uchun Qaytarishlar moduli ishlatiladi.",
+    "cancelSaleSuccess": "Sotuv muvaffaqiyatli bekor qilindi.",
+    "cancelSaleGroupSuccess": "Ko‘p mahsulotli sotuvdagi {{count}} ta pozitsiya bekor qilindi.",
+    "errCancelSale": "Sotuvni bekor qilishda xatolik",
     "errPkgNotExist": "«{{type}}» qadoq turi mavjud emas.",
     "errPkgInsufficient": "«{{type}}» qadoq zaxirasi yetarli emas: kerak {{need}}, bor {{have}}."
   }

@@ -341,6 +341,23 @@ const Sales = () => {
   const canDispatch = hasPermission('sales.update_status');
   const canSellReserved = hasPermission('sales.sell_reserved');
   const canCancelReserved = hasPermission('sales.cancel_reserved');
+  const canCancelSale = hasPermission('sales.cancel');
+  const SALE_TERMINAL_STATUSES = useMemo(() => new Set(['completed', 'cancelled']), []);
+  const saleHasStartedDeliverySettlement = (sale) => Boolean(
+    sale?.delivery_customer_paid_at
+    || sale?.delivery_shop_remittance_at
+    || sale?.delivery_dispatcher_fee_completed_at
+    || sale?.dispatch_info?.is_paid
+  );
+  const canShowCancelSale = (sale, groupSales = null) => {
+    if (!canCancelSale) return false;
+    const lines = groupSales?.length ? groupSales : (sale ? [sale] : []);
+    if (!lines.length) return false;
+    // Multi-item cancel is all-or-nothing: block if any line is completed or settlement started.
+    if (lines.some((s) => s.status === 'completed')) return false;
+    if (lines.some((s) => saleHasStartedDeliverySettlement(s))) return false;
+    return lines.some((s) => !SALE_TERMINAL_STATUSES.has(s.status));
+  };
   const canDeliverySettle = hasAnyPermission([
     'sales.delivery_customer_paid',
     'sales.delivery_shop_received',
@@ -1300,6 +1317,38 @@ const Sales = () => {
     }
   };
 
+  const handleCancelSale = async (saleId, groupSales = null) => {
+    if (!canCancelSale) {
+      showNotification(t('notifications.errCancelSale'), 'error');
+      return;
+    }
+    const lines = groupSales?.length ? groupSales : null;
+    const openCount = lines
+      ? lines.filter((s) => !SALE_TERMINAL_STATUSES.has(s.status)).length
+      : 1;
+    const confirmMsg = openCount > 1
+      ? t('notifications.confirmCancelSaleGroup', { count: openCount })
+      : t('notifications.confirmCancelSale');
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+    try {
+      // Backend cancels the whole SaleGroup when the sale belongs to one.
+      await api.post(`/sales/${saleId}/cancel/`);
+      fetchSales();
+      fetchInventory();
+      showNotification(
+        openCount > 1
+          ? t('notifications.cancelSaleGroupSuccess', { count: openCount })
+          : t('notifications.cancelSaleSuccess'),
+        'success',
+      );
+    } catch (error) {
+      console.error('Error cancelling sale:', error);
+      showNotification(error.response?.data?.error || t('notifications.errCancelSale'), 'error');
+    }
+  };
+
   const handleSellReserved = async (saleId) => {
     const sale = sales.find(s => s.id === saleId);
     if (sale) {
@@ -1401,6 +1450,10 @@ const Sales = () => {
 
   const renderSaleActionsCell = (sale, groupSales = null) => {
     const actionFor = (status) => handleStatusUpdate(sale.id, status, groupSales || undefined);
+    const showCancel = canShowCancelSale(sale, groupSales);
+    const cancelTargetId = groupSales?.length
+      ? (groupSales.find((s) => !SALE_TERMINAL_STATUSES.has(s.status))?.id || sale.id)
+      : sale.id;
     return (
       <>
         {(sale.status === 'pending' || sale.status === 'confirmed') &&
@@ -1462,7 +1515,16 @@ const Sales = () => {
               {t('rowActions.sell', { ns: 'sales' })}
             </button>
             )}
-            {canCancelReserved && (
+            {showCancel ? (
+            <button
+              type="button"
+              className="btn-edit"
+              onClick={() => handleCancelSale(cancelTargetId, groupSales)}
+              style={{ backgroundColor: '#f44336', color: 'white' }}
+            >
+              {t('rowActions.cancelSale', { ns: 'sales' })}
+            </button>
+            ) : canCancelReserved && !groupSales?.length ? (
             <button
               type="button"
               className="btn-edit"
@@ -1471,13 +1533,23 @@ const Sales = () => {
             >
               {t('rowActions.cancelReserved', { ns: 'sales' })}
             </button>
-            )}
+            ) : null}
             {sale.deposit_received && (
               <span style={{ fontSize: '0.85em', color: '#666', display: 'block', marginTop: '5px' }}>
                 {t('deposit', { ns: 'sales' })}: {formatDisplayAmount(sale.deposit_amount, sale.deposit_currency || 'USD')}
               </span>
             )}
           </>
+        )}
+        {showCancel && !(sale.status === 'reserved' && sale.sale_type === 'reserved') && (
+          <button
+            type="button"
+            className="btn-edit"
+            onClick={() => handleCancelSale(cancelTargetId, groupSales)}
+            style={{ backgroundColor: '#f44336', color: 'white', marginTop: '5px' }}
+          >
+            {t('rowActions.cancelSale', { ns: 'sales' })}
+          </button>
         )}
         {sale.status === 'completed' && sale.payment_currency && (
           <span style={{ fontSize: '0.9em', color: '#666', display: 'block', marginTop: '5px' }}>

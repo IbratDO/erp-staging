@@ -383,10 +383,19 @@ const Orders = () => {
   const canSellProduct = hasPermission('orders.sell_product');
   const canUpdateStatus = hasPermission('orders.update_status');
   const canMarkAsOrdered = hasPermission('orders.mark_as_ordered');
+  // Edit Cargo Cost is only for roles that cannot pay cargo (Purchasing Agent).
+  // Roles with Pay Cargo set/change the amount in the pay-cargo flow.
+  const canEditCargoCost =
+    hasPermission('orders.edit_cargo_cost') && !hasPermission('orders.pay_cargo');
+  const canCancelOrder = hasPermission('orders.cancel');
   const canPostOrderStatus = hasAnyPermission(['orders.update_status', 'orders.move_to_inventory']);
   const canManageStockOrders = canUpdateStatus || isOperationalSenior(user);
-  const orderTableColumnCount = canManageStockOrders ? 24 : 23;
-  const orderFooterLabelColSpan = canManageStockOrders ? 14 : 13;
+  // Purchasing Agent must see stock + on-demand rows to mark Ordered / edit cargo.
+  // Sales managers without stock workflow still see on-demand only.
+  const canSeeStockOrders =
+    canManageStockOrders || canMarkAsOrdered || canEditCargoCost;
+  const orderTableColumnCount = canSeeStockOrders ? 24 : 23;
+  const orderFooterLabelColSpan = canSeeStockOrders ? 14 : 13;
   /** Ledger totals for pay flows and move-to-inventory advance refunds (not bare status updates). */
   const needsLedgerForPayments = canPayOrder || canPayCargo || canMoveInventory;
 
@@ -456,6 +465,13 @@ const Orders = () => {
     usd: '',
   });
   const [showCargoForm, setShowCargoForm] = useState(false);
+  const [editCargoFormData, setEditCargoFormData] = useState({
+    orderId: null,
+    uzs: '',
+    usd: '',
+  });
+  const [showEditCargoForm, setShowEditCargoForm] = useState(false);
+  const editCargoFormRef = useRef(null);
   
   const [showMoveToInventoryForm, setShowMoveToInventoryForm] = useState(false);
   const [formCategoryType, setFormCategoryType] = useState('');
@@ -504,11 +520,19 @@ const Orders = () => {
   };
   
   const canViewCash = hasPermission('cash.view');
+  const canViewProducts = hasPermission('products.view');
+  const canViewCustomers = hasPermission('customers.view');
 
   useEffect(() => {
     fetchOrders();
-    fetchProducts();
-    fetchCustomers();
+    // Purchasing Agent (and similar) may use Orders without products/customers grants.
+    // Catalog filters already use nested product_detail / customer_detail on each order.
+    if (canViewProducts || canCreateOrder) {
+      fetchProducts();
+    }
+    if (canViewCustomers || canCreateOrder) {
+      fetchCustomers();
+    }
     if (canViewCash || needsLedgerForPayments) {
       fetchBalances();
     }
@@ -604,7 +628,7 @@ const Orders = () => {
   const applyFilters = (ordersList) => {
     let filtered = ordersList;
 
-    if (!canManageStockOrders) {
+    if (!canSeeStockOrders) {
       filtered = filtered.filter((order) => order.order_type !== 'stock');
     }
     
@@ -957,6 +981,10 @@ const Orders = () => {
 
   const handlePayOrder = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
+    if (!order || ORDER_TERMINAL_STATUSES.has(order.status)) {
+      showNotification(t('notifications.orderTerminalReadonly'), 'error');
+      return;
+    }
     const pref = prefillPayOrderSimpleTotals(order);
     setPaymentFormData({
       orderId: orderId,
@@ -972,6 +1000,10 @@ const Orders = () => {
 
   const handlePayCargo = async (orderId) => {
     const order = orders.find(o => o.id === orderId);
+    if (!order || ORDER_TERMINAL_STATUSES.has(order.status)) {
+      showNotification(t('notifications.orderTerminalReadonly'), 'error');
+      return;
+    }
     const costUzs = order?.cargo_cost_uzs > 0 ? order.cargo_cost_uzs : '';
     const costUsd = order?.cargo_cost_usd > 0 ? order.cargo_cost_usd : '';
     setCargoFormData({
@@ -981,6 +1013,66 @@ const Orders = () => {
     });
     setShowCargoForm(true);
     setTimeout(() => cargoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  const handleEditCargoCost = (orderId) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order || ORDER_TERMINAL_STATUSES.has(order.status)) {
+      showNotification(t('notifications.cargoCostTerminal'), 'error');
+      return;
+    }
+    if (order.cargo_is_paid) {
+      showNotification(t('notifications.cargoCostAlreadyPaid'), 'error');
+      return;
+    }
+    setEditCargoFormData({
+      orderId,
+      uzs: order.cargo_cost_uzs != null && Number(order.cargo_cost_uzs) > 0 ? String(order.cargo_cost_uzs) : '',
+      usd: order.cargo_cost_usd != null && Number(order.cargo_cost_usd) > 0 ? String(order.cargo_cost_usd) : '',
+    });
+    setShowEditCargoForm(true);
+    setTimeout(() => editCargoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  const handleEditCargoCostSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post(`/orders/${editCargoFormData.orderId}/edit_cargo_cost/`, {
+        cargo_cost_uzs: editCargoFormData.uzs === '' ? 0 : Number(editCargoFormData.uzs) || 0,
+        cargo_cost_usd: editCargoFormData.usd === '' ? 0 : Number(editCargoFormData.usd) || 0,
+      });
+      setShowEditCargoForm(false);
+      setEditCargoFormData({ orderId: null, uzs: '', usd: '' });
+      await fetchOrders();
+      showNotification(t('notifications.cargoCostUpdated'), 'success');
+    } catch (error) {
+      console.error('Error updating cargo cost:', error);
+      showNotification(
+        error.response?.data?.error || error.response?.data?.detail || t('notifications.cargoCostUpdateError'),
+        'error',
+      );
+    }
+  };
+
+  const handleCancelOrder = async (orderId) => {
+    if (!canCancelOrder) {
+      showNotification(t('notifications.noCancelPermission'), 'error');
+      return;
+    }
+    if (!window.confirm(t('confirm.cancelOrder', { id: orderId }))) {
+      return;
+    }
+    try {
+      await api.post(`/orders/${orderId}/cancel/`, { notes: '' });
+      await fetchOrders();
+      showNotification(t('notifications.orderCancelled'), 'success');
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+      showNotification(
+        error.response?.data?.error || error.response?.data?.detail || t('notifications.orderCancelError'),
+        'error',
+      );
+    }
   };
 
   const handlePaymentSubmit = async (e) => {
@@ -1549,6 +1641,56 @@ const Orders = () => {
         </div>
       )}
 
+      {showEditCargoForm && (
+        <div className="form-card" style={{ marginBottom: '20px' }} ref={editCargoFormRef}>
+          <h2>{t('editCargoForm.title', { id: editCargoFormData.orderId })}</h2>
+          <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
+            {t('editCargoForm.intro')}
+          </p>
+          <form onSubmit={handleEditCargoCostSubmit}>
+            <div className="form-grid">
+              <div className="form-group">
+                <label>{uzsLabel}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={editCargoFormData.uzs}
+                  onChange={(e) => setEditCargoFormData({ ...editCargoFormData, uzs: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>{t('currency.usd', { ns: 'common' })}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={editCargoFormData.usd}
+                  onChange={(e) => setEditCargoFormData({ ...editCargoFormData, usd: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="form-actions">
+              <button type="submit" className="btn-primary">
+                {t('actions.saveCargoCost', { ns: 'orders' })}
+              </button>
+              <button
+                type="button"
+                className="btn-edit"
+                onClick={() => {
+                  setShowEditCargoForm(false);
+                  setEditCargoFormData({ orderId: null, uzs: '', usd: '' });
+                }}
+              >
+                {t('actions.cancel', { ns: 'common' })}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {showForm && canCreateOrder && (
         <div className="form-card">
           <h2>{t('form.newTitle')}</h2>
@@ -2099,7 +2241,7 @@ const Orders = () => {
               color: t('filters.allColors', { ns: 'orders' }),
             }}
           />
-          {canManageStockOrders && (
+          {canSeeStockOrders && (
           <div className="filter-field">
             <label>{t('filters.orderType', { ns: 'orders' })}</label>
             <select
@@ -2218,7 +2360,7 @@ const Orders = () => {
               <SortableTh columnId="supplier_country" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.supplierCountry', { ns: 'orders' })}</SortableTh>
               <SortableTh columnId="supplier_cargo" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.supplierCargo', { ns: 'orders' })}</SortableTh>
               <SortableTh columnId="eshop" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.eshop', { ns: 'orders' })}</SortableTh>
-              {canManageStockOrders && (
+              {canSeeStockOrders && (
               <SortableTh columnId="order_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.orderType', { ns: 'orders' })}</SortableTh>
               )}
               <SortableTh columnId="customer" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.customer', { ns: 'orders' })}</SortableTh>
@@ -2269,7 +2411,10 @@ const Orders = () => {
                         {t('actions.markReceived', { ns: 'orders' })}
                       </button>
                     )}
-                    {!order.order_is_paid && canPayOrder && order.status !== 'order_created' && (
+                    {!order.order_is_paid &&
+                      canPayOrder &&
+                      order.status !== 'order_created' &&
+                      !ORDER_TERMINAL_STATUSES.has(order.status) && (
                       <button
                         className="btn-status"
                         onClick={() => handlePayOrder(order.id)}
@@ -2278,13 +2423,36 @@ const Orders = () => {
                         {t('actions.payOrder', { ns: 'orders' })}
                       </button>
                     )}
-                    {!order.cargo_is_paid && canPayCargo && order.status !== 'order_created' && (
+                    {!order.cargo_is_paid &&
+                      canPayCargo &&
+                      order.status !== 'order_created' &&
+                      !ORDER_TERMINAL_STATUSES.has(order.status) && (
                       <button
                         className="btn-status"
                         onClick={() => handlePayCargo(order.id)}
                         style={{ marginRight: '5px' }}
                       >
                         {t('actions.payCargo', { ns: 'orders' })}
+                      </button>
+                    )}
+                    {canEditCargoCost &&
+                      !ORDER_TERMINAL_STATUSES.has(order.status) &&
+                      !order.cargo_is_paid && (
+                      <button
+                        className="btn-status"
+                        onClick={() => handleEditCargoCost(order.id)}
+                        style={{ marginRight: '5px' }}
+                      >
+                        {t('actions.editCargoCost', { ns: 'orders' })}
+                      </button>
+                    )}
+                    {canCancelOrder && !ORDER_TERMINAL_STATUSES.has(order.status) && (
+                      <button
+                        className="btn-edit"
+                        onClick={() => handleCancelOrder(order.id)}
+                        style={{ marginRight: '5px', backgroundColor: '#f44336', color: 'white' }}
+                      >
+                        {t('actions.cancelOrder', { ns: 'orders' })}
                       </button>
                     )}
                     {orderReadyForInventoryActions(order) && order.order_type === 'stock' && canMoveInventory && (
@@ -2345,7 +2513,7 @@ const Orders = () => {
                       <span style={{ color: '#bbb' }}>—</span>
                     )}
                   </td>
-                  {canManageStockOrders && (
+                  {canSeeStockOrders && (
                   <td>
                     <span className={`status-badge ${order.order_type === 'stock' ? 'confirmed' : 'pending'}`}>
                       {orderTypeShortLabel(order.order_type, t)}

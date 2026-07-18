@@ -51,6 +51,9 @@
   "actions": {
     "payOrder": "Pay for the Order",
     "payCargo": "Pay for the Cargo",
+    "editCargoCost": "Edit Cargo Cost",
+    "saveCargoCost": "Save Cargo Cost",
+    "cancelOrder": "Cancel Order",
     "markAsOrdered": "Mark as Ordered",
     "markReceived": "Mark as Received",
     "moveToInventory": "Move to Inventory",
@@ -114,6 +117,10 @@
   "cargoForm": {
     "title": "Pay for Cargo - Order #{{id}}",
     "intro": "Enter the UZS and/or USD amount. If cargo was free, enter 0 in both fields and submit."
+  },
+  "editCargoForm": {
+    "title": "Edit Cargo Cost - Order #{{id}}",
+    "intro": "Update planned cargo cost only. Other order fields stay read-only."
   },
   "moveForm": {
     "title": "Move to Inventory - Order #{{id}}",
@@ -192,7 +199,15 @@
     "movedToInventory": "Order moved to inventory successfully!",
     "moveInventoryError": "Error moving to inventory",
     "advanceReturnRequired": "Enter how much advance to return (greater than zero).",
-    "advanceReturnExceeds": "Return amount cannot exceed the recorded advance ({{booked}})."
+    "advanceReturnExceeds": "Return amount cannot exceed the recorded advance ({{booked}}).",
+    "cargoCostUpdated": "Cargo cost updated successfully.",
+    "cargoCostUpdateError": "Error updating cargo cost",
+    "cargoCostTerminal": "Cargo cost cannot be edited after the order is finished.",
+    "cargoCostAlreadyPaid": "Cargo cost cannot be edited after cargo has been paid.",
+    "noCancelPermission": "You do not have permission to cancel orders.",
+    "orderCancelled": "Order cancelled successfully.",
+    "orderCancelError": "Error cancelling order",
+    "orderTerminalReadonly": "This order is finished (including cancelled). It is view-only — no further actions are allowed."
   },
   "confirm": {
     "cargoZeroWithPlanned": "This order shows cargo amounts on record:\nUZS: {{uzs}}; USD: {{usd}}\n\nYou submitted 0 everywhere — cargo will be recorded as FREE and those cargo amounts cleared.\n\nProceed?",
@@ -208,7 +223,8 @@
     "noPlannedSupplierCost": "— (no planned supplier cost recorded)",
     "unitDetailUzs": "\n({{perUnit}} / unit × {{qty}})",
     "unitDetailUsd": "\n({{perUnit}} / unit × {{qty}})",
-    "productFallback": "Product #{{id}}"
+    "productFallback": "Product #{{id}}",
+    "cancelOrder": "Cancel Order #{{id}}?\n\nThe order record will be kept. Paid supplier/cargo amounts will be reversed when applicable. This cannot undo completed inventory or sold states."
   },
   "errors": {
     "loadHistoryFailed": "Could not load orders"

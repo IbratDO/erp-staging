@@ -51,6 +51,9 @@
   "actions": {
     "payOrder": "Buyurtmani to‘lash",
     "payCargo": "Yukni to‘lash",
+    "editCargoCost": "Yuk narxini tahrirlash",
+    "saveCargoCost": "Yuk narxini saqlash",
+    "cancelOrder": "Buyurtmani bekor qilish",
     "markAsOrdered": "Buyurtma berildi deb belgilash",
     "markReceived": "Qabul qilindi deb belgilash",
     "moveToInventory": "Omborga o‘tkazish",
@@ -114,6 +117,10 @@
   "cargoForm": {
     "title": "Yukni to‘lash — Buyurtma #{{id}}",
     "intro": "UZS va/yoki USD summasini kiriting. Yuk bepul bo‘lsa, ikkala maydonga ham 0 kiriting va yuboring."
+  },
+  "editCargoForm": {
+    "title": "Yuk narxini tahrirlash — Buyurtma #{{id}}",
+    "intro": "Faqat rejalashtirilgan yuk narxini yangilang. Boshqa maydonlar o‘zgarmaydi."
   },
   "moveForm": {
     "title": "Omborga o‘tkazish — Buyurtma #{{id}}",
@@ -192,7 +199,15 @@
     "movedToInventory": "Buyurtma omborga muvaffaqiyatli o‘tkazildi!",
     "moveInventoryError": "Omborga o‘tkazishda xatolik",
     "advanceReturnRequired": "Qaytariladigan oldindan to‘lov summasini kiriting (noldan katta).",
-    "advanceReturnExceeds": "Qaytarish summasi qayd etilgan oldindan to‘lovdan ({{booked}}) oshmasligi kerak."
+    "advanceReturnExceeds": "Qaytarish summasi qayd etilgan oldindan to‘lovdan ({{booked}}) oshmasligi kerak.",
+    "cargoCostUpdated": "Yuk narxi muvaffaqiyatli yangilandi.",
+    "cargoCostUpdateError": "Yuk narxini yangilashda xatolik",
+    "cargoCostTerminal": "Buyurtma yakunlangandan keyin yuk narxini tahrirlab bo‘lmaydi.",
+    "cargoCostAlreadyPaid": "Yuk to‘langandan keyin yuk narxini tahrirlab bo‘lmaydi.",
+    "noCancelPermission": "Buyurtmani bekor qilish uchun ruxsatingiz yo‘q.",
+    "orderCancelled": "Buyurtma muvaffaqiyatli bekor qilindi.",
+    "orderCancelError": "Buyurtmani bekor qilishda xatolik",
+    "orderTerminalReadonly": "Bu buyurtma yakunlangan (shu jumladan bekor qilingan). Faqat ko‘rish mumkin — boshqa amallar yo‘q."
   },
   "confirm": {
     "cargoZeroWithPlanned": "Bu buyurtmada yuk summalari qayd etilgan:\nUZS: {{uzs}}; USD: {{usd}}\n\nSiz hamma joyda 0 kiritdingiz — yuk BEPUL deb qayd etiladi va yuk summalari tozalanadi.\n\nDavom etasizmi?",
@@ -208,7 +223,8 @@
     "noPlannedSupplierCost": "— (rejalashtirilgan yetkazib beruvchi xarajati yo‘q)",
     "unitDetailUzs": "\n({{perUnit}} / dona × {{qty}})",
     "unitDetailUsd": "\n({{perUnit}} / dona × {{qty}})",
-    "productFallback": "Mahsulot #{{id}}"
+    "productFallback": "Mahsulot #{{id}}",
+    "cancelOrder": "Buyurtma #{{id}} bekor qilinsinmi?\n\nYozuv saqlanadi. To‘langan yetkazib beruvchi/yuk summalari kerak bo‘lsa qaytariladi. Omborga o‘tgan yoki sotilgan buyurtmalar bekor qilinmaydi."
   },
   "errors": {
     "loadHistoryFailed": "Buyurtmalar yuklanmadi"
