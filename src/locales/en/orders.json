@@ -118,9 +118,17 @@
     "title": "Pay for Cargo - Order #{{id}}",
     "intro": "Enter the UZS and/or USD amount. If cargo was free, enter 0 in both fields and submit."
   },
+  "markOrderedForm": {
+    "title": "Mark as Ordered - Order #{{id}}",
+    "intro": "Confirm the supplier order was placed. Cargo cost is optional; a note is required.",
+    "notes": "Note",
+    "notesPlaceholder": "What was ordered / supplier confirmation / reference"
+  },
   "editCargoForm": {
     "title": "Edit Cargo Cost - Order #{{id}}",
-    "intro": "Update planned cargo cost only. Other order fields stay read-only."
+    "intro": "Update planned cargo cost and the ordered note. Other order fields stay read-only.",
+    "notes": "Note",
+    "notesPlaceholder": "Update the procurement note"
   },
   "moveForm": {
     "title": "Move to Inventory - Order #{{id}}",
@@ -158,6 +166,7 @@
     "cargoUzs": "Cargo UZS",
     "cargoUsd": "Cargo USD",
     "createdBy": "Created By",
+    "orderedNote": "Note",
     "date": "Date",
     "total": "Total",
     "avgSellingHint": "Weighted average planned USD-only line totals per unit ordered (UZS-only lines excluded; no FX)",
@@ -183,6 +192,8 @@
     "noStatusPermission": "You do not have permission to update order status.",
     "statusUpdated": "Order status updated successfully!",
     "statusUpdateError": "Error updating status",
+    "orderedNoteRequired": "Please enter a note.",
+    "editCargoAfterOrdered": "Mark as Ordered first, then you can edit cargo cost.",
     "notesRequired": "Please enter notes for this order update.",
     "paymentAmountRequired": "Please enter at least one payment amount.",
     "orderPaidSuccess": "Order payment completed successfully!",

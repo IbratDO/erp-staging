@@ -118,9 +118,17 @@
     "title": "Yukni to‘lash — Buyurtma #{{id}}",
     "intro": "UZS va/yoki USD summasini kiriting. Yuk bepul bo‘lsa, ikkala maydonga ham 0 kiriting va yuboring."
   },
+  "markOrderedForm": {
+    "title": "Buyurtma berildi — Buyurtma #{{id}}",
+    "intro": "Yetkazib beruvchiga buyurtma berilganini tasdiqlang. Yuk narxi ixtiyoriy; izoh majburiy.",
+    "notes": "Izoh",
+    "notesPlaceholder": "Nima buyurtma qilindi / tasdiq / ma’lumotnoma"
+  },
   "editCargoForm": {
     "title": "Yuk narxini tahrirlash — Buyurtma #{{id}}",
-    "intro": "Faqat rejalashtirilgan yuk narxini yangilang. Boshqa maydonlar o‘zgarmaydi."
+    "intro": "Rejalashtirilgan yuk narxi va izohni yangilang. Boshqa maydonlar o‘zgarmaydi.",
+    "notes": "Izoh",
+    "notesPlaceholder": "Xarid izohini yangilang"
   },
   "moveForm": {
     "title": "Omborga o‘tkazish — Buyurtma #{{id}}",
@@ -158,6 +166,7 @@
     "cargoUzs": "Yuk UZS",
     "cargoUsd": "Yuk USD",
     "createdBy": "Yaratgan",
+    "orderedNote": "Izoh",
     "date": "Sana",
     "total": "Jami",
     "avgSellingHint": "Buyurtma bo‘yicha rejalashtirilgan USD sotuv o‘rtachasi (faqat USD qatorlar; FX yo‘q)",
@@ -183,6 +192,8 @@
     "noStatusPermission": "Buyurtma holatini yangilash huquqi yo‘q.",
     "statusUpdated": "Buyurtma holati muvaffaqiyatli yangilandi!",
     "statusUpdateError": "Holatni yangilashda xatolik",
+    "orderedNoteRequired": "Izoh kiriting.",
+    "editCargoAfterOrdered": "Avval «Buyurtma berildi deb belgilash», keyin yuk narxini tahrirlashingiz mumkin.",
     "notesRequired": "Ushbu buyurtma yangilanishi uchun izoh kiriting.",
     "paymentAmountRequired": "Kamida bitta to‘lov summasi kiriting.",
     "orderPaidSuccess": "Buyurtma to‘lovi muvaffaqiyatli yakunlandi!",

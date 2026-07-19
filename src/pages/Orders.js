@@ -324,8 +324,17 @@ const ORDER_SORT_ACCESSORS = {
   cargo_usd: (o) =>
     (parseFloat(o.cargo_payment_usd_cash) || 0) + (parseFloat(o.cargo_payment_usd_card) || 0),
   created_by: (o) => String(o.created_by_detail?.username ?? '').toLowerCase(),
+  ordered_note: (o) =>
+    String(`${o.ordered_note_role || ''} ${o.ordered_note || ''}`).toLowerCase(),
   order_date: (o) => new Date(o.order_date || o.created_at).getTime() || 0,
 };
+
+function formatOrderedNoteDisplay(order) {
+  const note = String(order?.ordered_note || '').trim();
+  if (!note) return '';
+  const role = String(order?.ordered_note_role || '').trim();
+  return role ? `${role} - ${note}` : note;
+}
 const Orders = () => {
   const { t, tStatus, monthOptions } = useAppTranslation(['orders', 'common', 'status', 'sales']);
   const uzsLabel = t('currency.uzs', { ns: 'common' });
@@ -394,7 +403,7 @@ const Orders = () => {
   // Sales managers without stock workflow still see on-demand only.
   const canSeeStockOrders =
     canManageStockOrders || canMarkAsOrdered || canEditCargoCost;
-  const orderTableColumnCount = canSeeStockOrders ? 24 : 23;
+  const orderTableColumnCount = canSeeStockOrders ? 25 : 24;
   const orderFooterLabelColSpan = canSeeStockOrders ? 14 : 13;
   /** Ledger totals for pay flows and move-to-inventory advance refunds (not bare status updates). */
   const needsLedgerForPayments = canPayOrder || canPayCargo || canMoveInventory;
@@ -469,9 +478,18 @@ const Orders = () => {
     orderId: null,
     uzs: '',
     usd: '',
+    notes: '',
   });
   const [showEditCargoForm, setShowEditCargoForm] = useState(false);
   const editCargoFormRef = useRef(null);
+  const [markOrderedFormData, setMarkOrderedFormData] = useState({
+    orderId: null,
+    uzs: '',
+    usd: '',
+    notes: '',
+  });
+  const [showMarkOrderedForm, setShowMarkOrderedForm] = useState(false);
+  const markOrderedFormRef = useRef(null);
   
   const [showMoveToInventoryForm, setShowMoveToInventoryForm] = useState(false);
   const [formCategoryType, setFormCategoryType] = useState('');
@@ -961,13 +979,46 @@ const Orders = () => {
     }
   };
 
-  const handleMarkAsOrdered = async (orderId) => {
+  const handleMarkAsOrdered = (orderId) => {
+    if (!canMarkAsOrdered) {
+      showNotification(t('notifications.noStatusPermission'), 'error');
+      return;
+    }
+    const order = orders.find((o) => o.id === orderId);
+    if (!order || !showMarkAsOrderedAction(order)) {
+      showNotification(t('notifications.statusUpdateError'), 'error');
+      return;
+    }
+    setMarkOrderedFormData({
+      orderId,
+      uzs: order.cargo_cost_uzs != null && Number(order.cargo_cost_uzs) > 0 ? String(order.cargo_cost_uzs) : '',
+      usd: order.cargo_cost_usd != null && Number(order.cargo_cost_usd) > 0 ? String(order.cargo_cost_usd) : '',
+      notes: order.ordered_note || '',
+    });
+    setShowMarkOrderedForm(true);
+    setShowEditCargoForm(false);
+    setTimeout(() => markOrderedFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  const handleMarkAsOrderedSubmit = async (e) => {
+    e.preventDefault();
+    const notes = String(markOrderedFormData.notes || '').trim();
+    if (!notes) {
+      showNotification(t('notifications.orderedNoteRequired'), 'error');
+      return;
+    }
     try {
       if (!canMarkAsOrdered) {
         showNotification(t('notifications.noStatusPermission'), 'error');
         return;
       }
-      await api.post(`/orders/${orderId}/mark_as_ordered/`, { notes: '' });
+      await api.post(`/orders/${markOrderedFormData.orderId}/mark_as_ordered/`, {
+        notes,
+        cargo_cost_uzs: markOrderedFormData.uzs === '' ? 0 : Number(markOrderedFormData.uzs) || 0,
+        cargo_cost_usd: markOrderedFormData.usd === '' ? 0 : Number(markOrderedFormData.usd) || 0,
+      });
+      setShowMarkOrderedForm(false);
+      setMarkOrderedFormData({ orderId: null, uzs: '', usd: '', notes: '' });
       await fetchOrders();
       showNotification(t('notifications.statusUpdated'), 'success');
     } catch (error) {
@@ -979,15 +1030,25 @@ const Orders = () => {
     }
   };
 
-  const handlePayOrder = async (orderId) => {
-    const order = orders.find(o => o.id === orderId);
+  const handlePayOrder = async (orderOrId) => {
+    const orderId = typeof orderOrId === 'object' && orderOrId != null ? orderOrId.id : orderOrId;
+    let order =
+      (typeof orderOrId === 'object' && orderOrId != null ? orderOrId : null) ||
+      orders.find((o) => Number(o.id) === Number(orderId));
     if (!order || ORDER_TERMINAL_STATUSES.has(order.status)) {
       showNotification(t('notifications.orderTerminalReadonly'), 'error');
       return;
     }
+    // Refresh from API so prefill uses latest supplier / cost fields (list can be stale).
+    try {
+      const res = await api.get(`/orders/${orderId}/`);
+      if (res?.data) order = res.data;
+    } catch (err) {
+      console.warn('Pay order: could not refresh order detail, using list row', err);
+    }
     const pref = prefillPayOrderSimpleTotals(order);
     setPaymentFormData({
-      orderId: orderId,
+      orderId: order.id,
       uzs: pref.uzs,
       usd: pref.usd,
       is_pay_order: true,
@@ -1004,12 +1065,14 @@ const Orders = () => {
       showNotification(t('notifications.orderTerminalReadonly'), 'error');
       return;
     }
-    const costUzs = order?.cargo_cost_uzs > 0 ? order.cargo_cost_uzs : '';
-    const costUsd = order?.cargo_cost_usd > 0 ? order.cargo_cost_usd : '';
+    // Prefill from planned cargo cost (set via mark-as-ordered / edit cargo).
+    // Do not gate on cargo_payment_currency — that is only set after a successful pay.
+    const uzsNum = Number(order?.cargo_cost_uzs);
+    const usdNum = Number(order?.cargo_cost_usd);
     setCargoFormData({
       orderId: orderId,
-      uzs: costUzs && order?.cargo_payment_currency !== 'USD' ? String(costUzs) : '',
-      usd: costUsd && order?.cargo_payment_currency === 'USD' ? String(costUsd) : '',
+      uzs: Number.isFinite(uzsNum) && uzsNum > 0 ? String(uzsNum) : '',
+      usd: Number.isFinite(usdNum) && usdNum > 0 ? String(usdNum) : '',
     });
     setShowCargoForm(true);
     setTimeout(() => cargoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -1021,6 +1084,10 @@ const Orders = () => {
       showNotification(t('notifications.cargoCostTerminal'), 'error');
       return;
     }
+    if (order.status === 'order_created') {
+      showNotification(t('notifications.editCargoAfterOrdered'), 'error');
+      return;
+    }
     if (order.cargo_is_paid) {
       showNotification(t('notifications.cargoCostAlreadyPaid'), 'error');
       return;
@@ -1029,20 +1096,28 @@ const Orders = () => {
       orderId,
       uzs: order.cargo_cost_uzs != null && Number(order.cargo_cost_uzs) > 0 ? String(order.cargo_cost_uzs) : '',
       usd: order.cargo_cost_usd != null && Number(order.cargo_cost_usd) > 0 ? String(order.cargo_cost_usd) : '',
+      notes: order.ordered_note || '',
     });
     setShowEditCargoForm(true);
+    setShowMarkOrderedForm(false);
     setTimeout(() => editCargoFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
   const handleEditCargoCostSubmit = async (e) => {
     e.preventDefault();
+    const notes = String(editCargoFormData.notes || '').trim();
+    if (!notes) {
+      showNotification(t('notifications.orderedNoteRequired'), 'error');
+      return;
+    }
     try {
       await api.post(`/orders/${editCargoFormData.orderId}/edit_cargo_cost/`, {
         cargo_cost_uzs: editCargoFormData.uzs === '' ? 0 : Number(editCargoFormData.uzs) || 0,
         cargo_cost_usd: editCargoFormData.usd === '' ? 0 : Number(editCargoFormData.usd) || 0,
+        notes,
       });
       setShowEditCargoForm(false);
-      setEditCargoFormData({ orderId: null, uzs: '', usd: '' });
+      setEditCargoFormData({ orderId: null, uzs: '', usd: '', notes: '' });
       await fetchOrders();
       showNotification(t('notifications.cargoCostUpdated'), 'success');
     } catch (error) {
@@ -1433,7 +1508,12 @@ const Orders = () => {
       )}
 
       {showPaymentForm && (
-        <div className="form-card" style={{ marginBottom: '20px' }} ref={paymentFormRef}>
+        <div
+          className="form-card"
+          style={{ marginBottom: '20px' }}
+          ref={paymentFormRef}
+          key={`pay-form-${paymentFormData.orderId}-${paymentFormData.uzs}-${paymentFormData.usd}-${paymentFormData.is_pay_order}`}
+        >
           <h2>
             {paymentFormData.is_pay_order
               ? t('paymentForm.payOrderTitle')
@@ -1641,6 +1721,66 @@ const Orders = () => {
         </div>
       )}
 
+      {showMarkOrderedForm && canMarkAsOrdered && (
+        <div className="form-card" style={{ marginBottom: '20px' }} ref={markOrderedFormRef}>
+          <h2>{t('markOrderedForm.title', { id: markOrderedFormData.orderId })}</h2>
+          <p style={{ color: '#666', marginBottom: '16px', fontSize: '0.9em' }}>
+            {t('markOrderedForm.intro')}
+          </p>
+          <form onSubmit={handleMarkAsOrderedSubmit}>
+            <div className="form-grid">
+              <div className="form-group">
+                <label>{uzsLabel}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={markOrderedFormData.uzs}
+                  onChange={(e) => setMarkOrderedFormData({ ...markOrderedFormData, uzs: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>{t('currency.usd', { ns: 'common' })}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={markOrderedFormData.usd}
+                  onChange={(e) => setMarkOrderedFormData({ ...markOrderedFormData, usd: e.target.value })}
+                />
+              </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>{t('markOrderedForm.notes')} *</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={markOrderedFormData.notes}
+                  onChange={(e) => setMarkOrderedFormData({ ...markOrderedFormData, notes: e.target.value })}
+                  placeholder={t('markOrderedForm.notesPlaceholder')}
+                />
+              </div>
+            </div>
+            <div className="form-actions">
+              <button type="submit" className="btn-primary">
+                {t('actions.markAsOrdered', { ns: 'orders' })}
+              </button>
+              <button
+                type="button"
+                className="btn-edit"
+                onClick={() => {
+                  setShowMarkOrderedForm(false);
+                  setMarkOrderedFormData({ orderId: null, uzs: '', usd: '', notes: '' });
+                }}
+              >
+                {t('actions.cancel', { ns: 'common' })}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {showEditCargoForm && (
         <div className="form-card" style={{ marginBottom: '20px' }} ref={editCargoFormRef}>
           <h2>{t('editCargoForm.title', { id: editCargoFormData.orderId })}</h2>
@@ -1671,6 +1811,16 @@ const Orders = () => {
                   onChange={(e) => setEditCargoFormData({ ...editCargoFormData, usd: e.target.value })}
                 />
               </div>
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label>{t('editCargoForm.notes')} *</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={editCargoFormData.notes}
+                  onChange={(e) => setEditCargoFormData({ ...editCargoFormData, notes: e.target.value })}
+                  placeholder={t('editCargoForm.notesPlaceholder')}
+                />
+              </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn-primary">
@@ -1681,7 +1831,7 @@ const Orders = () => {
                 className="btn-edit"
                 onClick={() => {
                   setShowEditCargoForm(false);
-                  setEditCargoFormData({ orderId: null, uzs: '', usd: '' });
+                  setEditCargoFormData({ orderId: null, uzs: '', usd: '', notes: '' });
                 }}
               >
                 {t('actions.cancel', { ns: 'common' })}
@@ -2373,6 +2523,7 @@ const Orders = () => {
               <SortableTh columnId="cargo_uzs" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.cargoUzs', { ns: 'orders' })}</SortableTh>
               <SortableTh columnId="cargo_usd" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.cargoUsd', { ns: 'orders' })}</SortableTh>
               <SortableTh columnId="created_by" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.createdBy', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="ordered_note" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.orderedNote', { ns: 'orders' })}</SortableTh>
               <SortableTh columnId="order_date" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.date', { ns: 'orders' })}</SortableTh>
             </tr>
           </thead>
@@ -2417,7 +2568,7 @@ const Orders = () => {
                       !ORDER_TERMINAL_STATUSES.has(order.status) && (
                       <button
                         className="btn-status"
-                        onClick={() => handlePayOrder(order.id)}
+                        onClick={() => handlePayOrder(order)}
                         style={{ marginRight: '5px' }}
                       >
                         {t('actions.payOrder', { ns: 'orders' })}
@@ -2436,6 +2587,7 @@ const Orders = () => {
                       </button>
                     )}
                     {canEditCargoCost &&
+                      order.status !== 'order_created' &&
                       !ORDER_TERMINAL_STATUSES.has(order.status) &&
                       !order.cargo_is_paid && (
                       <button
@@ -2586,6 +2738,16 @@ const Orders = () => {
                     })()}
                   </td>
                   <td>{order.created_by_detail?.username || '-'}</td>
+                  <td>
+                    {(() => {
+                      const label = formatOrderedNoteDisplay(order);
+                      return label ? (
+                        <span title={label}>{label}</span>
+                      ) : (
+                        <span style={{ color: '#bbb' }}>—</span>
+                      );
+                    })()}
+                  </td>
                   <td>{formatAppDateTime(order.order_date || order.created_at)}</td>
                 </tr>
                 );
@@ -2628,7 +2790,7 @@ const Orders = () => {
               <td style={{ fontWeight: 600 }}>
                 {orderColumnTotals.cargoUsd > 0 ? `$${orderColumnTotals.cargoUsd.toFixed(2)}` : '—'}
               </td>
-              <td colSpan="2">—</td>
+              <td colSpan="3">—</td>
             </tr>
           </tfoot>
         </table>

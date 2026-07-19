@@ -1,3 +1,10 @@
+import { numOrZero, plannedSupplierPaymentTotals } from './orderPlannedPricing';
+
+function amountOrEmpty(n) {
+  const v = Number(n);
+  return Number.isFinite(v) && v > 0 ? String(Number(v.toFixed(2))) : '';
+}
+
 /**
  * Prefill "Pay for the Order" from planned supplier buckets (+ legacy cost_total as USD cash).
  */
@@ -5,10 +12,10 @@ export function prefillPayOrderFromSupplier(order) {
   if (!order) {
     return { uzs_cash: '', uzs_card: '', usd_cash: '', usd_card: '' };
   }
-  const uzsCash = parseFloat(order.supplier_cost_uzs_cash) || 0;
-  const uzsCard = parseFloat(order.supplier_cost_uzs_card) || 0;
-  const usdCash = parseFloat(order.supplier_cost_usd_cash) || 0;
-  const usdCard = parseFloat(order.supplier_cost_usd_card) || 0;
+  const uzsCash = numOrZero(order.supplier_cost_uzs_cash);
+  const uzsCard = numOrZero(order.supplier_cost_uzs_card);
+  const usdCash = numOrZero(order.supplier_cost_usd_cash);
+  const usdCard = numOrZero(order.supplier_cost_usd_card);
   if (uzsCash + uzsCard + usdCash + usdCard > 0) {
     return {
       uzs_cash: uzsCash ? String(uzsCash) : '',
@@ -17,25 +24,77 @@ export function prefillPayOrderFromSupplier(order) {
       usd_card: usdCard ? String(usdCard) : '',
     };
   }
-  const ct = parseFloat(order.cost_total) || 0;
+  const ct = numOrZero(order.cost_total);
+  if (ct > 0) {
+    return {
+      uzs_cash: '',
+      uzs_card: '',
+      usd_cash: String(ct.toFixed(2)),
+      usd_card: '',
+    };
+  }
+  const qty = parseInt(order.ordered_quantity, 10) || 0;
+  const pu = numOrZero(order.cost_per_unit);
+  const fromUnit = qty > 0 && pu > 0 ? qty * pu : 0;
+  if (fromUnit > 0) {
+    return {
+      uzs_cash: '',
+      uzs_card: '',
+      usd_cash: String(fromUnit.toFixed(2)),
+      usd_card: '',
+    };
+  }
+  // Last resort: product catalog unit cost × qty (when order line cost was left blank).
+  const p = order.product_detail;
+  if (p && qty > 0) {
+    const pUzs = numOrZero(p.cost_uzs_cash) + numOrZero(p.cost_uzs_card);
+    const pUsd = numOrZero(p.cost_usd_cash) + numOrZero(p.cost_usd_card);
+    if (pUzs > 0 && pUsd <= 0) {
+      return {
+        uzs_cash: String((pUzs * qty).toFixed(2)),
+        uzs_card: '',
+        usd_cash: '',
+        usd_card: '',
+      };
+    }
+    if (pUsd > 0) {
+      return {
+        uzs_cash: '',
+        uzs_card: '',
+        usd_cash: String((pUsd * qty).toFixed(2)),
+        usd_card: '',
+      };
+    }
+  }
   return {
     uzs_cash: '',
     uzs_card: '',
-    usd_cash: ct > 0 ? String(ct.toFixed(2)) : '',
+    usd_cash: '',
     usd_card: '',
   };
 }
 
 /**
  * Two-field totals for Orders.js payment form (UZS / USD), from planned supplier buckets.
+ * Uses the same planned totals as pay-confirm dialogs, then falls back to buckets/product.
  */
 export function prefillPayOrderSimpleTotals(order) {
+  if (!order) {
+    return { uzs: '', usd: '' };
+  }
+  const planned = plannedSupplierPaymentTotals(order);
+  if (planned.uzs > 0 || planned.usd > 0) {
+    return {
+      uzs: amountOrEmpty(planned.uzs),
+      usd: amountOrEmpty(planned.usd),
+    };
+  }
   const b = prefillPayOrderFromSupplier(order);
-  const uzs = (parseFloat(b.uzs_cash) || 0) + (parseFloat(b.uzs_card) || 0);
-  const usd = (parseFloat(b.usd_cash) || 0) + (parseFloat(b.usd_card) || 0);
+  const uzs = numOrZero(b.uzs_cash) + numOrZero(b.uzs_card);
+  const usd = numOrZero(b.usd_cash) + numOrZero(b.usd_card);
   return {
-    uzs: uzs > 0 ? String(Number(uzs.toFixed(2))) : '',
-    usd: usd > 0 ? String(Number(usd.toFixed(2))) : '',
+    uzs: amountOrEmpty(uzs),
+    usd: amountOrEmpty(usd),
   };
 }
 
