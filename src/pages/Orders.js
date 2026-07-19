@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import api from '../utils/api';
 import { formatDisplayAmount, cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
-import { isOperationalSenior } from '../utils/permissions';
+import {
+  isOperationalSenior,
+  isPurchasingAgent,
+  PURCHASING_AGENT_SUPPLIER_COUNTRY,
+} from '../utils/permissions';
 import { uniqueSupplierCountriesFromOrdersAndProducts } from '../utils/supplierCountries';
 import { uniqueSupplierCargosFromOrders } from '../utils/supplierCargo';
 import { prefillPayOrderSimpleTotals } from '../utils/orderPayPrefill';
@@ -646,6 +650,13 @@ const Orders = () => {
   const applyFilters = (ordersList) => {
     let filtered = ordersList;
 
+    // Purchasing Agent: only orders with exact supplier country "Yaponiya".
+    if (isPurchasingAgent(user)) {
+      filtered = filtered.filter(
+        (order) => order.supplier_country === PURCHASING_AGENT_SUPPLIER_COUNTRY,
+      );
+    }
+
     if (!canSeeStockOrders) {
       filtered = filtered.filter((order) => order.order_type !== 'stock');
     }
@@ -695,7 +706,7 @@ const Orders = () => {
       applyFilters(orders);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [filters, user?.role_code]);
 
   const orderSort = useClientTableSort(ORDER_SORT_ACCESSORS);
 

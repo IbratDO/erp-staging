@@ -137,6 +137,13 @@ export function getRoleCode(user) {
   return user?.role_code || user?.role?.code || user?.role || 'sales_manager';
 }
 
+/** Exact supplier_country value Purchasing Agent may see/work (Yetkazib beruvchi mamlakat). */
+export const PURCHASING_AGENT_SUPPLIER_COUNTRY = 'Yaponiya';
+
+export function isPurchasingAgent(user) {
+  return getRoleCode(user) === 'purchasing_agent';
+}
+
 export function isCEO(user) {
   return getRoleCode(user) === 'ceo';
 }
