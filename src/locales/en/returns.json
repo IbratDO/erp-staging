@@ -120,6 +120,7 @@
   },
   "notifications": {
     "selectSale": "Please select a sale.",
+    "saleMustBeCompleted": "Only completed sales can be returned. Cancel unfinished sales instead.",
     "notesRequiredOther": "Please enter notes when reason is Other.",
     "invalidRefund": "Please enter a valid refund amount.",
     "invalidRefundGreaterZero": "Please enter a valid refund amount (greater than zero).",

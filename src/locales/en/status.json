@@ -26,6 +26,7 @@
     "cancelled": "Cancelled",
     "dispatched": "Dispatched",
     "delivered": "Delivered",
+    "returned": "Returned",
     "refunded": "Refunded",
     "mixed": "Mixed"
   },

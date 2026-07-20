@@ -26,6 +26,7 @@
     "cancelled": "Bekor qilindi",
     "dispatched": "Jo‘natildi",
     "delivered": "Yetkazildi",
+    "returned": "Qaytarilgan",
     "refunded": "Qaytarildi",
     "mixed": "Aralash"
   },

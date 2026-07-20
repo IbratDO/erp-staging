@@ -120,6 +120,7 @@
   },
   "notifications": {
     "selectSale": "Sotuvni tanlang.",
+    "saleMustBeCompleted": "Faqat yakunlangan sotuvlarni qaytarish mumkin. Tugallanmagan sotuvni bekor qiling.",
     "notesRequiredOther": "Sabab Boshqa bo‘lganda izoh kiriting.",
     "invalidRefund": "To‘g‘ri qaytarish summasini kiriting.",
     "invalidRefundGreaterZero": "To‘g‘ri qaytarish summasini kiriting (noldan katta).",

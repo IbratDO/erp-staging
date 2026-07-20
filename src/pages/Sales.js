@@ -342,7 +342,7 @@ const Sales = () => {
   const canSellReserved = hasPermission('sales.sell_reserved');
   const canCancelReserved = hasPermission('sales.cancel_reserved');
   const canCancelSale = hasPermission('sales.cancel');
-  const SALE_TERMINAL_STATUSES = useMemo(() => new Set(['completed', 'cancelled']), []);
+  const SALE_TERMINAL_STATUSES = useMemo(() => new Set(['completed', 'returned', 'cancelled']), []);
   const saleHasStartedDeliverySettlement = (sale) => Boolean(
     sale?.delivery_customer_paid_at
     || sale?.delivery_shop_remittance_at
@@ -354,7 +354,7 @@ const Sales = () => {
     const lines = groupSales?.length ? groupSales : (sale ? [sale] : []);
     if (!lines.length) return false;
     // Multi-item cancel is all-or-nothing: block if any line is completed or settlement started.
-    if (lines.some((s) => s.status === 'completed')) return false;
+    if (lines.some((s) => s.status === 'completed' || s.status === 'returned')) return false;
     if (lines.some((s) => saleHasStartedDeliverySettlement(s))) return false;
     return lines.some((s) => !SALE_TERMINAL_STATUSES.has(s.status));
   };
@@ -581,8 +581,8 @@ const Sales = () => {
     return [...rows].sort((a, b) => {
       const aSale = saleLikeForDisplayRow(a);
       const bSale = saleLikeForDisplayRow(b);
-      const aDone = aSale.status === 'completed' ? 1 : 0;
-      const bDone = bSale.status === 'completed' ? 1 : 0;
+      const aDone = aSale.status === 'completed' || aSale.status === 'returned' ? 1 : 0;
+      const bDone = bSale.status === 'completed' || bSale.status === 'returned' ? 1 : 0;
       if (aDone !== bDone) return aDone - bDone;
       const ta = new Date(aSale.sale_date).getTime() || 0;
       const tb = new Date(bSale.sale_date).getTime() || 0;
@@ -1589,7 +1589,7 @@ const Sales = () => {
             {t('rowActions.cancelSale', { ns: 'sales' })}
           </button>
         )}
-        {sale.status === 'completed' && sale.payment_currency && (
+        {['completed', 'returned'].includes(sale.status) && sale.payment_currency && (
           <span style={{ fontSize: '0.9em', color: '#666', display: 'block', marginTop: '5px' }}>
             {t('paid', { ns: 'sales' })}: {sale.payment_currency}
           </span>
@@ -2536,7 +2536,7 @@ const Sales = () => {
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
             >
               <option value="">{t('filters.allStatuses')}</option>
-              {['pending', 'reserved', 'confirmed', 'dispatched', 'completed', 'cancelled'].map((st) => (
+              {['pending', 'reserved', 'confirmed', 'dispatched', 'completed', 'returned', 'cancelled'].map((st) => (
                 <option key={st} value={st}>
                   {tStatus(st, 'sale')}
                 </option>

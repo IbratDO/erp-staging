@@ -397,7 +397,10 @@ const Returns = () => {
   }, [formData.sale, sales]);
 
   const returnableSales = useMemo(
-    () => sales.filter((s) => getRemainingReturnQtyForSale(s) > 0),
+    () =>
+      sales.filter(
+        (s) => s.status === 'completed' && getRemainingReturnQtyForSale(s) > 0,
+      ),
     [sales, getRemainingReturnQtyForSale],
   );
 
@@ -608,6 +611,10 @@ const Returns = () => {
     if (formData.sale) {
       const selectedSale = sales.find((s) => s.id === parseInt(formData.sale, 10));
       if (selectedSale) {
+        if (selectedSale.status !== 'completed') {
+          showNotification(t('notifications.saleMustBeCompleted'), 'error');
+          return;
+        }
         const rem = getRemainingReturnQtyForSale(selectedSale);
         const q = qty;
         const used = qtyReturnedBySaleId.get(selectedSale.id) || 0;
