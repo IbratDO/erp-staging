@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
+import { getCachedProducts } from '../utils/catalogCache';
 import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
@@ -36,16 +37,16 @@ const BonusRules = () => {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [rulesRes, txRes, usersRes, productsRes] = await Promise.all([
+      const [rulesRes, txRes, usersRes, products] = await Promise.all([
         api.get('/bonus-rules/'),
         api.get('/bonus-transactions/'),
         canManage ? api.get('/users/') : Promise.resolve({ data: [] }),
-        canManage ? api.get('/products/') : Promise.resolve({ data: [] }),
+        canManage ? getCachedProducts(api) : Promise.resolve([]),
       ]);
       setRules(rulesRes.data.results || rulesRes.data);
       setTransactions(txRes.data.results || txRes.data);
       setUsers(usersRes.data.results || usersRes.data);
-      setProducts(productsRes.data.results || productsRes.data);
+      setProducts(products);
     } catch (e) {
       console.error(e);
     } finally {

@@ -90,7 +90,7 @@
   "batch": {
     "title": "Multi-item sale (one customer)",
     "intro": "Add one line per product. The customer and sale type and currency below apply to every line. Each line becomes a separate sale (status: pending — update in the list as usual).",
-    "filterCategory": "Filter by category (product list)",
+    "filterCategory": "Category",
     "allCategories": "All categories",
     "customerRequired": "Customer *",
     "selectCustomer": "— Select customer (required) —",

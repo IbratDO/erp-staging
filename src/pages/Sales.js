@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../utils/api';
+import { getCachedProducts } from '../utils/catalogCache';
 import i18n from '../i18n';
 import {
   formatDisplayAmount,
@@ -15,7 +16,6 @@ import ProductSearchableSelect from '../components/ProductSearchableSelect';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
 import FormSearchableSelect from '../components/FormSearchableSelect';
-import FormMultiSelect from '../components/FormMultiSelect';
 import { matchesProductCatalogFilters, getCascadedFilterOptions, getCascadedDateOptions } from '../utils/productFilterUtils';
 import { layerSalePickerLabel, resolveLayerListPrice } from '../utils/productCost';
 import {
@@ -371,7 +371,6 @@ const Sales = () => {
   const [loading, setLoading] = useState(true);
 
   const [showBatchForm, setShowBatchForm] = useState(false);
-  const [batchFormCategory, setBatchFormCategory] = useState([]);
   const [batchCustomer, setBatchCustomer] = useState('');
   const [batchDefaults, setBatchDefaults] = useState({
     sale_type: 'bought_from_shop',
@@ -628,7 +627,7 @@ const Sales = () => {
     [products, productIdsWithPositiveInventory]
   );
 
-  // All available layers regardless of category filter — used for stock validation.
+  // All available layers — used for stock validation and as the unfiltered picker base.
   const allBatchLayerPickerItems = useMemo(
     () =>
       inventory
@@ -651,14 +650,16 @@ const Sales = () => {
     [inventory, products]
   );
 
-  // Category-filtered view — shown in the per-line picker dropdown only.
-  const batchLayerPickerItems = useMemo(
+  const batchCategoryOptions = useMemo(
     () =>
-      batchFormCategory.length
-        ? allBatchLayerPickerItems.filter((item) => batchFormCategory.includes(item.product.category))
-        : allBatchLayerPickerItems,
-    [allBatchLayerPickerItems, batchFormCategory]
+      [...new Set(productsAvailableForSale.map((p) => p.category).filter(Boolean))].sort(),
+    [productsAvailableForSale]
   );
+
+  const batchLayerPickerItemsForCategory = (category) => {
+    if (!category) return allBatchLayerPickerItems;
+    return allBatchLayerPickerItems.filter((item) => item.product.category === category);
+  };
 
   // Clear lines only when a layer truly disappears from inventory (stock ran out),
   // NOT when the category filter changes.
@@ -690,8 +691,8 @@ const Sales = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await api.get('/products/');
-      setProducts(response.data.results || response.data);
+      const list = await getCachedProducts(api);
+      setProducts(list);
     } catch (error) {
       console.error('Error fetching products:', error);
     }
@@ -711,6 +712,24 @@ const Sales = () => {
       lines.map((l) => {
         if (l.key !== key) return l;
         const saleCur = batchDefaults.sale_currency || 'USD';
+        if (field === 'category') {
+          const next = { ...l, category: value };
+          if (value && l.layer) {
+            const selected = allBatchLayerPickerItems.find(
+              (item) => String(item.value) === String(l.layer)
+            );
+            if (selected && selected.product?.category !== value) {
+              next.layer = '';
+              next.product = '';
+              next.inventory_batch_id = '';
+              next.list_price = '';
+              next.selling_price = '';
+              next.discount_price = '';
+              next.packageLines = EMPTY_PKG_LINES();
+            }
+          }
+          return next;
+        }
         if (field === 'layer') {
           const next = { ...l, layer: value };
           if (!value) {
@@ -728,6 +747,7 @@ const Sales = () => {
           const formatted = formatSalePriceForCurrency(priceNum, saleCur);
           next.product = layer ? String(layer.product) : '';
           next.inventory_batch_id = layer ? String(layer.batch_id) : '';
+          if (p?.category) next.category = p.category;
           next.list_price = formatted;
           next.selling_price = formatted;
           next.discount_price = '';
@@ -759,6 +779,7 @@ const Sales = () => {
       ...lines,
       {
         key: `${Date.now()}-${Math.random()}`,
+        category: '',
         layer: '',
         product: '',
         inventory_batch_id: '',
@@ -894,7 +915,6 @@ const Sales = () => {
       });
       showNotification(data.message || t('notifications.batchCreated', { count: data.count }), 'success');
       setShowBatchForm(false);
-      setBatchFormCategory([]);
       setBatchCustomer('');
       setBatchLines([]);
       fetchSales();
@@ -1692,11 +1712,9 @@ const Sales = () => {
             onClick={() => {
               if (showBatchForm) {
                 setShowBatchForm(false);
-                setBatchFormCategory([]);
                 setBatchLines([]);
               } else {
                 setShowBatchForm(true);
-                setBatchFormCategory([]);
                 setBatchCustomer('');
                 setBatchDefaults({
                   sale_type: 'bought_from_shop',
@@ -1705,6 +1723,7 @@ const Sales = () => {
                 setBatchLines([
                   {
                     key: `${Date.now()}-0`,
+                    category: '',
                     layer: '',
                     product: '',
                     inventory_batch_id: '',
@@ -2212,17 +2231,6 @@ const Sales = () => {
           <form onSubmit={handleBatchSubmit}>
             <div className="sales-batch-header-row">
               <div className="form-group">
-                <label>{t('batch.filterCategory')}</label>
-                <FormMultiSelect
-                  values={batchFormCategory}
-                  onChange={setBatchFormCategory}
-                  options={[...new Set(productsAvailableForSale.map((p) => p.category).filter(Boolean))].sort()}
-                  emptyLabel={t('batch.allCategories')}
-                  placeholder={t('batch.allCategories')}
-                  aria-label={t('batch.filterCategory')}
-                />
-              </div>
-              <div className="form-group">
                 <label>{t('batch.customerRequired')}</label>
                 <div className="sales-batch-header-row__customer">
                   <div style={{ flex: 1 }}>
@@ -2278,6 +2286,7 @@ const Sales = () => {
                   aria-labelledby="batch-line-items-label"
                 >
                   <colgroup>
+                    <col className="batch-col-category" />
                     <col className="batch-col-product" />
                     <col className="batch-col-stock" />
                     <col className="batch-col-qty" />
@@ -2288,6 +2297,7 @@ const Sales = () => {
                   </colgroup>
                   <thead>
                     <tr>
+                      <th scope="col">{t('batch.filterCategory')}</th>
                       <th scope="col">{t('batch.product')}</th>
                       <th className="batch-sale-lines__th--num" title={t('batch.stock')}>
                         {t('batch.stock')}
@@ -2303,11 +2313,23 @@ const Sales = () => {
                     {batchLines.map((line) => {
                       const layer = line.layer ? findInventoryLayer(inventory, line.layer) : null;
                       const stock = layer ? Number(layer.quantity) || 0 : null;
+                      const linePickerItems = batchLayerPickerItemsForCategory(line.category || '');
                       return (
                         <tr key={line.key}>
                           <td>
+                            <FormSearchableSelect
+                              value={line.category || ''}
+                              onChange={(v) => updateBatchLine(line.key, 'category', v)}
+                              options={batchCategoryOptions}
+                              emptyLabel={t('batch.allCategories')}
+                              placeholder={t('batch.allCategories')}
+                              aria-label={t('batch.filterCategory')}
+                              triggerClassName="batch-sale-lines__control"
+                            />
+                          </td>
+                          <td>
                             <ProductSearchableSelect
-                              pickerItems={batchLayerPickerItems}
+                              pickerItems={linePickerItems}
                               value={line.layer ?? ''}
                               onChange={(id) => updateBatchLine(line.key, 'layer', id)}
                               triggerClassName="batch-sale-lines__control"

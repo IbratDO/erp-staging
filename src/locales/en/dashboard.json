@@ -3,6 +3,7 @@
   "subtitleExecutive": "Executive overview",
   "subtitleCompany": "Company-wide analytics",
   "subtitleOwn": "Your performance · today",
+  "cbuRateLine": "1 USD = {{rate}} UZS · {{date}}",
   "filtered": "Filtered",
   "tabManagement": "Management KPIs",
   "tabSales": "Sales analytics",

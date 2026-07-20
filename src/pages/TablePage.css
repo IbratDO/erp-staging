@@ -718,14 +718,17 @@
 
 .batch-sale-lines {
   width: 100%;
-  min-width: 52rem; /* allow horizontal scroll on small viewports; keeps column ratios */
+  min-width: 58rem; /* allow horizontal scroll on small viewports; keeps column ratios */
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 14px;
 }
 
+.batch-sale-lines col.batch-col-category {
+  width: 12%;
+}
 .batch-sale-lines col.batch-col-product {
-  width: 36%;
+  width: 28%;
 }
 .batch-sale-lines col.batch-col-stock {
   width: 4.25rem;
@@ -807,7 +810,8 @@
 }
 
 select.batch-sale-lines__control,
-button.batch-sale-lines__control {
+button.batch-sale-lines__control,
+div.batch-sale-lines__control[role='combobox'] {
   padding-right: 1.8rem;
   cursor: pointer;
   background-color: #fff;
@@ -876,13 +880,27 @@ input.batch-sale-lines__control[type='number']::-webkit-outer-spin-button {
   color: #7d4a00;
 }
 
-/* Footer actions: align with form-actions spacing in same card */
+/* Footer actions: match primary button size (btn-edit is smaller elsewhere in tables) */
 .batch-sale-lines-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   margin-top: 4px;
+}
+
+.batch-sale-lines-actions .btn-edit,
+.batch-sale-lines-actions .btn-primary {
+  margin: 0;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 14px;
+  line-height: 1.25;
+  min-height: 40px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Balance sheet layout */

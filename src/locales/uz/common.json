@@ -25,7 +25,8 @@
     "workers": "Xodimlar",
     "auditLogs": "Audit jurnali",
     "bonusRules": "Bonus qoidalari",
-    "users": "Foydalanuvchilar"
+    "users": "Foydalanuvchilar",
+    "changePassword": "Parolni o‘zgartirish"
   },
   "auth": {
     "username": "Foydalanuvchi nomi",
@@ -34,7 +35,16 @@
     "loggingIn": "Kirish…",
     "logout": "Chiqish",
     "invalidCredentials": "Noto‘g‘ri login yoki parol",
-    "loginFailed": "Kirish amalga oshmadi"
+    "loginFailed": "Kirish amalga oshmadi",
+    "changePasswordTitle": "Parolni o‘zgartirish",
+    "newPassword": "Yangi parol",
+    "confirmPassword": "Parolni tasdiqlang",
+    "changePasswordSubmit": "Parolni saqlash",
+    "changePasswordSaving": "Saqlanmoqda…",
+    "changePasswordSuccess": "Parol muvaffaqiyatli o‘zgartirildi.",
+    "changePasswordMismatch": "Parollar mos kelmadi.",
+    "changePasswordRequired": "Yangi parolni kiriting.",
+    "changePasswordFailed": "Parolni o‘zgartirib bo‘lmadi."
   },
   "exchangeRate": {
     "loadFailed": "MB valyuta kursi yuklanmadi."

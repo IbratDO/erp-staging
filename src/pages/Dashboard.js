@@ -27,6 +27,7 @@ import ManagementKpisSection from '../components/ManagementKpisSection';
 import PenaltyDashboardCard from '../components/PenaltyDashboardCard';
 import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
+import { formatAppDate } from '../utils/localeFormat';
 import './Dashboard.css';
 
 function KpiCard({ label, value, sub }) {
@@ -138,6 +139,7 @@ const Dashboard = () => {
   const [month, setMonth] = useState('');
   const [crossFilter, setCrossFilter] = useState(EMPTY_CROSS_FILTER);
   const [activeTab, setActiveTab] = useState(DASH_TAB_SALES);
+  const [cbuRate, setCbuRate] = useState(null);
 
   useEffect(() => {
     if (isAdmin) {
@@ -162,6 +164,21 @@ const Dashboard = () => {
     setLoading(true);
     loadAnalytics(year);
   }, [year, loadAnalytics]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get('/exchange-rate/')
+      .then((res) => {
+        if (!cancelled) setCbuRate(res.data || null);
+      })
+      .catch(() => {
+        if (!cancelled) setCbuRate(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const monthNum = month ? parseInt(month, 10) : null;
 
@@ -227,6 +244,18 @@ const Dashboard = () => {
   const isExecutiveView = canToggleDashboardTabs || Boolean(analytics?.company_wide);
   const canViewMarketingKpis = hasPermission('marketing_analytics.view');
 
+  const cbuRateLine = useMemo(() => {
+    if (!cbuRate?.rate) return null;
+    const rateNum = Number(cbuRate.rate);
+    if (!Number.isFinite(rateNum)) return null;
+    const dateLabel = cbuRate.rate_date ? formatAppDate(cbuRate.rate_date) : '';
+    return t('cbuRateLine', {
+      ns: 'dashboard',
+      rate: rateNum.toLocaleString(undefined, { maximumFractionDigits: 2 }),
+      date: dateLabel,
+    });
+  }, [cbuRate, t]);
+
   if (loading) {
     return <div className="page-container">{td('loading')}</div>;
   }
@@ -264,6 +293,7 @@ const Dashboard = () => {
               ? ` · ${td('filtered')}: ${filterHint}`
               : ''}
           </p>
+          {cbuRateLine ? <p className="dash-subtitle">{cbuRateLine}</p> : null}
         </div>
       </header>
 

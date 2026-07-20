@@ -3,6 +3,7 @@
   "subtitleExecutive": "Rahbariyat ko‘rinishi",
   "subtitleCompany": "Kompaniya bo‘yicha tahlil",
   "subtitleOwn": "Sizning natijalaringiz · bugun",
+  "cbuRateLine": "1 USD = {{rate}} UZS · {{date}}",
   "filtered": "Filtrlangan",
   "tabManagement": "Boshqaruv KPI",
   "tabSales": "Sotuv tahlili",

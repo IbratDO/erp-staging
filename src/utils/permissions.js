@@ -37,6 +37,7 @@ export const ROLE_VISIBLE_MENU_PATHS = {
     '/sales',
     '/returns',
     '/customers',
+    '/change-password',
   ],
   senior_sales_manager: [
     '/dashboard',
@@ -48,10 +49,11 @@ export const ROLE_VISIBLE_MENU_PATHS = {
     '/returns',
     '/customers',
     '/dispatchers',
+    '/change-password',
   ],
-  dispatcher: ['/dispatchers'],
-  targetolog: ['/dashboard'],
-  purchasing_agent: ['/orders'],
+  dispatcher: ['/dispatchers', '/change-password'],
+  targetolog: ['/dashboard', '/change-password'],
+  purchasing_agent: ['/orders', '/change-password'],
 };
 
 /** Paths hidden for a role even when a permission would allow them. */
@@ -66,7 +68,7 @@ export const ROLE_HIDDEN_MENU_PATHS = {
     '/receivables-payables',
     '/balance-sheet',
   ],
-  admin: ['/bonus-rules'],
+  admin: ['/bonus-rules', '/change-password'],
   investor: ['/users', '/workers', '/audit-logs', '/bonus-rules'],
   sales_manager: ['/inventory/packages'],
 };
@@ -102,6 +104,7 @@ export const MENU_ITEMS = [
   { path: '/audit-logs', labelKey: 'nav.auditLogs', icon: '📝', permission: 'audit_logs.view' },
   { path: '/bonus-rules', labelKey: 'nav.bonusRules', icon: '🎁', permission: 'bonus.manage' },
   { path: '/users', labelKey: 'nav.users', icon: '👤', permission: 'users.view' },
+  { path: '/change-password', labelKey: 'nav.changePassword', icon: '🔑' },
 ];
 
 export function normalizePermissions(user) {
@@ -191,6 +194,8 @@ export function isOperationalSenior(user) {
 }
 
 function pathAllowedForRole(user, path) {
+  // Self-service password page: all roles except Founder (uses Users tab instead).
+  if (path === '/change-password') return !isAdmin(user);
   if (path === '/users' && (isCEO(user) || isInvestor(user))) return false;
   const role = getRoleCode(user);
   const hidden = ROLE_HIDDEN_MENU_PATHS[role];

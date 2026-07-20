@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import api from '../utils/api';
+import { getCachedProducts } from '../utils/catalogCache';
 import { cashBalanceTotalByCurrency, formatDisplayAmount, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
 import SortableTh from '../components/SortableTh';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
@@ -543,8 +544,8 @@ const Returns = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await api.get('/products/');
-      setProducts(response.data.results || response.data);
+      const list = await getCachedProducts(api);
+      setProducts(list);
     } catch (error) {
       console.error('Error fetching products:', error);
     }

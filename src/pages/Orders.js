@@ -9,6 +9,7 @@ import {
 import { uniqueSupplierCountriesFromOrdersAndProducts } from '../utils/supplierCountries';
 import { uniqueSupplierCargosFromOrders } from '../utils/supplierCargo';
 import { prefillPayOrderSimpleTotals } from '../utils/orderPayPrefill';
+import { getCachedProducts } from '../utils/catalogCache';
 import {
   numOrZero,
   plannedSellingSummary,
@@ -811,8 +812,8 @@ const Orders = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await api.get('/products/');
-      setProducts(response.data.results || response.data);
+      const list = await getCachedProducts(api);
+      setProducts(list);
     } catch (error) {
       console.error('Error fetching products:', error);
     }

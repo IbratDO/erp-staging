@@ -23,6 +23,7 @@ import MoneyBalance from './pages/MoneyBalance';
 import AuditLogs from './pages/AuditLogs';
 import BonusRules from './pages/BonusRules';
 import Users from './pages/Users';
+import ChangePassword from './pages/ChangePassword';
 import Customers from './pages/Customers';
 import Dispatchers from './pages/Dispatchers';
 import Workers from './pages/Workers';
@@ -169,6 +170,14 @@ function App() {
               element={
                 <ProtectedRoute permission="users.view">
                   <Users />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="change-password"
+              element={
+                <ProtectedRoute>
+                  <ChangePassword />
                 </ProtectedRoute>
               }
             />

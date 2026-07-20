@@ -22,6 +22,7 @@ export default function FormSearchableSelect({
   freeTextApplyLabel,
   'aria-label': ariaLabel,
   disabled = false,
+  triggerClassName = '',
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -30,6 +31,8 @@ export default function FormSearchableSelect({
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
   const searchRef = useRef(null);
+  const tableTrigger =
+    typeof triggerClassName === 'string' && triggerClassName.includes('batch-sale-lines__control');
 
   const normalized = useMemo(() => normalizeOptions(options), [options]);
   const selected = useMemo(
@@ -249,6 +252,7 @@ export default function FormSearchableSelect({
         aria-controls={listboxId}
         aria-haspopup="listbox"
         aria-label={ariaLabel}
+        className={triggerClassName || undefined}
         onClick={() => { if (!disabled) setOpen((o) => !o); }}
         onKeyDown={(e) => {
           if (!disabled && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
@@ -256,23 +260,37 @@ export default function FormSearchableSelect({
             setOpen(true);
           }
         }}
-        style={{
-          padding: '10px',
-          border: '1px solid #ddd',
-          borderRadius: '5px',
-          fontSize: '14px',
-          fontFamily: 'inherit',
-          background: disabled ? '#f5f5f5' : '#fff',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          color: display ? '#333' : '#999',
-          position: 'relative',
-          userSelect: 'none',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          minHeight: '20px',
-          boxSizing: 'border-box',
-        }}
+        style={
+          tableTrigger
+            ? {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 6,
+                overflow: 'hidden',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                color: display ? '#2c3e50' : '#999',
+                userSelect: 'none',
+                background: disabled ? '#f5f5f5' : undefined,
+              }
+            : {
+                padding: '10px',
+                border: '1px solid #ddd',
+                borderRadius: '5px',
+                fontSize: '14px',
+                fontFamily: 'inherit',
+                background: disabled ? '#f5f5f5' : '#fff',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                color: display ? '#333' : '#999',
+                position: 'relative',
+                userSelect: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                minHeight: '20px',
+                boxSizing: 'border-box',
+              }
+        }
       >
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
           {display || placeholder || '—'}

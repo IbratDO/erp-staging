@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import api from '../utils/api';
+import { getCachedProducts, invalidateProductsCache, setProductsCache } from '../utils/catalogCache';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
@@ -214,10 +215,11 @@ const Products = () => {
 
   const fetchProducts = async () => {
     try {
-      const response = await api.get('/products/');
-      const productsList = response.data.results || response.data;
+      // Always refresh catalog after visiting Products (and after CRUD via callers).
+      invalidateProductsCache();
+      const productsList = await getCachedProducts(api);
+      setProductsCache(productsList);
       setProducts(productsList);
-
       applyFilters(productsList);
     } catch (error) {
       console.error('Error fetching products:', error);

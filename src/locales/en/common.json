@@ -25,7 +25,8 @@
     "workers": "Workers",
     "auditLogs": "Audit Logs",
     "bonusRules": "Bonus Rules",
-    "users": "Users"
+    "users": "Users",
+    "changePassword": "Change password"
   },
   "auth": {
     "username": "Username",
@@ -34,7 +35,16 @@
     "loggingIn": "Logging in...",
     "logout": "Logout",
     "invalidCredentials": "Invalid credentials",
-    "loginFailed": "Login failed"
+    "loginFailed": "Login failed",
+    "changePasswordTitle": "Change password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "changePasswordSubmit": "Save password",
+    "changePasswordSaving": "Saving…",
+    "changePasswordSuccess": "Password updated successfully.",
+    "changePasswordMismatch": "Passwords do not match.",
+    "changePasswordRequired": "Enter a new password.",
+    "changePasswordFailed": "Could not change password."
   },
   "exchangeRate": {
     "loadFailed": "Could not load CBU exchange rate."

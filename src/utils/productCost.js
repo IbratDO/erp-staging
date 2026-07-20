@@ -99,7 +99,8 @@ export function layerSalePickerLabel(product, layer) {
     (usdNum != null ? `$${usdNum.toFixed(2)}` : null) ||
     '—';
   const qty = Number(layer.quantity) || 0;
-  return `${core} · ${price} · ${qty} in stock`;
+  const layerNo = layer.batch_id != null ? `Layer #${layer.batch_id}` : 'Layer';
+  return `${layerNo} · ${core} · ${price} · ${qty} in stock`;
 }
 
 /** Resolve list/final price for a specific inventory layer and sale currency. */
