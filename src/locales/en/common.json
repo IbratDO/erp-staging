@@ -37,6 +37,7 @@
     "invalidCredentials": "Invalid credentials",
     "loginFailed": "Login failed",
     "changePasswordTitle": "Change password",
+    "currentPassword": "Current password",
     "newPassword": "New password",
     "confirmPassword": "Confirm password",
     "changePasswordSubmit": "Save password",
@@ -44,6 +45,7 @@
     "changePasswordSuccess": "Password updated successfully.",
     "changePasswordMismatch": "Passwords do not match.",
     "changePasswordRequired": "Enter a new password.",
+    "changePasswordCurrentRequired": "Enter your current password.",
     "changePasswordFailed": "Could not change password."
   },
   "exchangeRate": {

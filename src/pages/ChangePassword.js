@@ -5,6 +5,7 @@ import './TablePage.css';
 
 const ChangePassword = () => {
   const { t } = useTranslation('common');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
@@ -16,6 +17,10 @@ const ChangePassword = () => {
     setError('');
     setSuccess('');
 
+    if (!currentPassword) {
+      setError(t('auth.changePasswordCurrentRequired'));
+      return;
+    }
     if (!password.trim()) {
       setError(t('auth.changePasswordRequired'));
       return;
@@ -28,10 +33,12 @@ const ChangePassword = () => {
     setSaving(true);
     try {
       await api.post('/users/me/change-password/', {
+        current_password: currentPassword,
         password,
         password_confirm: confirm,
       });
       setSuccess(t('auth.changePasswordSuccess'));
+      setCurrentPassword('');
       setPassword('');
       setConfirm('');
     } catch (err) {
@@ -53,6 +60,17 @@ const ChangePassword = () => {
         <h1>{t('auth.changePasswordTitle')}</h1>
       </div>
       <form className="form-card" onSubmit={handleSubmit} style={{ maxWidth: 420 }}>
+        <div className="form-group">
+          <label htmlFor="current-password">{t('auth.currentPassword')}</label>
+          <input
+            id="current-password"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </div>
         <div className="form-group">
           <label htmlFor="new-password">{t('auth.newPassword')}</label>
           <input

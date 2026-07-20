@@ -5,6 +5,16 @@ import { hasPermission, getRoleCode } from '../utils/permissions';
 
 const AuthContext = createContext();
 
+const AUTH_KEYS = ['access_token', 'refresh_token', 'user'];
+
+function clearAuthStorage() {
+  AUTH_KEYS.forEach((key) => localStorage.removeItem(key));
+}
+
+function hasAccessToken() {
+  return Boolean(localStorage.getItem('access_token'));
+}
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -17,35 +27,76 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const logout = useCallback(() => {
+    clearAuthStorage();
+    setUser(null);
+  }, []);
+
   const refreshUser = useCallback(async () => {
+    if (!hasAccessToken()) {
+      clearAuthStorage();
+      setUser(null);
+      return null;
+    }
     try {
       const userResponse = await api.get('/users/me/');
       setUser(userResponse.data);
       localStorage.setItem('user', JSON.stringify(userResponse.data));
       return userResponse.data;
     } catch {
+      // Fail closed: never keep a stale cached profile when the server identity is unknown.
+      clearAuthStorage();
+      setUser(null);
       return null;
     }
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     const init = async () => {
-      const storedUser = localStorage.getItem('user');
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        const fresh = await refreshUser();
-        if (!fresh && storedUser) {
-          setUser(JSON.parse(storedUser));
+      if (!hasAccessToken()) {
+        clearAuthStorage();
+        if (!cancelled) {
+          setUser(null);
+          setLoading(false);
         }
-      } else if (storedUser) {
-        setUser(JSON.parse(storedUser));
+        return;
+      }
+
+      const fresh = await refreshUser();
+      if (cancelled) return;
+      if (!fresh) {
+        setUser(null);
       }
       setLoading(false);
     };
+
     init();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshUser]);
+
+  // Keep tabs in sync when another tab logs in or out.
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (!e.key || !AUTH_KEYS.includes(e.key)) return;
+      if (!hasAccessToken()) {
+        setUser(null);
+        return;
+      }
+      refreshUser();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, [refreshUser]);
 
   const login = async (username, password) => {
+    // Drop any previous session before accepting a new one (avoids token/user mismatch).
+    clearAuthStorage();
+    setUser(null);
+
     try {
       const response = await api.post('/token/', {
         username,
@@ -53,6 +104,14 @@ export const AuthProvider = ({ children }) => {
       });
 
       const { access, refresh } = response.data;
+      if (!access || !refresh) {
+        clearAuthStorage();
+        return {
+          success: false,
+          error: i18n.t('auth.loginFailed', { ns: 'common' }),
+        };
+      }
+
       localStorage.setItem('access_token', access);
       localStorage.setItem('refresh_token', refresh);
 
@@ -61,25 +120,26 @@ export const AuthProvider = ({ children }) => {
         const userResponse = await api.get('/users/me/');
         userData = userResponse.data;
       } catch {
-        userData = { username, role_code: 'sales_manager', permissions: [] };
+        clearAuthStorage();
+        setUser(null);
+        return {
+          success: false,
+          error: i18n.t('auth.loginFailed', { ns: 'common' }),
+        };
       }
+
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
 
       return { success: true, user: userData };
     } catch (error) {
+      clearAuthStorage();
+      setUser(null);
       return {
         success: false,
         error: error.response?.data?.detail || i18n.t('auth.loginFailed', { ns: 'common' }),
       };
     }
-  };
-
-  const logout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('user');
-    setUser(null);
   };
 
   const value = {
@@ -88,7 +148,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     loading,
     refreshUser,
-    isAuthenticated: !!user,
+    // Require both a live profile and an access token (token is source of truth for API).
+    isAuthenticated: Boolean(user) && hasAccessToken(),
     roleCode: getRoleCode(user),
     isAdmin: hasPermission(user, 'finance.create_manual'),
     hasPermission: (code) => hasPermission(user, code),

@@ -37,6 +37,7 @@
     "invalidCredentials": "Noto‘g‘ri login yoki parol",
     "loginFailed": "Kirish amalga oshmadi",
     "changePasswordTitle": "Parolni o‘zgartirish",
+    "currentPassword": "Joriy parol",
     "newPassword": "Yangi parol",
     "confirmPassword": "Parolni tasdiqlang",
     "changePasswordSubmit": "Parolni saqlash",
@@ -44,6 +45,7 @@
     "changePasswordSuccess": "Parol muvaffaqiyatli o‘zgartirildi.",
     "changePasswordMismatch": "Parollar mos kelmadi.",
     "changePasswordRequired": "Yangi parolni kiriting.",
+    "changePasswordCurrentRequired": "Joriy parolni kiriting.",
     "changePasswordFailed": "Parolni o‘zgartirib bo‘lmadi."
   },
   "exchangeRate": {
