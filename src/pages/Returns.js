@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import api from '../utils/api';
 import Modal from '../components/Modal';
+import useBarcodeScanner from '../hooks/useBarcodeScanner';
+import { beepError, beepOk, primeScanBeep } from '../utils/scanBeep';
+import { resolveReceiptScan } from '../utils/receiptReturn';
 import apiGetAll from '../utils/fetchAllPages';
 import { getCachedProducts } from '../utils/catalogCache';
 import { cashBalanceTotalByCurrency, formatDisplayAmount, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
@@ -558,6 +561,91 @@ const Returns = () => {
     [applySuggestedRefundAmount],
   );
 
+  // ---- scanning a customer's receipt -------------------------------------------------------
+  //
+  // Additive: the dropdowns above are untouched and remain the way in when there is no paper, or
+  // when the printer has smudged the code. A scan only pre-fills them.
+  const [scannedPurchase, setScannedPurchase] = useState(null);
+  const [scanFeedback, setScanFeedback] = useState(null);
+  const scanSeqRef = useRef(0);
+
+  const sayScan = useCallback((kind, text) => {
+    scanSeqRef.current += 1;
+    setScanFeedback({ kind, text, seq: scanSeqRef.current });
+    if (kind === 'ok') beepOk();
+    else beepError();
+  }, []);
+
+  useEffect(() => {
+    if (!scanFeedback) return undefined;
+    const timer = setTimeout(() => setScanFeedback(null), 3000);
+    return () => clearTimeout(timer);
+  }, [scanFeedback]);
+
+  // Cleared when the window closes, so the next return does not open on the last customer's
+  // purchase — the operator would have no reason to look twice.
+  useEffect(() => {
+    if (showForm) {
+      primeScanBeep();
+      return;
+    }
+    setScannedPurchase(null);
+    setScanFeedback(null);
+  }, [showForm]);
+
+  const handleReceiptScan = useCallback(
+    (raw) => {
+      const res = resolveReceiptScan(sales, raw, qtyReturnedBySaleId);
+      if (res.kind === 'ignore') return;   // not one of ours: say nothing at all
+      if (res.kind === 'layer') {
+        setScannedPurchase(null);
+        sayScan('error', t('scan.isLayerLabel'));
+        return;
+      }
+      if (res.kind === 'unknown') {
+        setScannedPurchase(null);
+        sayScan('error', t('scan.notFound', { code: res.code }));
+        return;
+      }
+      // Both remaining kinds show the purchase. A receipt with nothing left still opens, because
+      // "when did this come back?" is the question the customer is about to ask.
+      setScannedPurchase(res);
+      if (res.kind === 'all-returned') sayScan('error', t('scan.allReturned'));
+      else sayScan('ok', t('scan.found', { code: res.code, count: res.lines.length }));
+    },
+    [sales, qtyReturnedBySaleId, sayScan, t],
+  );
+
+  useBarcodeScanner({ enabled: showForm && canCreateReturn, onScan: handleReceiptScan });
+
+  /**
+   * Take one line of the scanned purchase into the form.
+   *
+   * Fills the existing fields rather than submitting anything: the sale is chosen, the quantity
+   * defaults to what is left, and the refund legs follow from `paid_legs` exactly as they do when
+   * the dropdowns are used. One line at a time, so the submit path is the one already in use.
+   */
+  const chooseScannedLine = useCallback(
+    (line) => {
+      if (!line?.returnable) return;
+      const { sale, remaining } = line;
+      // The category filter narrows the dropdowns and would fight a chosen sale that sits outside
+      // it, so it is cleared rather than left to prune the selection away again.
+      setFormCategory('');
+      setProductSearch('');
+      setProductDropdownOpen(false);
+      setFormData((prev) => ({
+        ...prev,
+        product: sale.product != null ? String(sale.product) : '',
+        customer: sale.customer != null ? String(sale.customer) : '',
+        sale: String(sale.id),
+        quantity: String(remaining),
+        ...applySuggestedRefundAmount(sale, remaining),
+      }));
+    },
+    [applySuggestedRefundAmount],
+  );
+
   const formReturnDue = useMemo(() => {
     const sale = resolveSaleForPricing();
     return computeFormReturnDue(sale, formData.quantity);
@@ -924,6 +1012,78 @@ const Returns = () => {
         closeLabel={t('actions.close', { ns: 'common' })}
         closeOnBackdrop={false}
       >
+          {/* ---- scan a receipt ------------------------------------------------------------
+              Sits above the dropdowns rather than replacing them: paper gets lost, printers
+              smudge, and the picker has to keep working. */}
+          <div className="return-scan">
+            {/* No input box: the wedge is read at the document, so the scan needs no field
+                to land in. The hint stays because with nothing on screen it is the only
+                thing telling an operator that scanning is possible here at all. */}
+            <div className="return-scan__hint">{t('scan.hint')}</div>
+            {/* Still needed with the input gone — arguably more so. A failed scan has to say
+                *why* ("that is a product label", "receipt not found"), and a beep alone cannot. */}
+            <div
+              className={`scan-strip__feedback scan-strip__feedback--${
+                scanFeedback?.kind === 'ok' ? 'added' : (scanFeedback?.kind || 'idle')
+              }`}
+              role="status"
+              aria-live="polite"
+              style={{ display: 'block', minHeight: 20 }}
+            >
+              {scanFeedback?.text || ''}
+            </div>
+          </div>
+
+          {scannedPurchase && (
+            <div className="return-purchase">
+              <div className="return-purchase__head">
+                {t('scan.purchaseTitle', {
+                  code: scannedPurchase.code,
+                  date: formatAppDateTime(scannedPurchase.lines[0]?.sale?.sale_date) || '',
+                })}
+              </div>
+              {scannedPurchase.lines.map((line) => {
+                const p = line.sale.product_detail;
+                const name = p
+                  ? `${p.brand} | ${p.model}${p.size ? ` · ${p.size}` : ''}${p.color ? ` · ${p.color}` : ''}`
+                  : `#${line.sale.id}`;
+                const chosen = String(formData.sale) === String(line.sale.id);
+                return (
+                  <div
+                    key={line.sale.id}
+                    className={
+                      'return-purchase__line'
+                      + (line.returnable ? '' : ' return-purchase__line--spent')
+                      + (chosen ? ' return-purchase__line--chosen' : '')
+                    }
+                  >
+                    <div className="return-purchase__name">{name}</div>
+                    <div className="return-purchase__counts">
+                      {t('scan.lineCounts', {
+                        bought: line.bought,
+                        returned: line.returned,
+                        remaining: line.remaining,
+                      })}
+                    </div>
+                    {line.returnable ? (
+                      <button
+                        type="button"
+                        className="btn-edit"
+                        onClick={() => chooseScannedLine(line)}
+                      >
+                        {chosen ? t('scan.lineChosen') : t('scan.lineChoose')}
+                      </button>
+                    ) : (
+                      // Shown, not hidden. The customer is holding a receipt that lists this
+                      // item, and "already returned" is the answer to their next question.
+                      <span className="return-purchase__spent">{t('scan.lineSpent')}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <BusyForm onSubmit={handleSubmit}>
             <div className="form-grid">
               {(() => {
@@ -1400,6 +1560,11 @@ const Returns = () => {
           {refundReturnItem && (() => {
             const due = computeReturnRefundDueLegs(refundReturnItem);
             if (due.uzs > 0 || due.usd > 0) return null;
+            // A nasiya sale nobody had paid into also has nothing to refund, and this message
+            // used to blame a giveaway for it. The credit panel below explains that case
+            // properly, so the wrong explanation is withheld rather than sitting above the
+            // right one.
+            if (refundReturnItem?.credit_info) return null;
             return (
               <div
                 style={{
@@ -1414,6 +1579,53 @@ const Returns = () => {
                 }}
               >
                 {t('markRefundedModal.nothingOwed')}
+              </div>
+            );
+          })()}
+          {refundReturnItem?.credit_info && (() => {
+            const c = refundReturnItem.credit_info;
+            const money = (v) => formatDisplayAmount(Number(v) || 0, c.currency);
+            const outstanding = Number(c.outstanding) || 0;
+            return (
+              <div className="return-credit">
+                <div className="return-credit__title">{t('creditPanel.title')}</div>
+                <div className="return-credit__row">
+                  <span>{t('creditPanel.principal')}</span>
+                  <strong>{money(c.principal)}</strong>
+                </div>
+                <div className="return-credit__row">
+                  <span>{t('creditPanel.paid')}</span>
+                  <strong>{money(c.paid)}</strong>
+                </div>
+                {Number(c.cancelled) > 0 && (
+                  <div className="return-credit__row">
+                    <span>
+                      {c.cancelled_by_this_return
+                        ? t('creditPanel.cancelledByReturn')
+                        : t('creditPanel.cancelled')}
+                    </span>
+                    <strong>-{money(c.cancelled)}</strong>
+                  </div>
+                )}
+                <div className="return-credit__row return-credit__row--total">
+                  <span>{t('creditPanel.outstanding')}</span>
+                  <strong className={outstanding > 0 ? 'return-credit__owed' : ''}>
+                    {money(outstanding)}
+                  </strong>
+                </div>
+                {outstanding > 0 && c.due_date && (
+                  <div className="return-credit__due">
+                    {t('creditPanel.due', { date: c.due_date })}
+                  </div>
+                )}
+                {/* The sentence the person at the counter actually needs: the debt is dealt
+                    with, so the only decision left is how much of the customer's own money
+                    goes back. */}
+                <div className="return-credit__note">
+                  {outstanding > 0
+                    ? t('creditPanel.noteStillOwed', { amount: money(outstanding) })
+                    : t('creditPanel.noteSettled')}
+                </div>
               </div>
             );
           })()}

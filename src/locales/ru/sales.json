@@ -160,7 +160,8 @@
     "completeSale": "Завершить продажу",
     "sell": "Продать",
     "cancelReserved": "Отменить бронь",
-    "cancelSale": "Отменить продажу"
+    "cancelSale": "Отменить продажу",
+    "printReceipt": "Чек"
   },
   "table": {
     "actions": "Действия",
@@ -423,5 +424,17 @@
     "errCancelSale": "Ошибка при отмене продажи",
     "errPkgNotExist": "Упаковки типа «{{type}}» не существует.",
     "errPkgInsufficient": "Недостаточно упаковки «{{type}}»: нужно {{need}}, есть {{have}}."
+  },
+  "receipt": {
+    "shopName": "Immense Shop",
+    "subtotal": "Подытог",
+    "discount": "Скидка",
+    "total": "Итого",
+    "creditTitle": "НАСИЯ (ДОЛГ)",
+    "creditDue": "Дата оплаты",
+    "giveaway": "Бесплатно",
+    "thanks": "Спасибо за покупку!",
+    "failed": "Не удалось напечатать чек.",
+    "reprintHint": "Повторно напечатать чек этой покупки"
   }
 }

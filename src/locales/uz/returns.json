@@ -181,5 +181,28 @@
     "totalAtCbu": "MB kursi bo‘yicha jami ({{currency}}):",
     "belowDue": "— qarzdorlikdan {{short}} kam",
     "nothingOwed": "Bu sotuv uchun hech narsa olinmagan (bepul berilgan yoki to‘liq chegirma), shuning uchun qaytariladigan pul yo‘q. Mahsulot allaqachon o‘z tannarxi bilan omborga qaytarilgan. «0» qoldirib tasdiqlashingiz mumkin — kassadan pul chiqmaydi."
+  },
+  "scan": {
+    "hint": "Mijozning chekini skanerlang — xarid o'zi ochiladi.",
+    "found": "Chek {{code}} — {{count}} ta mahsulot",
+    "notFound": "Chek topilmadi: {{code}}",
+    "allReturned": "Bu chek bo'yicha hammasi allaqachon qaytarilgan.",
+    "isLayerLabel": "Bu mahsulot yorlig'i, chek emas. Chekdagi shtrix-kodni skanerlang.",
+    "purchaseTitle": "Chek {{code}} · {{date}}",
+    "lineCounts": "olingan {{bought}} · qaytarilgan {{returned}} · qoldi {{remaining}}",
+    "lineChoose": "Qaytarish",
+    "lineChosen": "Tanlandi",
+    "lineSpent": "✓ qaytarilgan"
+  },
+  "creditPanel": {
+    "title": "Nasiya (qarz) holati",
+    "principal": "Nasiyaga olingan",
+    "paid": "Mijoz to'lagan",
+    "cancelled": "Bekor qilingan qarz",
+    "cancelledByReturn": "Shu qaytarish bekor qildi",
+    "outstanding": "Qolgan qarz",
+    "due": "To'lash sanasi: {{date}}",
+    "noteSettled": "Qarz to'liq yopildi. Endi faqat mijoz to'lagan pulni qaytarish qoladi — to'liq yoki qisman.",
+    "noteStillOwed": "Mijozda hali {{amount}} qarz bor. Pul qaytarishda buni hisobga oling."
   }
 }

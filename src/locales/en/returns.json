@@ -181,5 +181,28 @@
     "totalAtCbu": "Total at CBU rate (in {{currency}}):",
     "belowDue": "— below due by {{short}}",
     "nothingOwed": "Nothing was received for this sale (given free, or fully discounted), so there is no money to refund. The item is already back in stock at its cost. Confirm with 0 — no cash leaves the till."
+  },
+  "scan": {
+    "hint": "Scan the customer's receipt — the purchase opens itself.",
+    "found": "Receipt {{code}} — {{count}} item(s)",
+    "notFound": "Receipt not found: {{code}}",
+    "allReturned": "Everything on this receipt has already been returned.",
+    "isLayerLabel": "That is a product label, not a receipt. Scan the barcode on the receipt.",
+    "purchaseTitle": "Receipt {{code}} · {{date}}",
+    "lineCounts": "bought {{bought}} · returned {{returned}} · left {{remaining}}",
+    "lineChoose": "Return this",
+    "lineChosen": "Selected",
+    "lineSpent": "✓ returned"
+  },
+  "creditPanel": {
+    "title": "Credit (nasiya) position",
+    "principal": "Taken on credit",
+    "paid": "Customer paid",
+    "cancelled": "Debt cancelled",
+    "cancelledByReturn": "Cancelled by this return",
+    "outstanding": "Still owed",
+    "due": "Due: {{date}}",
+    "noteSettled": "The debt is fully cleared. All that is left is how much of the customer's own money to hand back — all of it, or part.",
+    "noteStillOwed": "The customer still owes {{amount}}. Take that into account when refunding."
   }
 }

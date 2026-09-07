@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import api from '../utils/api';
+import { useManagerChartData } from './ManagementKpisSection';
 import {
   Bar,
   BarChart,
@@ -25,7 +26,7 @@ function fmtPct(n) {
   return `${n.toFixed(1)}%`;
 }
 
-function ToggleGroup({ options, value, onChange }) {
+export function ToggleGroup({ options, value, onChange }) {
   return (
     <div className="mgmt-toggle-group">
       {options.map((o) => (
@@ -90,6 +91,7 @@ export default function ManagementKpisSectionLegacy({ roleCode, availableYears, 
   const [month, setMonth] = useState('');
   const [expensesGranularity, setExpensesGranularity] = useState('monthly');
   const [marketingGranularity, setMarketingGranularity] = useState('weekly');
+  const [managerGranularity, setManagerGranularity] = useState('monthly');
 
   const load = useCallback(async () => {
     if (!show || !active) return;
@@ -143,20 +145,7 @@ export default function ManagementKpisSectionLegacy({ roleCode, availableYears, 
     else setLoading(false);
   }, [load, show, active]);
 
-  const managerSeries = data?.manager_margin_monthly;
-  const managerChartData = useMemo(() => {
-    const managerKeys = managerSeries?.months || [];
-    if (!managerSeries?.series?.length || !managerKeys.length) return [];
-    return managerKeys.map((ml, idx) => {
-      const row = { monthLabel: ml };
-      managerSeries.series.forEach((s) => {
-        row[s.manager] = s[ml] ?? 0;
-      });
-      return row;
-    });
-  }, [managerSeries]);
-
-  const managerNames = managerSeries?.series?.map((s) => s.manager) || [];
+  const { managerChartData, managerNames } = useManagerChartData(data, managerGranularity);
 
   const snapshot = data?.snapshot;
 
@@ -356,7 +345,19 @@ export default function ManagementKpisSectionLegacy({ roleCode, availableYears, 
           </ResponsiveContainer>
         </MgmtChart>
 
-        <MgmtChart title={t('mgmt.managerMargin')}>
+        <MgmtChart
+          title={t('mgmt.managerMargin')}
+          controls={
+            <ToggleGroup
+              value={managerGranularity}
+              onChange={setManagerGranularity}
+              options={[
+                { value: 'weekly', label: t('mgmt.weekly') },
+                { value: 'monthly', label: t('mgmt.monthly') },
+              ]}
+            />
+          }
+        >
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={managerChartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />

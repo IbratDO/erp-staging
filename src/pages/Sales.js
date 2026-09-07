@@ -14,6 +14,9 @@ import {
   formatInsufficientLedgerMessage,
 } from '../utils/currencyFormat';
 import SaleCompletePayForm from '../components/SaleCompletePayForm';
+import { buildReceiptHtml } from '../components/receiptPrint';
+import { canPrintReceiptFor } from './receiptButton';
+import printHtmlDocument from '../utils/printHtml';
 import SaleDeliverySettlementForm from '../components/SaleDeliverySettlementForm';
 import SaleChangeFields from '../components/SaleChangeFields';
 import {
@@ -1362,6 +1365,7 @@ const Sales = () => {
           }
           fetchSales();
           showNotification(t('notifications.saleCompleted'), 'success');
+          printReceiptAfterCompletion(sale, targetSales);
         }
       } else if (targetSales) {
         for (const s of targetSales) {
@@ -1763,6 +1767,11 @@ const Sales = () => {
       setShowCompleteFromOrderGroupForm(false);
       fetchSales();
       showNotification(t('completeFromOrder.successGroup', { count: completeFromOrderGroupData.lines.length }), 'success');
+      // One purchase, one piece of paper: any line resolves to the same receipt on the server.
+      if (completeFromOrderGroupData.sale_type === 'bought_from_shop') {
+        const firstLine = completeFromOrderGroupData.lines?.[0];
+        if (firstLine?.saleId) printReceipt(firstLine.saleId, { quiet: true });
+      }
     } catch (error) {
       console.error('Error completing sale group:', error);
       const d = error.response?.data;
@@ -1950,6 +1959,8 @@ const Sales = () => {
         fetchSales();
         showNotification(t('completeFromOrder.successDispatch'), 'success');
       } else {
+        const printedSaleId = completeFromOrderData.saleId;
+        const printedType = completeFromOrderData.sale_type;
         setShowCompleteFromOrderForm(false);
         setCompleteFromOrderPackageLines(EMPTY_PKG_LINES());
         setCompleteFromOrderData({
@@ -1958,6 +1969,9 @@ const Sales = () => {
         });
         fetchSales();
         showNotification(t('completeFromOrder.success'), 'success');
+        // Read off before the form state is cleared above; a reserved sale has not been handed
+        // over and gets no chek.
+        if (printedType === 'bought_from_shop') printReceipt(printedSaleId, { quiet: true });
       }
     } catch (error) {
       console.error('Error completing sale from order:', error);
@@ -2232,11 +2246,63 @@ const Sales = () => {
       (isGroupLine ? cfoGroupExchangeRate : cfoExchangeRate)?.rate ?? null,
     );
 
+  /**
+   * Print the chek for a purchase.
+   *
+   * Asks the server for the receipt rather than assembling one from the row on screen: the paper
+   * has to agree with the books, and the row here is a view of one line while the receipt is the
+   * whole checkout. The server also allocates the purchase's barcode, which is what the Returns
+   * scanner will later look the sale up by — so it has to come from one place.
+   *
+   * `quiet` is for the automatic print that follows a completion. A receipt failing to print is
+   * an annoyance; the sale itself already succeeded, and interrupting the seller with an error
+   * about paper in the middle of serving a customer would be the wrong trade. The reprint button
+   * is not quiet, because there the print *is* the thing that was asked for.
+   */
+  const printReceipt = async (saleId, { quiet = false } = {}) => {
+    try {
+      const res = await api.get(`/sales/${saleId}/receipt/`);
+      const html = buildReceiptHtml(res.data, {
+        shopName: t('receipt.shopName', { ns: 'sales' }),
+        subtotal: t('receipt.subtotal', { ns: 'sales' }),
+        discount: t('receipt.discount', { ns: 'sales' }),
+        total: t('receipt.total', { ns: 'sales' }),
+        creditTitle: t('receipt.creditTitle', { ns: 'sales' }),
+        creditDue: t('receipt.creditDue', { ns: 'sales' }),
+        giveaway: t('receipt.giveaway', { ns: 'sales' }),
+        thanks: t('receipt.thanks', { ns: 'sales' }),
+      });
+      if (html) printHtmlDocument(html);
+    } catch (err) {
+      console.error('Error printing receipt:', err);
+      if (!quiet) showNotification(t('receipt.failed', { ns: 'sales' }), 'error');
+    }
+  };
+
+  /**
+   * The automatic print that follows a completion.
+   *
+   * A group is one purchase and one piece of paper, so printing is asked for once — any line
+   * resolves to the same receipt on the server.
+   */
+  const printReceiptAfterCompletion = (sale, groupSales = null) => {
+    const target = groupSales?.length ? groupSales[0] : sale;
+    if (!target) return;
+    if ((target.sale_type || '') !== 'bought_from_shop') return;
+    printReceipt(target.id, { quiet: true });
+  };
+
   const renderSaleActionsCell = (sale, groupSales = null) => {
     const actionFor = (status) => handleStatusUpdate(sale.id, status, groupSales || undefined);
     const showCancel = canShowCancelSale(sale, groupSales);
     const cancelTargetId = groupSales?.length
       ? (groupSales.find((s) => !SALE_TERMINAL_STATUSES.has(s.status))?.id || sale.id)
+      : sale.id;
+    // Deliberately not `cancelTargetId`: that one looks for a line still in play, which on a
+    // half-finished group is exactly the line the server will refuse to print. A receipt is asked
+    // for from a line that is actually done, and any done line resolves to the whole purchase.
+    const receiptTargetId = groupSales?.length
+      ? (groupSales.find((s) => s.status === 'completed')?.id || sale.id)
       : sale.id;
     return (
       <>
@@ -2346,6 +2412,17 @@ const Sales = () => {
           >
             {t('rowActions.cancelSale', { ns: 'sales' })}
           </ActionButton>
+        )}
+        {canPrintReceiptFor(sale, groupSales) && (
+          <button
+            type="button"
+            className="btn-edit"
+            style={{ display: 'block', marginTop: '5px' }}
+            onClick={() => printReceipt(receiptTargetId)}
+            title={t('receipt.reprintHint', { ns: 'sales' })}
+          >
+            {t('rowActions.printReceipt', { ns: 'sales' })}
+          </button>
         )}
         {['completed', 'returned'].includes(sale.status) && sale.payment_currency && (
           <span style={{ fontSize: '0.9em', color: '#666', display: 'block', marginTop: '5px' }}>
@@ -3106,8 +3183,10 @@ const Sales = () => {
           sale={completePaySale}
           onClose={() => setCompletePaySale(null)}
           onSuccess={() => {
+            const done = completePaySale;
             setCompletePaySale(null);
             fetchSales();
+            printReceiptAfterCompletion(done, done?.groupSales);
           }}
           showNotification={showNotification}
         />

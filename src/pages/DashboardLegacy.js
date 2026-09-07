@@ -2,29 +2,18 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../utils/api';
 import i18n from '../i18n';
 import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import {
   buildMonthlyStacked,
   buildNetMonthlyStacked,
   buildNetWeekdayAverages,
-  CHART_PALETTE,
+  buildTopSlots,
   filterReturnFacts,
   crossFilterSummary,
   EMPTY_CROSS_FILTER,
   filterFacts,
   toggleCrossFilter,
 } from '../utils/dashboardAnalytics';
-import ManagementKpisSectionLegacy from '../components/ManagementKpisSectionLegacy';
+import { CategoryTopSlotsChart, ChartPanel } from '../components/dashboardCharts';
+import ManagementKpisSectionLegacy, { ToggleGroup } from '../components/ManagementKpisSectionLegacy';
 import PenaltyDashboardCard from '../components/PenaltyDashboardCard';
 import { usePermissions } from '../hooks/usePermissions';
 import useAppTranslation from '../hooks/useAppTranslation';
@@ -37,90 +26,6 @@ function KpiCard({ label, value, sub }) {
       <div className="dash-kpi-label">{label}</div>
       <div className="dash-kpi-value">{value}</div>
       {sub ? <div className="dash-kpi-sub">{sub}</div> : null}
-    </div>
-  );
-}
-
-function ChartPanel({
-  title,
-  data,
-  seriesKeys,
-  xKey,
-  chartType,
-  onLegendClick,
-  activeCross,
-  emptyLabel = '',
-}) {
-  const height = 280;
-
-  const legendProps = {
-    onClick: (e) => {
-      const key = e?.value;
-      if (!key || !onLegendClick) return;
-      onLegendClick(key);
-    },
-    wrapperStyle: { cursor: 'pointer', fontSize: 12 },
-  };
-
-  const tooltipStyle = {
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: 8,
-    fontSize: 13,
-  };
-
-  if (!data?.length) {
-    return (
-      <div className="dash-chart-card">
-        <h3>{title}</h3>
-        <p className="dash-empty">{emptyLabel}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="dash-chart-card">
-      <h3>{title}</h3>
-      <ResponsiveContainer width="100%" height={height}>
-        {chartType === 'area' ? (
-          <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Legend {...legendProps} />
-            {seriesKeys.map((key, i) => (
-              <Area
-                key={key}
-                type="monotone"
-                dataKey={key}
-                stackId="1"
-                stroke={CHART_PALETTE[i % CHART_PALETTE.length]}
-                fill={CHART_PALETTE[i % CHART_PALETTE.length]}
-                fillOpacity={activeCross && activeCross !== key ? 0.25 : 0.75}
-                strokeWidth={activeCross === key ? 2.5 : 1}
-              />
-            ))}
-          </AreaChart>
-        ) : (
-          <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} allowDecimals={chartType === 'weekday'} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Legend {...legendProps} />
-            {seriesKeys.map((key, i) => (
-              <Bar
-                key={key}
-                dataKey={key}
-                stackId="stack"
-                fill={CHART_PALETTE[i % CHART_PALETTE.length]}
-                fillOpacity={activeCross && activeCross !== key ? 0.35 : 0.9}
-              />
-            ))}
-          </BarChart>
-        )}
-      </ResponsiveContainer>
     </div>
   );
 }
@@ -139,6 +44,9 @@ const DashboardLegacy = () => {
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState('');
   const [crossFilter, setCrossFilter] = useState(EMPTY_CROSS_FILTER);
+  // Changes what each weekday bar is an average *of* — months, or single weeks. The bars
+  // stay the seven weekdays either way.
+  const [weekdayGranularity, setWeekdayGranularity] = useState('monthly');
   const [activeTab, setActiveTab] = useState(DASH_TAB_SALES);
   const [cbuRate, setCbuRate] = useState(null);
 
@@ -213,18 +121,31 @@ const DashboardLegacy = () => {
     () => buildNetMonthlyStacked(filteredFacts, filteredReturnFacts, 'category'),
     [filteredFacts, filteredReturnFacts],
   );
+  // Each bar keeps its own biggest five and groups the rest. Without this the chart draws one
+  // series per category that has ever sold, so a bar names the whole catalogue on hover with
+  // most of it at zero.
+  const monthlyCategoryTop = useMemo(
+    () => buildTopSlots(monthlyCategories, 5),
+    [monthlyCategories],
+  );
   const monthlyCustomers = useMemo(
     () => buildNetMonthlyStacked(filteredFacts, filteredReturnFacts, 'customer_type'),
     [filteredFacts, filteredReturnFacts],
   );
 
   const weekdayUsers = useMemo(
-    () => buildNetWeekdayAverages(filteredFacts, filteredReturnFacts, 'salesman_name'),
-    [filteredFacts, filteredReturnFacts],
+    () => buildNetWeekdayAverages(
+      filteredFacts, filteredReturnFacts, 'salesman_name', weekdayGranularity,
+    ),
+    [filteredFacts, filteredReturnFacts, weekdayGranularity],
   );
   const weekdayCategories = useMemo(
     () => buildNetWeekdayAverages(filteredFacts, filteredReturnFacts, 'category'),
     [filteredFacts, filteredReturnFacts],
+  );
+  const weekdayCategoryTop = useMemo(
+    () => buildTopSlots(weekdayCategories, 5),
+    [weekdayCategories],
   );
   const weekdayCustomers = useMemo(
     () => buildNetWeekdayAverages(filteredFacts, filteredReturnFacts, 'customer_type'),
@@ -269,6 +190,11 @@ const DashboardLegacy = () => {
   }
 
   const chartEmpty = td('noChartData');
+  const categoryChartLabels = {
+    others: td('chartOthers'),
+    othersCount: (count) => td('chartOthersCount', { count }),
+    total: td('chartMonthTotal'),
+  };
 
   const formatRefundSummary = (usd, uzs) => {
     const parts = [];
@@ -444,13 +370,11 @@ const DashboardLegacy = () => {
           />
           ) : null}
           {!targetologView ? (
-          <ChartPanel
+          <CategoryTopSlotsChart
             emptyLabel={chartEmpty}
             title={td('chartUnitsByCategory')}
-            data={monthlyCategories.data}
-            seriesKeys={monthlyCategories.keys}
-            xKey="monthLabel"
-            chartType="bar"
+            series={monthlyCategoryTop}
+            labels={categoryChartLabels}
             onLegendClick={handleLegendCategory}
             activeCross={crossFilter.category}
           />
@@ -492,18 +416,31 @@ const DashboardLegacy = () => {
             seriesKeys={weekdayUsers.keys}
             xKey="weekday_label"
             chartType="weekday"
+            // Everyone who sold nothing on that weekday is left out of the hover, so the
+            // people who did sell are not buried under a column of zeroes.
+            hideZeroSeries
             onLegendClick={handleLegendUser}
             activeCross={crossFilter.salesman}
+            controls={
+              <ToggleGroup
+                value={weekdayGranularity}
+                onChange={setWeekdayGranularity}
+                options={[
+                  { value: 'weekly', label: td('mgmt.weekly') },
+                  { value: 'monthly', label: td('mgmt.monthly') },
+                ]}
+              />
+            }
           />
           ) : null}
           {!targetologView ? (
-          <ChartPanel
+          <CategoryTopSlotsChart
             emptyLabel={chartEmpty}
             title={td('chartAvgByCategory')}
-            data={weekdayCategories.data}
-            seriesKeys={weekdayCategories.keys}
+            series={weekdayCategoryTop}
+            labels={categoryChartLabels}
             xKey="weekday_label"
-            chartType="weekday"
+            allowDecimals
             onLegendClick={handleLegendCategory}
             activeCross={crossFilter.category}
           />

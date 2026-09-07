@@ -160,7 +160,8 @@
     "completeSale": "Complete sale",
     "sell": "Sell",
     "cancelReserved": "Cancel reservation",
-    "cancelSale": "Cancel sale"
+    "cancelSale": "Cancel sale",
+    "printReceipt": "Receipt"
   },
   "table": {
     "actions": "Actions",
@@ -423,5 +424,17 @@
     "errCancelSale": "Error cancelling sale",
     "errPkgNotExist": "Package type \"{{type}}\" does not exist.",
     "errPkgInsufficient": "Insufficient stock for package \"{{type}}\": need {{need}}, have {{have}}."
+  },
+  "receipt": {
+    "shopName": "Immense Shop",
+    "subtotal": "Subtotal",
+    "discount": "Discount",
+    "total": "Total",
+    "creditTitle": "ON CREDIT",
+    "creditDue": "Due",
+    "giveaway": "Free",
+    "thanks": "Thank you for your purchase!",
+    "failed": "The receipt could not be printed.",
+    "reprintHint": "Print this purchase's receipt again"
   }
 }

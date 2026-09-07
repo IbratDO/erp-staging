@@ -8,12 +8,17 @@
  * Rows are dropped from the hover only. The series themselves stay, which is what keeps a person
  * on the same colour in every bar and keeps the legend complete — hiding a *series* would have
  * reshuffled the palette from one weekday to the next.
+ *
+ * Moved here with the chart cards themselves. They used to live inside `DashboardModern`, where
+ * only the Founder and the Investor got the benefit of them; every other role's dashboard kept a
+ * separate, older copy of the same chart. Sharing the components is what puts this hover in front
+ * of the CEO and the sales managers too.
  */
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 
-import { nonZeroTooltip } from './DashboardModern';
+import { nonZeroTooltip } from './dashboardCharts';
 
 const STYLE = { background: '#fff' };
 

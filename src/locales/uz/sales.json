@@ -160,7 +160,8 @@
     "completeSale": "Sotuvni yakunlash",
     "sell": "Sotish",
     "cancelReserved": "Band qilishni bekor qilish",
-    "cancelSale": "Sotuvni bekor qilish"
+    "cancelSale": "Sotuvni bekor qilish",
+    "printReceipt": "Chek"
   },
   "table": {
     "actions": "Amallar",
@@ -423,5 +424,17 @@
     "errCancelSale": "Sotuvni bekor qilishda xatolik",
     "errPkgNotExist": "«{{type}}» qadoq turi mavjud emas.",
     "errPkgInsufficient": "«{{type}}» qadoq zaxirasi yetarli emas: kerak {{need}}, bor {{have}}."
+  },
+  "receipt": {
+    "shopName": "Immense Shop",
+    "subtotal": "Oraliq jami",
+    "discount": "Chegirma",
+    "total": "Jami",
+    "creditTitle": "NASIYA (QARZ)",
+    "creditDue": "To'lash sanasi",
+    "giveaway": "Bepul",
+    "thanks": "Xaridingiz uchun rahmat!",
+    "failed": "Chekni chop etib bo'lmadi.",
+    "reprintHint": "Ushbu xaridning chekini qayta chop etish"
   }
 }
