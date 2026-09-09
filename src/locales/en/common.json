@@ -10,6 +10,7 @@
     "inventoryProducts": "Stock items",
     "packages": "Packages",
     "stockCounts": "Stocktake",
+    "reports": "Reports",
     "orders": "Orders",
     "sales": "Sales",
     "returns": "Returns",

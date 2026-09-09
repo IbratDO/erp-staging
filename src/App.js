@@ -11,6 +11,7 @@ import Products from './pages/Products';
 import Inventory from './pages/Inventory';
 import Packages from './pages/Packages';
 import StockCounts from './pages/StockCounts';
+import Reports from './pages/Reports';
 import Orders from './pages/Orders';
 import Sales from './pages/Sales';
 import Returns from './pages/Returns';
@@ -84,6 +85,14 @@ function App() {
               element={
                 <ProtectedRoute permission="inventory.count">
                   <StockCounts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="reports"
+              element={
+                <ProtectedRoute permission="dashboard.ceo">
+                  <Reports />
                 </ProtectedRoute>
               }
             />

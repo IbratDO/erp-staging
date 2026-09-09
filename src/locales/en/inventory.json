@@ -165,7 +165,14 @@
         "over": "Over",
         "not_counted": "Not counted"
       }
-    }
+    },
+    "categoryType": "Category type",
+    "category": "Category",
+    "allCategories": "All",
+    "narrowedHint": "Only the chosen category is counted. Everything else is left untouched.",
+    "wholeShopHint": "With no category chosen the whole shop is listed (but only what you scan is judged).",
+    "outOfCategory": "That item is not in the category being counted.",
+    "emptyCategory": "There is no stock in the chosen category to count."
   },
   "layerPrice": {
     "button": "Edit",

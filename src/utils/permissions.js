@@ -9,6 +9,7 @@ export const ROUTE_PERMISSIONS = {
   '/inventory/products': 'inventory.view',
   '/inventory/packages': 'packages.view',
   '/inventory/stock-counts': 'inventory.count',
+  '/reports': 'dashboard.ceo',
   '/orders': 'orders.view',
   '/sales': 'sales.view',
   '/returns': 'returns.view',
@@ -96,6 +97,9 @@ export const MENU_ITEMS = [
       { path: '/inventory/stock-counts', labelKey: 'nav.stockCounts', icon: '📋', permission: 'inventory.count' },
     ],
   },
+  // Hisobotlar rides on `dashboard.ceo` — the same gate as the management dashboard, and
+  // the same group: cost, margin and the state of the till are all on these pages.
+  { path: '/reports', labelKey: 'nav.reports', icon: '📑', permission: 'dashboard.ceo' },
   { path: '/orders', labelKey: 'nav.orders', icon: '🛒', permission: 'orders.view' },
   { path: '/sales', labelKey: 'nav.sales', icon: '💰', permission: 'sales.view' },
   { path: '/returns', labelKey: 'nav.returns', icon: '↩️', permission: 'returns.view' },

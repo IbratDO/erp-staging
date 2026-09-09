@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import Modal, { WIDE } from './Modal';
 import api from '../utils/api';
+import { getCachedProducts } from '../utils/catalogCache';
+import { categoryTypeLabel } from '../utils/productCategoryTypes';
 import useAppTranslation from '../hooks/useAppTranslation';
 import useBarcodeScanner from '../hooks/useBarcodeScanner';
 import { normalizeScan } from '../utils/layerBarcode';
@@ -30,6 +32,9 @@ export default function StockCountModal({ open, onClose }) {
   const [lines, setLines] = useState([]);
   const [report, setReport] = useState(null);
   const [scope, setScope] = useState('partial');
+  const [categoryType, setCategoryType] = useState('');
+  const [category, setCategory] = useState('');
+  const [products, setProducts] = useState([]);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const seqRef = useRef(0);
@@ -76,8 +81,24 @@ export default function StockCountModal({ open, onClose }) {
       }
     })();
     primeScanBeep();
+    getCachedProducts(api).then((list) => {
+      if (!cancelled) setProducts(list || []);
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, [open, loadLines]);
+
+  // The two dropdowns are cascaded: choosing a type narrows the categories to the ones that
+  // actually exist within it, so the operator cannot pick a pair that matches no stock.
+  const categoryTypes = useMemo(
+    () => [...new Set(products.map((p) => p.category_type).filter(Boolean))].sort(),
+    [products],
+  );
+  const categories = useMemo(() => [...new Set(
+    products
+      .filter((p) => !categoryType || p.category_type === categoryType)
+      .map((p) => p.category)
+      .filter(Boolean),
+  )].sort(), [products, categoryType]);
 
   useEffect(() => {
     if (status === 'counted' && count?.id) loadReport(count.id);
@@ -114,7 +135,13 @@ export default function StockCountModal({ open, onClose }) {
   };
 
   const start = () => act(async () => {
-    const res = await api.post('/stock-counts/start/', { scope });
+    const res = await api.post('/stock-counts/start/', {
+      scope,
+      // Narrowing belongs to a partial walk only; «Butun omborni» means the whole shop by
+      // definition, and the server refuses the combination outright.
+      category_type: scope === 'partial' ? categoryType : '',
+      category: scope === 'partial' ? category : '',
+    });
     setCount(res.data.stock_count);
     await loadLines(res.data.stock_count.id);
   }, 'start');
@@ -187,6 +214,41 @@ export default function StockCountModal({ open, onClose }) {
               {scope === 'full' ? t('stockCount.scopeFullWarn') : t('stockCount.scopePartialHint')}
             </small>
           </div>
+
+          {/* Only on a partial walk. A full count covers the shop by definition, so offering to
+              narrow it would be offering something the server refuses. */}
+          {scope === 'partial' && (
+            <>
+              <div className="form-group">
+                <label>{t('stockCount.categoryType')}</label>
+                <select
+                  value={categoryType}
+                  onChange={(e) => { setCategoryType(e.target.value); setCategory(''); }}
+                >
+                  <option value="">{t('stockCount.allCategories')}</option>
+                  {categoryTypes.map((c) => (
+                    // The stored value is English (`sports`, `casual`); the shop reads Uzbek.
+                    // `categoryTypeLabel` is what every other page already uses for it.
+                    <option key={c} value={c}>{categoryTypeLabel(c, t)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>{t('stockCount.category')}</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)}>
+                  <option value="">{t('stockCount.allCategories')}</option>
+                  {categories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <small className="label-print__hint">
+                  {categoryType || category
+                    ? t('stockCount.narrowedHint')
+                    : t('stockCount.wholeShopHint')}
+                </small>
+              </div>
+            </>
+          )}
           <div className="form-actions">
             <button type="button" className="btn-primary" onClick={start} disabled={busy}>
               {t('stockCount.start')}
@@ -204,6 +266,15 @@ export default function StockCountModal({ open, onClose }) {
               scanned: scanned.length,
               total: lines.length,
             })}
+            {/* A narrowed walk names its shelf, because resuming after a break otherwise looks
+                identical to a whole-shop count that is mysteriously short of layers. */}
+            {(count.category_type || count.category) ? (
+              <strong>
+                {' · '}
+                {[categoryTypeLabel(count.category_type, t), count.category]
+                  .filter(Boolean).join(' / ')}
+              </strong>
+            ) : null}
           </p>
           <div className="data-table-scroll">
             <table className="data-table">

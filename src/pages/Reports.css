@@ -1,0 +1,75 @@
+/* Hisobotlar — the reports shell. One stylesheet for all four, matching the tables elsewhere. */
+
+.report-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.report-tab {
+  padding: 8px 18px; border: 1px solid #cbd5e1; border-radius: 8px;
+  background: #fff; cursor: pointer; font-size: 0.95em; font-weight: 600; color: #475569;
+}
+.report-tab--active { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+.report-picker { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.report-pick {
+  padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 999px;
+  background: #f8fafc; cursor: pointer; font-size: 0.88em; color: #475569;
+}
+.report-pick--active { background: #dbeafe; border-color: #93c5fd; color: #1e40af; font-weight: 600; }
+
+.report-hint { color: #64748b; font-size: 0.88em; margin: 0 0 14px; max-width: 900px; line-height: 1.5; }
+.report-hint--warn { color: #92400e; }
+
+.report-filters {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+  padding: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+  margin-bottom: 16px;
+}
+.report-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 0.82em; color: #475569; }
+.report-filters input, .report-filters select {
+  padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.92em; min-width: 150px;
+}
+
+/* Summary. Cards rather than a strip: the TZ asks for a handful of headline figures above the
+   table, and each one is read on its own rather than compared with its neighbours. */
+.report-summary {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.report-card {
+  padding: 12px 14px; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+}
+.report-card__label { font-size: 0.78em; color: #64748b; margin-bottom: 6px; }
+.report-card__value { font-size: 1.35em; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
+/* The frozen money on the neliquid report — the number the whole report exists to surface. */
+.report-card--emphasis { border-color: #fca5a5; background: #fef2f2; }
+.report-card--emphasis .report-card__value { color: #b91c1c; }
+.report-card--wide { grid-column: span 2; }
+.report-card__rows { display: flex; flex-direction: column; gap: 3px; font-size: 0.9em; }
+.report-card__rows > div { display: flex; justify-content: space-between; gap: 10px; font-variant-numeric: tabular-nums; }
+.report-card__total { border-top: 1px solid #e2e8f0; margin-top: 4px; padding-top: 5px; font-weight: 700; }
+
+.report-total-row > td { border-top: 2px solid #cbd5e1; background: #f8fafc; }
+
+/* A / B / C, coloured as the TZ suggests: green carries the shop, grey is the tail. */
+.report-band {
+  display: inline-block; min-width: 22px; text-align: center;
+  padding: 1px 7px; border-radius: 999px; font-weight: 700; font-size: 0.85em;
+}
+.report-band--A { background: #dcfce7; color: #166534; }
+.report-band--B { background: #fef3c7; color: #92400e; }
+.report-band--C { background: #f1f5f9; color: #64748b; }
+
+/* Stock that has never sold at all: the finding, not a missing value. */
+.report-never-sold { color: #b91c1c; font-weight: 600; }
+
+.report-pager {
+  display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 10px; font-size: 0.9em; color: #475569;
+}
+
+/* Sotuv reports: a giveaway and a returned sale are the two rows worth spotting at a glance. */
+.report-free { color: #92400e; font-weight: 700; }
+.report-status {
+  display: inline-block; padding: 1px 8px; border-radius: 999px;
+  font-size: 0.85em; font-weight: 600; white-space: nowrap;
+}
+.report-status--completed { background: #dcfce7; color: #166534; }
+.report-status--returned { background: #fee2e2; color: #991b1b; }

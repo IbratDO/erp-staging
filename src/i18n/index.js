@@ -8,6 +8,7 @@ import uzStatus from '../locales/uz/status.json';
 import uzDashboard from '../locales/uz/dashboard.json';
 import uzOrders from '../locales/uz/orders.json';
 import uzSales from '../locales/uz/sales.json';
+import uzReports from '../locales/uz/reports.json';
 import uzProducts from '../locales/uz/products.json';
 import uzInventory from '../locales/uz/inventory.json';
 import uzPackages from '../locales/uz/packages.json';
@@ -34,6 +35,7 @@ import ruStatus from '../locales/ru/status.json';
 import ruDashboard from '../locales/ru/dashboard.json';
 import ruOrders from '../locales/ru/orders.json';
 import ruSales from '../locales/ru/sales.json';
+import ruReports from '../locales/ru/reports.json';
 import ruProducts from '../locales/ru/products.json';
 import ruInventory from '../locales/ru/inventory.json';
 import ruPackages from '../locales/ru/packages.json';
@@ -60,6 +62,7 @@ import enStatus from '../locales/en/status.json';
 import enDashboard from '../locales/en/dashboard.json';
 import enOrders from '../locales/en/orders.json';
 import enSales from '../locales/en/sales.json';
+import enReports from '../locales/en/reports.json';
 import enProducts from '../locales/en/products.json';
 import enInventory from '../locales/en/inventory.json';
 import enPackages from '../locales/en/packages.json';
@@ -96,6 +99,7 @@ const resources = {
     dashboard: uzDashboard,
     orders: uzOrders,
     sales: uzSales,
+    reports: uzReports,
     products: uzProducts,
     inventory: uzInventory,
     packages: uzPackages,
@@ -123,6 +127,7 @@ const resources = {
     dashboard: ruDashboard,
     orders: ruOrders,
     sales: ruSales,
+    reports: ruReports,
     products: ruProducts,
     inventory: ruInventory,
     packages: ruPackages,
@@ -150,6 +155,7 @@ const resources = {
     dashboard: enDashboard,
     orders: enOrders,
     sales: enSales,
+    reports: enReports,
     products: enProducts,
     inventory: enInventory,
     packages: enPackages,

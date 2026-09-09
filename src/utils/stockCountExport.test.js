@@ -18,6 +18,7 @@ const labels = {
   startedAt: 'Sana',
   startedBy: 'Kim',
   scope: 'Turi',
+  categoryLabel: 'Kategoriya turi',
   status: 'Holati',
   appliedAt: 'Tuzatilgan sana',
   appliedBy: 'Kim tuzatdi',
@@ -87,6 +88,18 @@ describe('the header block names the count', () => {
   it('writes a missing total as zero rather than leaving a hole', () => {
     // An empty cell reads as "not measured". Nothing missing is a result, and a real one.
     expect(cellAfter(countMetaRows(count, {}, labels), 'Kam')).toBe('0');
+  });
+
+  it('names the shelf a narrowed count covered', () => {
+    // Two counts on the same day are otherwise indistinguishable in a folder of exports.
+    const rows = countMetaRows(
+      { ...count, category_type: 'sports', category: 'krossovka' }, {}, labels,
+    );
+    expect(cellAfter(rows, 'Kategoriya turi')).toBe('sports / krossovka');
+  });
+
+  it('leaves it blank for a whole-shop count', () => {
+    expect(cellAfter(countMetaRows(count, {}, labels), 'Kategoriya turi')).toBe('');
   });
 
   it('survives a count with no summary at all', () => {

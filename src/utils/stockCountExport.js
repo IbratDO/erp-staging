@@ -32,6 +32,13 @@ export function countMetaRows(count, summary, labels) {
     [labels.startedAt, labels.formatDateTime(count?.started_at)],
     [labels.startedBy, count?.started_by_name || ''],
     [labels.scope, labels.scopeName(count?.scope)],
+    // Blank for a whole-shop walk, which is what most counts are. The type is translated the
+    // same way it is on screen, so a filed export and the page it came from read alike.
+    [labels.categoryLabel, [
+      labels.categoryTypeName ? labels.categoryTypeName(count?.category_type)
+        : (count?.category_type || ''),
+      count?.category,
+    ].filter(Boolean).join(' / ')],
     [labels.status, labels.statusName(count?.status)],
     [labels.appliedAt, labels.formatDateTime(count?.applied_at)],
     [labels.appliedBy, count?.applied_by_name || ''],

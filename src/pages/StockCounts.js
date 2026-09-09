@@ -10,6 +10,7 @@ import useAppTranslation from '../hooks/useAppTranslation';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatAppDateTime } from '../utils/localeFormat';
 import { formatLabelPrice } from '../utils/layerLabel';
+import { categoryTypeLabel } from '../utils/productCategoryTypes';
 import { countExportFilename, countReportToMatrix } from '../utils/stockCountExport';
 import { csvFilename, downloadCsv, matrixToCsv } from '../utils/tableCsv';
 import './TablePage.css';
@@ -76,6 +77,8 @@ export default function StockCounts() {
     // Not `scopeLabel`: that is the question asked while starting a count ("what are you
     // counting?"), which reads as nonsense as a label in a filed record.
     scope: t('stockCount.history.scope'),
+    categoryLabel: t('stockCount.categoryType'),
+    categoryTypeName: (v) => categoryTypeLabel(v, t),
     status: t('stockCount.history.status'),
     appliedAt: t('stockCount.history.appliedAt'),
     appliedBy: t('stockCount.history.appliedBy'),
@@ -219,7 +222,17 @@ export default function StockCounts() {
                     <td>#{row.id}</td>
                     <td>{formatAppDateTime(row.started_at) || '—'}</td>
                     <td>{row.started_by_name || '—'}</td>
-                    <td>{scopeName(row.scope)}</td>
+                    <td>
+                      {scopeName(row.scope)}
+                      {/* A narrowed walk names its shelf. Without it two counts on the same day
+                          look identical and there is no way to tell what either covered. */}
+                      {(row.category_type || row.category) ? (
+                        <div className="stock-count-scope">
+                          {[categoryTypeLabel(row.category_type, t), row.category]
+                            .filter(Boolean).join(' / ')}
+                        </div>
+                      ) : null}
+                    </td>
                     <td>{s.scanned_lines ?? 0}</td>
                     <td>{s.counted_units ?? 0}</td>
                     <td>{s.missing_units ? <strong>{s.missing_units}</strong> : '—'}</td>
