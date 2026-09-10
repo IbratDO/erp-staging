@@ -3,15 +3,38 @@
  */
 import i18n from '../i18n';
 
+/**
+ * Digits grouped in threes by a space: `1287640` → `1 287 640`.
+ *
+ * By hand rather than through `toLocaleString`, for the same reason the printed label does it by
+ * hand: that function groups according to whatever locale the browser happens to be in — commas
+ * on one machine, spaces on another, apostrophes on a third — so the same sale read different
+ * ways on the counter PC and the office PC. A som figure is long enough that ungrouped digits are
+ * genuinely hard to read aloud, which is what the seller does with it.
+ *
+ * A plain space, matching `formatLabelPrice` — the sticker and the screen quote the same price and
+ * should write it the same way.
+ */
+function groupDigits(intPart) {
+  return String(intPart).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+function formatFixed(n, fractionDigits) {
+  const sign = n < 0 ? '-' : '';
+  const fixed = Math.abs(n).toFixed(fractionDigits);
+  const [whole, frac] = fixed.split('.');
+  return `${sign}${groupDigits(whole)}${frac ? `.${frac}` : ''}`;
+}
+
 export function formatDisplayAmount(amount, currency) {
   if (amount === null || amount === undefined || amount === '') return '—';
   const n = parseFloat(amount);
   if (Number.isNaN(n)) return '—';
   const cur = (currency && String(currency).toUpperCase()) || 'USD';
   if (cur === 'UZS') {
-    return `${n.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`;
+    return `${formatFixed(n, 0)} UZS`;
   }
-  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `$${formatFixed(n, 2)}`;
 }
 
 /** For balance transaction rows: balance_type like uzs_cash / usd_card */
@@ -30,7 +53,7 @@ export function formatPlainAmount(amount, fractionDigits = 2) {
   if (amount === null || amount === undefined || amount === '') return '—';
   const n = parseFloat(amount);
   if (Number.isNaN(n)) return '—';
-  return n.toLocaleString(undefined, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
+  return formatFixed(n, fractionDigits);
 }
 
 /** Sum ledger rows for SPA balance checks (matches Money Balance totals). */

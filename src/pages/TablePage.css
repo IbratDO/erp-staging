@@ -2241,3 +2241,10 @@ input.batch-sale-lines__control[type='number']::-webkit-outer-spin-button {
 .return-credit__note { margin-top: 8px; line-height: 1.5; }
 /* Which shelf a narrowed stocktake covered, under its scope in the history table. */
 .stock-count-scope { font-size: 0.82em; color: #2563eb; font-weight: 600; }
+
+/* A narrowed stocktake is a checklist of one shelf: what is still plain is what is still to be
+   found, and a row goes green the moment it is scanned. `td` rather than `tr` — the cell
+   background paints over the row's. */
+.data-table tbody tr.stock-count-row--found > td { background-color: #f0fdf4; }
+.data-table tbody tr.stock-count-row--found > td:first-child { box-shadow: inset 3px 0 0 #16a34a; }
+.stock-count-pending { color: #94a3b8; }

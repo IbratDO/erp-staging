@@ -172,7 +172,9 @@
     "narrowedHint": "Only the chosen category is counted. Everything else is left untouched.",
     "wholeShopHint": "With no category chosen the whole shop is listed (but only what you scan is judged).",
     "outOfCategory": "That item is not in the category being counted.",
-    "emptyCategory": "There is no stock in the chosen category to count."
+    "emptyCategory": "There is no stock in the chosen category to count.",
+    "checklistHint": "Scan the items on the list — each one turns green as it is found.",
+    "shelfEmpty": "There are no layers in this category."
   },
   "layerPrice": {
     "button": "Edit",

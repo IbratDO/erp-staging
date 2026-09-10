@@ -33,7 +33,9 @@ import { layerSalePickerLabel } from '../utils/productCost';
 import {
   EMPTY_PKG_LINES,
   applyLayerToLine,
+  applyListDiscountFinal,
   applyScanToBatchLines,
+  batchItemFromLine,
   batchLineTotals,
   linesPricedAboveCatalogue,
   clearLayerFromLine,
@@ -41,7 +43,6 @@ import {
   currencyForLayer,
   emptyBatchLine,
   findInventoryLayer,
-  formatSalePriceForCurrency,
   productForLayer,
 } from './batchSaleLines';
 import useBarcodeScanner from '../hooks/useBarcodeScanner';
@@ -294,40 +295,13 @@ function parsePriceNum(str) {
   return Number.isFinite(n) ? n : null;
 }
 
-function formatDiscountForCurrency(discNum, saleCur) {
-  if (discNum == null || !Number.isFinite(discNum) || discNum <= 0) return '';
-  return formatSalePriceForCurrency(discNum, saleCur);
-}
-
 /** list = full price; discount = amount off; selling = final price shown in the form. */
 /** Line break for `window.confirm`, which shows plain text rather than markup. */
 const NL = String.fromCharCode(10);
 
-/**
- * Keep the three prices on a line consistent: list, discount off it, and what is actually charged.
- *
- * The final price used to be clamped to the list price, so typing more than the shelf price
- * silently snapped back down — a shop that sells a scarce size for more than it lists simply
- * could not record what it charged. It is allowed now, and when it happens the **list rises to
- * meet it**: the figure the seller typed becomes this line's price, so a discount entered
- * afterwards comes off what they charged rather than off the old shelf price. Without that, 300
- * then a 10 discount would land on 269 and the 300 would vanish with no explanation.
- *
- * The invariant the rest of the form relies on survives either way: `discount = list - final`,
- * never negative. Selling above list is a higher price, not a negative discount.
- */
-function applyListDiscountFinal(listNum, discNum, finalNum, saleCur) {
-  const asked = listNum != null && listNum >= 0 ? listNum : 0;
-  let final = finalNum != null ? finalNum : asked - Math.max(0, discNum ?? 0);
-  final = Math.max(0, final);
-  const list = Math.max(asked, final);
-  const discount = Math.max(0, list - final);
-  return {
-    list_price: formatSalePriceForCurrency(list, saleCur),
-    selling_price: formatSalePriceForCurrency(final, saleCur),
-    discount_price: formatDiscountForCurrency(discount, saleCur),
-  };
-}
+// applyListDiscountFinal now lives in ./batchSaleLines, shared with the Kassa till — see the
+// import at the top. The till had its own uncoupled discount box, which showed one total and sent
+// another.
 
 // ----- PackageLinesSelector: compact multi-package row editor -----
 function PackageLinesSelector({ lines, onChange, packages: pkgList }) {
@@ -1087,35 +1061,13 @@ const Sales = () => {
     // Aggregate package need across all lines for stock check
     const needPkg = new Map();
     const items = withProduct.map((l) => {
-      const itemQty = parseInt(String(l.quantity), 10) || 1;
       const activeLines = (l.packageLines || []).filter((pl) => pl.package_type && pl.quantity > 0);
-      const disc = parsePriceNum(l.discount_price) || 0;
-      const priceForApi = parsePriceNum(disc > 0 ? l.list_price : l.selling_price);
-      const row = {
-        product: parseInt(l.product, 10),
-        quantity: itemQty,
-        selling_price:
-          priceForApi != null
-            ? batchDefaults.sale_currency === 'UZS'
-              ? String(Math.round(priceForApi))
-              : priceForApi.toFixed(2)
-            : String(l.selling_price || '').trim(),
-        package_type: null,
-        package_quantity: null,
-      };
-      if (l.inventory_batch_id) {
-        row.inventory_batch_id = parseInt(l.inventory_batch_id, 10);
+      // `batchItemFromLine` carries the package lines itself now; this loop only still exists to
+      // total up what the basket needs for the stock check below.
+      for (const pl of activeLines) {
+        needPkg.set(pl.package_type, (needPkg.get(pl.package_type) || 0) + pl.quantity);
       }
-      if (disc > 0) {
-        row.discount_price = l.discount_price;
-      }
-      if (activeLines.length > 0) {
-        row.package_lines = activeLines.map(({ package_type, quantity }) => ({ package_type, quantity }));
-        for (const pl of activeLines) {
-          needPkg.set(pl.package_type, (needPkg.get(pl.package_type) || 0) + pl.quantity);
-        }
-      }
-      return row;
+      return batchItemFromLine(l, batchDefaults.sale_currency);
     });
     for (const l of withProduct) {
       const batchId = parseInt(l.inventory_batch_id, 10);

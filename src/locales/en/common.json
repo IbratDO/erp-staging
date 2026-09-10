@@ -12,6 +12,7 @@
     "stockCounts": "Stocktake",
     "reports": "Reports",
     "orders": "Orders",
+    "pos": "Till",
     "sales": "Sales",
     "returns": "Returns",
     "dispatchers": "Dispatchers",

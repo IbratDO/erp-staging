@@ -1,0 +1,264 @@
+/*
+ * Kassa — the till.
+ *
+ * Full screen and fixed: the page behind it does not scroll away under the operator, and the two
+ * panels each scroll on their own. Everything is larger than the rest of the app on purpose —
+ * this is read at arm's length, in a hurry, with somebody waiting.
+ *
+ * Every number on this screen is labelled. A bare figure in a box is fine on a form somebody fills
+ * in once a day; at a counter it is a question the seller has to stop and answer.
+ */
+.pos {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #eef2f7;
+  z-index: 900;
+}
+
+.pos__bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 18px;
+  background: #0f172a;
+  color: #fff;
+}
+.pos__bar h1 { margin: 0; font-size: 1.15rem; letter-spacing: 0.5px; }
+
+/* The scan feedback lives in the bar rather than beside the basket: it is the one thing that must
+   be visible no matter where the eye is, and it never moves. */
+.pos__feedback {
+  flex: 1;
+  min-height: 22px;
+  font-size: 0.95em;
+  font-weight: 600;
+}
+.pos__feedback--ok { color: #4ade80; }
+.pos__feedback--error { color: #fca5a5; }
+
+.pos__body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 14px;
+  padding: 14px;
+  min-height: 0;
+}
+
+.pos__basket {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+/* The toolbar above the basket: what currency the sale is struck in, which shelf to search, and
+   the search itself — in the order they are used. */
+.pos__tools { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.pos__tool { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.pos__tool--grow { flex: 1 1 200px; }
+.pos__tool--currency { flex: 0 0 160px; }
+.pos__tool--search { flex: 2 1 320px; }
+
+/* One shape for all three toolbar controls.
+   The product picker styles its own trigger inline — 10px/12px padding, a #ddd hairline, 5px
+   radius, 14px text — and inline styles cannot be overridden from here, so the currency select and
+   the category trigger are matched *to it* rather than the other way round. Left alone they sat at
+   three different heights on three different baselines. */
+.pos__tool select,
+.pos__tool .pos__control {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.pos__tool select { -webkit-appearance: menulist; appearance: menulist; }
+
+.pos__tool-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.pos__required { font-style: normal; color: #dc2626; font-weight: 700; }
+
+/* Tinted like the Sotuvlar currency picker, so the basket's currency is never a surprise at the
+   moment the total is read out. */
+.pos__tool select.pos__currency--usd { background: #f0fdf4; border-color: #86efac; font-weight: 700; }
+.pos__tool select.pos__currency--uzs { background: #fffbeb; border-color: #fde68a; font-weight: 700; }
+
+.pos__hint { margin: 8px 0 0; font-size: 0.85em; color: #64748b; }
+.pos__hint--block { text-align: center; }
+
+/* ----- empty basket ----- */
+.pos__empty {
+  margin: auto;
+  text-align: center;
+  color: #94a3b8;
+  padding: 24px;
+}
+.pos__empty-mark { font-size: 2.6rem; opacity: 0.55; }
+.pos__empty-title { margin: 10px 0 4px; font-size: 1.1rem; font-weight: 600; color: #64748b; }
+.pos__empty-hint { margin: 0; font-size: 0.9em; }
+
+/* ----- the basket table ----- */
+.pos__table { display: flex; flex-direction: column; min-height: 0; margin-top: 14px; }
+
+/* One grid, declared once and used by both the heading row and every line, so a column and its
+   heading cannot drift apart. */
+.pos__head,
+.pos__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px 130px 130px 150px 130px 36px;
+  align-items: center;
+  gap: 10px;
+}
+
+.pos__head {
+  padding: 0 4px 8px;
+  border-bottom: 2px solid #e2e8f0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  align-items: end;
+}
+/* Each heading takes the padding of the control beneath it, so the word sits over its own column
+   rather than over the gap between two. */
+.pos__head--num { text-align: right; padding-right: 9px; }
+.pos__head--mid { text-align: center; }
+.pos__head--pkg { padding-left: 9px; }
+.pos__head--sum { text-align: right; }
+
+.pos__lines { list-style: none; margin: 0; padding: 0; overflow-y: auto; min-height: 0; }
+.pos__line { padding: 10px 4px; border-bottom: 1px solid #f1f5f9; }
+.pos__line:hover { background: #f8fafc; }
+
+.pos__line-item { min-width: 0; }
+.pos__line-name {
+  font-weight: 700;
+  font-size: 1.02rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pos__line-sub { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.pos__chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.pos__line-stock { font-size: 0.75rem; color: #94a3b8; }
+
+.pos__line-qty { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.pos__line-qty button {
+  width: 34px; height: 34px; border: 1px solid #cbd5e1; background: #f8fafc;
+  border-radius: 8px; font-size: 1.15em; cursor: pointer; line-height: 1;
+}
+.pos__line-qty button:hover:not(:disabled) { background: #e2e8f0; }
+.pos__line-qty button:disabled { opacity: 0.4; cursor: not-allowed; }
+.pos__line-qty strong {
+  min-width: 26px; text-align: center; font-size: 1.05rem; font-variant-numeric: tabular-nums;
+}
+
+.pos__line-price {
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  text-align: right;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+.pos__line-price:focus { outline: 2px solid #93c5fd; outline-offset: -1px; }
+
+.pos__line-pkg {
+  width: 100%; padding: 8px 9px; border: 1px solid #cbd5e1; border-radius: 8px;
+  box-sizing: border-box; background: #fff;
+}
+.pos__line-pkg--none { color: #94a3b8; }
+
+.pos__line-total { text-align: right; font-variant-numeric: tabular-nums; }
+.pos__line-total strong { font-size: 1.05rem; }
+.pos__line-off { display: block; font-size: 0.72rem; color: #16a34a; font-weight: 600; }
+
+.pos__line-drop {
+  width: 30px; height: 30px; border: 0; border-radius: 8px;
+  background: #fee2e2; color: #b91c1c; font-size: 1.15em; cursor: pointer; line-height: 1;
+}
+.pos__line-drop:hover { background: #fecaca; }
+
+/* ----- the payment panel ----- */
+.pos__pay {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+.pos__customer { display: flex; flex-direction: column; gap: 5px; }
+.pos__customer-row { display: flex; gap: 6px; align-items: center; }
+.pos__customer-row > *:first-child { flex: 1; min-width: 0; }
+
+.pos__totals { display: flex; flex-direction: column; gap: 8px; font-variant-numeric: tabular-nums; }
+.pos__totals > div { display: flex; justify-content: space-between; gap: 10px; }
+.pos__totals span { color: #64748b; }
+.pos__saved strong { color: #16a34a; }
+
+/* The number the customer is about to hand money for. Biggest thing on the screen. */
+.pos__grand {
+  border-top: 2px solid #e2e8f0;
+  margin-top: 4px;
+  padding-top: 12px;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+.pos__grand span { color: #0f172a !important; font-size: 1.05rem; align-self: center; }
+
+.pos__checkout {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #16a34a;
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pos__checkout:hover:not(:disabled) { background: #15803d; }
+.pos__checkout:disabled { background: #cbd5e1; cursor: not-allowed; }
+.pos__checkout-sum { font-size: 0.95rem; font-weight: 600; opacity: 0.9; }
+
+@media (max-width: 1200px) {
+  .pos__head,
+  .pos__line { grid-template-columns: minmax(0, 1fr) 116px 112px 112px 120px 110px 32px; gap: 7px; }
+}
+
+@media (max-width: 900px) {
+  .pos__body { grid-template-columns: 1fr; }
+  .pos__head { display: none; }
+  .pos__line { grid-template-columns: minmax(0, 1fr) 110px 100px 100px; row-gap: 8px; }
+}

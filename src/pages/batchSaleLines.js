@@ -152,6 +152,58 @@ function parsePriceNum(str) {
   return Number.isFinite(n) ? n : null;
 }
 
+function formatDiscountForCurrency(discNum, saleCur) {
+  if (discNum == null || !Number.isFinite(discNum) || discNum <= 0) return '';
+  return formatSalePriceForCurrency(discNum, saleCur);
+}
+
+/**
+ * Keep the three prices on a line consistent: list, discount off it, and what is actually charged.
+ *
+ * The final price used to be clamped to the list price, so typing more than the shelf price
+ * silently snapped back down — a shop that sells a scarce size for more than it lists simply
+ * could not record what it charged. It is allowed now, and when it happens the **list rises to
+ * meet it**: the figure the seller typed becomes this line's price, so a discount entered
+ * afterwards comes off what they charged rather than off the old shelf price. Without that, 300
+ * then a 10 discount would land on 269 and the 300 would vanish with no explanation.
+ *
+ * The invariant the rest of the form relies on survives either way: `discount = list - final`,
+ * never negative. Selling above list is a higher price, not a negative discount.
+ *
+ * Shared with the till, which needs it for a harder reason than tidiness: `batchItemFromLine`
+ * sends the **list** price whenever a discount is present, so a screen that lets the two fields
+ * drift apart shows one total and charges another.
+ */
+export function applyListDiscountFinal(listNum, discNum, finalNum, saleCur) {
+  const asked = listNum != null && listNum >= 0 ? listNum : 0;
+  let final = finalNum != null ? finalNum : asked - Math.max(0, discNum ?? 0);
+  final = Math.max(0, final);
+  const list = Math.max(asked, final);
+  const discount = Math.max(0, list - final);
+  return {
+    list_price: formatSalePriceForCurrency(list, saleCur),
+    selling_price: formatSalePriceForCurrency(final, saleCur),
+    discount_price: formatDiscountForCurrency(discount, saleCur),
+  };
+}
+
+/**
+ * One line's price fields after the operator edits either the price box or the discount box.
+ *
+ * The wrapper the till uses, so it does not have to know which of the three numbers to pass where:
+ * give it the line, which field moved, and the new text.
+ */
+export function repriceBatchLine(line, field, value, saleCur) {
+  const listNum = parsePriceNum(line.list_price);
+  if (field === 'selling_price') {
+    const finalNum = parsePriceNum(value);
+    if (listNum == null || finalNum == null) return { ...line, selling_price: value };
+    return { ...line, ...applyListDiscountFinal(listNum, null, finalNum, saleCur) };
+  }
+  if (listNum == null) return { ...line, discount_price: value };
+  return { ...line, ...applyListDiscountFinal(listNum, parsePriceNum(value) ?? 0, null, saleCur) };
+}
+
 /**
  * Re-price every filled line into a new sale currency.
  *
@@ -247,6 +299,56 @@ export function batchLineTotals(lines) {
   }
 
   return { quantity, amount, discount, filledLines };
+}
+
+/**
+ * One basket line as `batch_create` wants it.
+ *
+ * Shared by the Sotuvlar modal and the Kassa screen, because the price rule here is not obvious
+ * and getting it wrong costs the shop money in silence.
+ *
+ * **`selling_price` is the LIST price whenever a discount is present.** The server stores the two
+ * separately and computes `effective = selling_price - discount_price`, so sending the already
+ * reduced figure *and* the discount takes it off twice — a 240 item with 20 off would be created
+ * as 200, the customer would be charged 220, and the difference would surface later as a payment
+ * that does not reconcile. With no discount there is no list price to send and the line's own
+ * price is the right one.
+ *
+ * Rounded to what the currency can express: whole som, cents for dollars.
+ */
+export function batchItemFromLine(line, saleCurrency) {
+  const discount = parsePriceNum(line.discount_price) || 0;
+  const priceForApi = parsePriceNum(discount > 0 ? line.list_price : line.selling_price);
+  const row = {
+    product: parseInt(line.product, 10),
+    quantity: parseInt(String(line.quantity), 10) || 1,
+    selling_price:
+      priceForApi != null
+        ? (String(saleCurrency).toUpperCase() === 'UZS'
+          ? String(Math.round(priceForApi))
+          : priceForApi.toFixed(2))
+        : String(line.selling_price || '').trim(),
+    package_type: null,
+    package_quantity: null,
+  };
+  // The layer the operator actually picked, so the sale comes off that FIFO batch rather than
+  // whichever one the server would have chosen.
+  if (line.inventory_batch_id) {
+    row.inventory_batch_id = parseInt(line.inventory_batch_id, 10);
+  }
+  if (discount > 0) {
+    row.discount_price = line.discount_price;
+  }
+  // Packaging travels with the line it belongs to. Kept here rather than bolted on by each caller,
+  // because a caller that forgets it sends a sale whose boxes never leave the store room — and the
+  // basket passed its own packaging stock check on the way.
+  const boxes = (line.packageLines || [])
+    .filter((pl) => pl?.package_type && pl.quantity > 0)
+    .map(({ package_type, quantity }) => ({ package_type, quantity }));
+  if (boxes.length) {
+    row.package_lines = boxes;
+  }
+  return row;
 }
 
 /**

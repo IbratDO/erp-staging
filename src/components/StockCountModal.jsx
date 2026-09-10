@@ -20,6 +20,12 @@ import StockCountReport from './StockCountReport';
  *   open       → scan, with a running tally
  *   counted    → what was found
  *
+ * **There is no hand-correction box.** The counting table used to carry one, so a miscount or a
+ * double scan could be typed over. It was removed at the owner's request; the `set_counted`
+ * endpoint behind it is untouched and permission-gated, so putting it back is a matter of wiring
+ * a control to it again. Until then the only way out of a scan made in error is to cancel the
+ * count and start it again — which costs nothing but the walk, since counting writes nothing.
+ *
  * **Nothing in this window changes stock or money.** It used to end with an Apply button that
  * wrote the shortage off; that was removed at the owner's instruction, so a count now records
  * what was seen and stops there. Every count is kept on the Ombor nazorati page, which is where
@@ -159,24 +165,41 @@ export default function StockCountModal({ open, onClose }) {
     setReport(null);
   }, 'cancel');
 
-  const correct = (batchId, units) => act(async () => {
-    await api.post(`/stock-counts/${count.id}/set_counted/`, {
-      batch_id: batchId, units: units === '' ? null : Number(units),
-    });
-    await loadLines(count.id);
-  }, 'correct');
+  const productName = (line) => (line.product_detail
+    ? `${line.product_detail.brand} | ${line.product_detail.model}`
+    : `#${line.batch_id}`);
 
-  // Only what has actually been scanned, newest first. The full list is every layer in the shop
-  // and would bury the two lines the person is looking at.
   const scanned = useMemo(
     () => lines.filter((l) => l.counted_quantity != null)
       .sort((a, b) => b.batch_id - a.batch_id),
     [lines],
   );
 
-  const productName = (line) => (line.product_detail
-    ? `${line.product_detail.brand} | ${line.product_detail.model}`
-    : `#${line.batch_id}`);
+  const narrowed = Boolean(count?.category_type || count?.category);
+
+  /**
+   * What the counting screen lists.
+   *
+   * A **narrowed** count shows the whole shelf as a checklist: these are the things that ought to
+   * be there, and each turns green as it is found. That is only usable because the category cut
+   * the list to a shelf's worth — an unnarrowed count is every layer in the shop, and a list of
+   * hundreds would bury the two rows the person is actually looking at, so it keeps showing only
+   * what has been scanned.
+   *
+   * Sorted by product and held there. A checklist that reordered itself every time a box was
+   * scanned would lose the operator their place on the shelf, which is the one thing it exists to
+   * keep.
+   */
+  const visibleLines = useMemo(() => {
+    if (!narrowed) return scanned;
+    return [...lines].sort((a, b) => {
+      const byName = productName(a).localeCompare(productName(b));
+      if (byName !== 0) return byName;
+      return String(a.product_detail?.size || '').localeCompare(
+        String(b.product_detail?.size || ''),
+      );
+    });
+  }, [narrowed, lines, scanned]);
 
   return (
     <Modal
@@ -268,7 +291,7 @@ export default function StockCountModal({ open, onClose }) {
             })}
             {/* A narrowed walk names its shelf, because resuming after a break otherwise looks
                 identical to a whole-shop count that is mysteriously short of layers. */}
-            {(count.category_type || count.category) ? (
+            {narrowed ? (
               <strong>
                 {' · '}
                 {[categoryTypeLabel(count.category_type, t), count.category]
@@ -276,6 +299,11 @@ export default function StockCountModal({ open, onClose }) {
               </strong>
             ) : null}
           </p>
+          {narrowed ? (
+            <p className="label-print__hint" style={{ marginBottom: 10 }}>
+              {t('stockCount.checklistHint')}
+            </p>
+          ) : null}
           <div className="data-table-scroll">
             <table className="data-table">
               <thead>
@@ -285,32 +313,29 @@ export default function StockCountModal({ open, onClose }) {
                   <th>{t('table.size')}</th>
                   <th>{t('stockCount.counted')}</th>
                   <th>{t('stockCount.systemNow')}</th>
-                  <th>{t('table.actions', { ns: 'common' })}</th>
                 </tr>
               </thead>
               <tbody>
-                {scanned.length === 0 ? (
-                  <tr><td colSpan="6" style={{ textAlign: 'center' }}>{t('stockCount.nothingYet')}</td></tr>
-                ) : scanned.map((line) => (
-                  <tr key={line.id}>
+                {visibleLines.length === 0 ? (
+                  <tr><td colSpan="5" style={{ textAlign: 'center' }}>
+                    {narrowed ? t('stockCount.shelfEmpty') : t('stockCount.nothingYet')}
+                  </td></tr>
+                ) : visibleLines.map((line) => (
+                  // Green once it has been found. On a checklist that is the whole point: what is
+                  // left plain is what is still to look for.
+                  <tr
+                    key={line.id}
+                    className={line.counted_quantity != null ? 'stock-count-row--found' : ''}
+                  >
                     <td>#{line.batch_id}</td>
                     <td>{productName(line)}</td>
                     <td>{line.product_detail?.size || '-'}</td>
-                    <td><strong>{line.counted_quantity}</strong></td>
-                    <td>{line.system_now}</td>
                     <td>
-                      <input
-                        type="number"
-                        min="0"
-                        defaultValue={line.counted_quantity}
-                        style={{ width: 70 }}
-                        onBlur={(e) => {
-                          if (String(e.target.value) === String(line.counted_quantity)) return;
-                          correct(line.batch_id, e.target.value);
-                        }}
-                        aria-label={t('stockCount.counted')}
-                      />
+                      {line.counted_quantity == null
+                        ? <span className="stock-count-pending">—</span>
+                        : <strong>{line.counted_quantity}</strong>}
                     </td>
+                    <td>{line.system_now}</td>
                   </tr>
                 ))}
               </tbody>

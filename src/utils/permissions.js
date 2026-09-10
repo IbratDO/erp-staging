@@ -9,6 +9,7 @@ export const ROUTE_PERMISSIONS = {
   '/inventory/products': 'inventory.view',
   '/inventory/packages': 'packages.view',
   '/inventory/stock-counts': 'inventory.count',
+  '/kassa': 'sales.complete_pay',
   '/reports': 'dashboard.ceo',
   '/orders': 'orders.view',
   '/sales': 'sales.view',
@@ -34,6 +35,7 @@ export const ROUTE_PERMISSIONS = {
 export const ROLE_VISIBLE_MENU_PATHS = {
   sales_manager: [
     '/dashboard',
+    '/kassa',
     '/products',
     '/inventory/products',
     '/orders',
@@ -44,6 +46,7 @@ export const ROLE_VISIBLE_MENU_PATHS = {
   ],
   senior_sales_manager: [
     '/dashboard',
+    '/kassa',
     '/products',
     '/inventory/products',
     '/inventory/packages',
@@ -101,6 +104,7 @@ export const MENU_ITEMS = [
   // the same group: cost, margin and the state of the till are all on these pages.
   { path: '/reports', labelKey: 'nav.reports', icon: '📑', permission: 'dashboard.ceo' },
   { path: '/orders', labelKey: 'nav.orders', icon: '🛒', permission: 'orders.view' },
+  { path: '/kassa', labelKey: 'nav.pos', icon: '🧾', permission: 'sales.complete_pay' },
   { path: '/sales', labelKey: 'nav.sales', icon: '💰', permission: 'sales.view' },
   { path: '/returns', labelKey: 'nav.returns', icon: '↩️', permission: 'returns.view' },
   { path: '/dispatchers', labelKey: 'nav.dispatchers', icon: '🚚', permission: 'dispatch.view' },

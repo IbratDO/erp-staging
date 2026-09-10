@@ -14,6 +14,7 @@ import StockCounts from './pages/StockCounts';
 import Reports from './pages/Reports';
 import Orders from './pages/Orders';
 import Sales from './pages/Sales';
+import Pos from './pages/Pos';
 import Returns from './pages/Returns';
 import Finance from './pages/Finance';
 import ReceivablesPayables from './pages/ReceivablesPayables';
@@ -39,6 +40,18 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
+          {/* Outside `Layout` on purpose: the till is full screen with no sidebar, so it cannot
+              be a child route of the shell that draws one. */}
+          <Route
+            path="/kassa"
+            element={
+              <PrivateRoute>
+                <ProtectedRoute permission="sales.complete_pay">
+                  <Pos />
+                </ProtectedRoute>
+              </PrivateRoute>
+            }
+          />
           <Route
             path="/"
             element={

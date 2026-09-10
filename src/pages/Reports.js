@@ -12,6 +12,9 @@ import { categoryTypeLabel } from '../utils/productCategoryTypes';
 import {
   buildCurrencyTotals,
   buildTotals,
+  formatCount,
+  formatPercent,
+  profitTone,
   reportsForTab,
   sortAccessors,
 } from '../utils/reportDefs';
@@ -140,11 +143,9 @@ export default function Reports() {
     const raw = row[col.key];
     switch (col.type) {
       case 'int':
-        return Number(raw) || 0;
+        return formatCount(raw);
       case 'percent':
-        // Null is not zero here: a giveaway has no margin to report, and "0.0%" would read as
-        // having broken even on it.
-        return raw === null || raw === undefined ? '—' : `${Number(raw).toFixed(1)}%`;
+        return formatPercent(raw);
       case 'money':
         return formatDisplayAmount(raw, col.currency || 'USD');
       case 'rowMoney':
@@ -210,12 +211,25 @@ export default function Reports() {
       else if (card.type === 'band') {
         const band = (data.summary.bands || []).find((b) => b.band === card.band);
         value = band ? `${band.items} · ${(Number(band.share) || 0).toFixed(1)}%` : '—';
-      } else value = Number(data.summary[card.key]) || 0;
+      } else if (card.type === 'money') {
+        value = formatDisplayAmount(data.summary[card.key], card.currency || 'USD');
+      } else if (card.type === 'percent') {
+        value = formatPercent(data.summary[card.key]);
+      } else {
+        // The branch that used to catch everything. A raw `Number()` here is what put
+        // 29.930161914131648 on screen where the report meant 29.9%.
+        value = formatCount(data.summary[card.key]);
+      }
+      // A profit card is coloured by what it says, not by being important: green when the shop
+      // earned, red when it lost, plain when the two currencies disagree.
+      const tone = card.tone === 'profit'
+        ? profitTone(data.summary[card.usd], data.summary[card.uzs])
+        : '';
+      const classes = ['report-card'];
+      if (card.emphasis) classes.push('report-card--emphasis');
+      if (tone) classes.push(`report-card--${tone}`);
       return (
-        <div
-          className={`report-card${card.emphasis ? ' report-card--emphasis' : ''}`}
-          key={card.key}
-        >
+        <div className={classes.join(' ')} key={card.key}>
           <div className="report-card__label">{tr(card.labelKey)}</div>
           <div className="report-card__value">{value}</div>
         </div>
@@ -479,9 +493,11 @@ export default function Reports() {
                           return <td key={col.key}><strong>{pair(v.usd, v.uzs)}</strong></td>;
                         }
                         if (totals[col.key] !== undefined) {
+                          // `sumField` adds floats, so even a tidy column of money can total
+                          // 12343.879999999999. Rounded by the same rule as the cells above it.
                           const value = col.type === 'money'
                             ? formatDisplayAmount(totals[col.key], col.currency || 'USD')
-                            : totals[col.key];
+                            : formatCount(totals[col.key]);
                           return <td key={col.key}><strong>{value}</strong></td>;
                         }
                         return <td key={col.key} />;

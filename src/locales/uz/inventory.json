@@ -172,7 +172,9 @@
     "narrowedHint": "Faqat tanlangan kategoriya sanaladi. Boshqa mahsulotlar butunlay tegilmaydi.",
     "wholeShopHint": "Kategoriya tanlanmasa, butun ombor ro'yxatga olinadi (lekin faqat skanerlanganlari hisobga olinadi).",
     "outOfCategory": "Bu mahsulot sanalayotgan kategoriyaga kirmaydi.",
-    "emptyCategory": "Tanlangan kategoriyada sanaydigan tovar yo'q."
+    "emptyCategory": "Tanlangan kategoriyada sanaydigan tovar yo'q.",
+    "checklistHint": "Ro'yxatdagi mahsulotlarni skanerlang — topilgani yashil rangga bo'yaladi.",
+    "shelfEmpty": "Bu kategoriyada qatlam yo'q."
   },
   "layerPrice": {
     "button": "Tahrirlash",

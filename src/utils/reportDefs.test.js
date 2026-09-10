@@ -12,6 +12,9 @@ import {
   buildCurrencyTotals,
   buildTotals,
   findReport,
+  formatCount,
+  formatPercent,
+  profitTone,
   reportsForTab,
   sortAccessors,
   sumField,
@@ -155,5 +158,96 @@ describe('the report catalogue', () => {
   it('finds a report by key and returns null for one that does not exist', () => {
     expect(findReport('abc').tab).toBe('ombor');
     expect(findReport('nope')).toBeNull();
+  });
+});
+
+describe('rounding for the screen', () => {
+  /*
+   * The backend keeps money and residuals at twelve decimal places deliberately — §6.13 rests on
+   * it. Nothing is rounded until it reaches a screen, so this is the edge where it happens, and
+   * getting it wrong is what put `29.930161914131648` in a summary card where the report meant
+   * 29.9%.
+   */
+  it('prints a whole count whole', () => {
+    expect(formatCount(204)).toBe('204');
+  });
+
+  it('keeps one decimal on an average that lives in a count column', () => {
+    // «average idle days» is 244.2, not 244, and not 244.19999999999999.
+    expect(formatCount(244.19999999999999)).toBe('244.2');
+  });
+
+  it('never lets a twelve-decimal figure reach the screen', () => {
+    expect(formatCount('39536651.999999999999')).toBe('39536652');
+    expect(formatPercent('29.93016191413164969452413943')).toBe('29.9%');
+  });
+
+  it.each([[null], [undefined], ['abc']])('shows a count of %j as zero', (v) => {
+    expect(formatCount(v)).toBe('0');
+  });
+
+  it('shows a missing percentage as a dash, not as zero', () => {
+    // A giveaway has no margin. «0.0%» would read as having broken even on it.
+    expect(formatPercent(null)).toBe('—');
+    expect(formatPercent(undefined)).toBe('—');
+    expect(formatPercent('')).toBe('—');
+  });
+
+  it('shows a real zero percentage as zero', () => {
+    expect(formatPercent(0)).toBe('0.0%');
+  });
+});
+
+describe('colouring the profit card', () => {
+  it('is green when the shop earned', () => {
+    expect(profitTone(1470.54, 39536652)).toBe('profit');
+  });
+
+  it('is red when the shop lost', () => {
+    expect(profitTone(-200, -5000)).toBe('loss');
+  });
+
+  it('is green when one currency earned and the other was untouched', () => {
+    // A dollars-only shop has a zero som leg on every card; that is not a mixed result.
+    expect(profitTone(1470.54, 0)).toBe('profit');
+    expect(profitTone(0, 39536652)).toBe('profit');
+  });
+
+  it('is red when one currency lost and the other was untouched', () => {
+    expect(profitTone(-200, 0)).toBe('loss');
+  });
+
+  it('stays plain when the two currencies disagree', () => {
+    // Earned in dollars, lost in som. Tinting it either way would announce a verdict the figures
+    // do not support, and converting to decide would hide the interesting half behind a rate.
+    expect(profitTone(1470.54, -5000)).toBe('');
+    expect(profitTone(-200, 39536652)).toBe('');
+  });
+
+  it('stays plain on breaking even', () => {
+    expect(profitTone(0, 0)).toBe('');
+  });
+
+  it.each([[null], [undefined], ['abc']])('treats %j as nothing rather than as a loss', (v) => {
+    expect(profitTone(v, v)).toBe('');
+  });
+
+  it('reads the decimal strings the API sends', () => {
+    expect(profitTone('1470.54', '39536651.999999999999')).toBe('profit');
+  });
+});
+
+describe('which cards carry a tone', () => {
+  it('gives every profit card the profit tone and no card both', () => {
+    // Emphasis is the red «frozen money» treatment; a profit card that also carried it would be
+    // red whatever it said, which is how a healthy profit came to be displayed as bad news.
+    for (const report of REPORTS) {
+      for (const card of (Array.isArray(report.summary) ? report.summary : [])) {
+        if (card.key === 'profit') {
+          expect(card.tone).toBe('profit');
+        }
+        expect(card.tone && card.emphasis).toBeFalsy();
+      }
+    }
   });
 });

@@ -39,8 +39,17 @@
 .report-card__label { font-size: 0.78em; color: #64748b; margin-bottom: 6px; }
 .report-card__value { font-size: 1.35em; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; }
 /* The frozen money on the neliquid report — the number the whole report exists to surface. */
+/* «Muzlagan summa» — money stuck on a shelf. Red whatever the figure does, because dead stock
+   is bad news by definition. */
 .report-card--emphasis { border-color: #fca5a5; background: #fef2f2; }
 .report-card--emphasis .report-card__value { color: #b91c1c; }
+
+/* Profit, coloured by its own sign. Pale enough to read a long number against, and the value
+   itself carries the stronger tone so it stays legible on the tint. */
+.report-card--profit { border-color: #86efac; background: #f0fdf4; }
+.report-card--profit .report-card__value { color: #15803d; }
+.report-card--loss { border-color: #fca5a5; background: #fef2f2; }
+.report-card--loss .report-card__value { color: #b91c1c; }
 .report-card--wide { grid-column: span 2; }
 .report-card__rows { display: flex; flex-direction: column; gap: 3px; font-size: 0.9em; }
 .report-card__rows > div { display: flex; justify-content: space-between; gap: 10px; font-variant-numeric: tabular-nums; }

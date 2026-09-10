@@ -17,6 +17,53 @@
  * used.
  */
 
+/**
+ * A count, for display.
+ *
+ * The backend keeps money and residuals at twelve decimal places on purpose — §6.13 is built on
+ * it, and rounding there is what used to make the balance sheet drift. So nothing is rounded until
+ * it reaches a screen, and this is that edge.
+ *
+ * Whole numbers print whole; an average that happens to live in an `int` column (average idle
+ * days, say) keeps one decimal rather than pretending to a precision nobody measured.
+ */
+export function formatCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+/**
+ * A percentage, for display.
+ *
+ * Null is not zero: a giveaway has no margin to report, and «0.0%» would read as having broken
+ * even on it.
+ */
+export function formatPercent(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = Number(value);
+  return Number.isFinite(n) ? `${n.toFixed(1)}%` : '—';
+}
+
+/**
+ * Green for a profit, red for a loss — or nothing at all when the two currencies disagree.
+ *
+ * The card carries a pair, and a shop selling in som and dollars can genuinely earn in one and
+ * lose in the other. Tinting that green or red would announce a verdict the figures do not
+ * support, and deciding it by converting would hide the interesting half behind a rate. So a
+ * mixed result is left plain, which is both honest and rare enough to be worth noticing.
+ *
+ * Zero is plain too: breaking even is neither.
+ */
+export function profitTone(usd, uzs) {
+  const a = Number(usd);
+  const b = Number(uzs);
+  const legs = [Number.isFinite(a) ? a : 0, Number.isFinite(b) ? b : 0];
+  if (legs.every((n) => n >= 0) && legs.some((n) => n > 0)) return 'profit';
+  if (legs.every((n) => n <= 0) && legs.some((n) => n < 0)) return 'loss';
+  return '';
+}
+
 /** Sum a numeric field over rows. Missing and unparseable values count as zero, never as NaN. */
 export function sumField(rows, field) {
   return (rows || []).reduce((total, row) => {
@@ -188,7 +235,7 @@ export const REPORTS = [
       { key: 'revenue', labelKey: 'sales.revenue', type: 'pair', usd: 'revenue_usd', uzs: 'revenue_uzs' },
       { key: 'discount', labelKey: 'sales.discount', type: 'pair', usd: 'discount_usd', uzs: 'discount_uzs' },
       { key: 'cost', labelKey: 'sales.cost', type: 'pair', usd: 'cost_usd', uzs: 'cost_uzs' },
-      { key: 'profit', labelKey: 'sales.profit', type: 'pair', usd: 'profit_usd', uzs: 'profit_uzs', emphasis: true },
+      { key: 'profit', labelKey: 'sales.profit', type: 'pair', usd: 'profit_usd', uzs: 'profit_uzs', tone: 'profit' },
       { key: 'margin', labelKey: 'sales.margin', type: 'percent' },
       { key: 'avg_check', labelKey: 'sales.avgCheck', type: 'money', currency: 'USD' },
       { key: 'giveaway_count', labelKey: 'sales.giveaways', type: 'int' },
@@ -230,7 +277,7 @@ export const REPORTS = [
       { key: 'items', labelKey: 'products.items', type: 'int' },
       { key: 'units', labelKey: 'sales.units', type: 'int' },
       { key: 'revenue', labelKey: 'sales.revenue', type: 'pair', usd: 'revenue_usd', uzs: 'revenue_uzs' },
-      { key: 'profit', labelKey: 'sales.profit', type: 'pair', usd: 'profit_usd', uzs: 'profit_uzs', emphasis: true },
+      { key: 'profit', labelKey: 'sales.profit', type: 'pair', usd: 'profit_usd', uzs: 'profit_uzs', tone: 'profit' },
     ],
     columns: [
       { key: 'name', labelKey: 'col.group', type: 'text' },
@@ -256,7 +303,7 @@ export const REPORTS = [
     summary: [
       { key: 'sellers', labelKey: 'sellers.count', type: 'int' },
       { key: 'revenue', labelKey: 'sales.revenue', type: 'pair', usd: 'revenue_usd', uzs: 'revenue_uzs' },
-      { key: 'profit', labelKey: 'sales.profit', type: 'pair', usd: 'profit_usd', uzs: 'profit_uzs', emphasis: true },
+      { key: 'profit', labelKey: 'sales.profit', type: 'pair', usd: 'profit_usd', uzs: 'profit_uzs', tone: 'profit' },
     ],
     columns: [
       { key: 'name', labelKey: 'col.salesman', type: 'text' },
