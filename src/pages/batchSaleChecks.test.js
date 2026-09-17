@@ -10,7 +10,7 @@
  * whole has plenty — the server checks the batch, so a check that only looked at the product would
  * pass here and fail there.
  */
-import { checkBatchLines, packageNeeds } from './batchSaleChecks';
+import { checkBatchLines, layerAvailableQty, packageNeeds } from './batchSaleChecks';
 
 const line = (over = {}) => ({
   key: 'a', layer: '41', inventory_batch_id: '41', product: '7',
@@ -101,6 +101,50 @@ describe('robustness', () => {
 
   it('ignores a malformed line', () => {
     expect(() => checkBatchLines([null, {}, line()], { inventory, packages })).not.toThrow();
+  });
+});
+
+describe('stock an unfinished sale has already spoken for', () => {
+  /**
+   * A sale takes nothing off the shelf until it is finished, so the same pair could be rung up
+   * twice — once here, once at the other screen — and both baskets passed every check above. The
+   * server now serves `available_quantity` beside `quantity`, and these pin which of the two a
+   * sale screen means.
+   *
+   * Note on `product-held`: with every line pinning a layer, the per-layer checks passing implies
+   * the product total passes, so that branch cannot fire from these screens. It stays as a mirror
+   * of the server rule for a caller that pins no layer, and is deliberately not asserted here
+   * rather than propped up with a basket the real screens cannot produce.
+   */
+  const held = [
+    { batch_id: 41, product: 7, quantity: 5, available_quantity: 1, held_by_sales: [412] },
+    { batch_id: 42, product: 7, quantity: 1, available_quantity: 1, held_by_sales: [] },
+  ];
+
+  it('reads what is free, falling back to the shelf when the server says nothing', () => {
+    // Back-compat matters: a cached response from before holds existed must behave as it did.
+    expect(layerAvailableQty({ quantity: 4 })).toBe(4);
+    expect(layerAvailableQty({ quantity: 4, available_quantity: 1 })).toBe(1);
+    expect(layerAvailableQty({ quantity: 4, available_quantity: 0 })).toBe(0);
+    expect(layerAvailableQty(null)).toBe(0);
+  });
+
+  it('refuses a layer whose units are held, and names the sale holding them', () => {
+    const res = checkBatchLines([line({ quantity: '2' })], { inventory: held, packages });
+    expect(res.code).toBe('layer-held');
+    expect(res.params).toMatchObject({ need: 2, available: 1, held: 4, sales: '#412' });
+  });
+
+  it('lets the free units through', () => {
+    expect(checkBatchLines([line({ quantity: '1' })], { inventory: held, packages })).toBeNull();
+  });
+
+  it('still calls an empty layer empty rather than held', () => {
+    // The two messages send the shop to different places — one to count the shelf, the other to a
+    // specific sale — so a layer that is genuinely out must not be reported as held.
+    const empty = [{ batch_id: 41, product: 7, quantity: 0, available_quantity: 0, held_by_sales: [412] }];
+    const res = checkBatchLines([line({ quantity: '1' })], { inventory: empty, packages });
+    expect(res.code).toBe('layer-stock');
   });
 });
 

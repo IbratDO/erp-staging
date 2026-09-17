@@ -407,6 +407,8 @@
     "errSellingPrice": "Set a selling price for every line (pick a product to prefill it).",
     "errLayerStock": "Insufficient stock in the selected layer for product #{{pid}}: need {{need}}, have {{available}}.",
     "errInventory": "Insufficient inventory for product #{{pid}}: need {{need}}, have {{available}}.",
+    "errLayerHeld": "This batch is held by an unfinished sale: {{sales}}. Free: {{available}}, needed: {{need}}. Finish or cancel that sale first.",
+    "errProductHeld": "This product is held by an unfinished sale: {{sales}}. Free: {{available}}, needed: {{need}}. Finish or cancel that sale first.",
     "errPkgNotInInventory": "Package type \"{{type}}\" is not in inventory.",
     "errPkgStock": "Insufficient package \"{{type}}\": need {{need}}, have {{have}}.",
     "batchCreated": "Created {{count}} sale(s).",
@@ -488,11 +490,14 @@
     "needItems": "Add a product to the basket first.",
     "needCustomer": "Choose a customer to take payment.",
     "discarded": "Payment cancelled — the basket was not saved.",
+    "atHoldCap": "{{name}} — held by an unfinished sale: {{sales}}. Finish or cancel that sale first.",
     "check": {
       "no-lines": "The basket is empty.",
       "no-price": "Every item needs a price.",
       "layer-stock": "Not enough in this batch: {{need}} needed, {{available}} available.",
+      "layer-held": "This batch is held by an unfinished sale: {{sales}}. Free: {{available}}, needed: {{need}}. Finish or cancel that sale first.",
       "product-stock": "Not enough in stock: {{need}} needed, {{available}} available.",
+      "product-held": "This product is held by an unfinished sale: {{sales}}. Free: {{available}}, needed: {{need}}. Finish or cancel that sale first.",
       "package-missing": "There is no “{{type}}” packaging in stock.",
       "package-stock": "Not enough “{{type}}” packaging: {{need}} needed, {{have}} available."
     }

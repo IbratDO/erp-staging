@@ -28,7 +28,7 @@ import {
   productForLayer,
   repriceBatchLine,
 } from './batchSaleLines';
-import { checkBatchLines } from './batchSaleChecks';
+import { checkBatchLines, layerAvailableQty } from './batchSaleChecks';
 import { layerSalePickerLabel } from '../utils/productCost';
 import { buildCombinedSaleForGroup } from '../utils/saleGroupDisplay';
 import { formatDisplayAmount } from '../utils/currencyFormat';
@@ -202,6 +202,34 @@ export default function Pos() {
     [inventory, products],
   );
 
+  /**
+   * Put one item in the basket and say what happened — the single way anything gets added.
+   *
+   * Scanning and picking used to do this separately, and only the scanner ever spoke: the picker
+   * dropped the result on the floor, so choosing a held item quietly did nothing at all and read
+   * as a broken dropdown. One function now, because "two screens doing the same thing two ways"
+   * is the bug this basket has already produced twice.
+   *
+   * The two refusals are worded apart on purpose. Sold out means go and look at the shelf; held
+   * means go and finish the sale named in the message — the goods are physically right there,
+   * which makes "there is no more in stock" not merely unhelpful but visibly untrue.
+   */
+  const addItem = useCallback((item) => {
+    setLines((prev) => {
+      const { lines: next, result } = applyScanToBatchLines(prev, item, {
+        inventory, products, saleCurrency: currencyForItem(item), cbuRate,
+      });
+      if (result.kind === 'at-hold-cap') {
+        say('error', tr('pos.atHoldCap', { name: result.label, sales: result.sales }));
+      } else if (result.kind === 'at-stock-cap') {
+        say('error', tr('pos.atStockCap', { name: result.label }));
+      } else {
+        say('ok', tr('pos.scanAdded', { name: result.label }));
+      }
+      return next;
+    });
+  }, [inventory, products, currencyForItem, cbuRate, say, tr]);
+
   const handleScan = useCallback((raw) => {
     const code = normalizeScan(raw);
     if (!code) return;
@@ -212,15 +240,8 @@ export default function Pos() {
       if (looksLikeLayerCode(code)) say('error', tr('pos.scanUnknown', { code }));
       return;
     }
-    setLines((prev) => {
-      const { lines: next, result } = applyScanToBatchLines(prev, item, {
-        inventory, products, saleCurrency: currencyForItem(item), cbuRate,
-      });
-      if (result.kind === 'at-stock-cap') say('error', tr('pos.atStockCap', { name: result.label }));
-      else say('ok', tr('pos.scanAdded', { name: result.label }));
-      return next;
-    });
-  }, [pickerItems, inventory, products, currencyForItem, cbuRate, say, tr]);
+    addItem(item);
+  }, [pickerItems, addItem, say, tr]);
 
   useBarcodeScanner({ enabled: !paySale, onScan: handleScan });
 
@@ -243,7 +264,7 @@ export default function Pos() {
   });
   const bumpQty = (line, by) => {
     const item = pickerItems.find((i) => i.value === String(line.layer));
-    const cap = item ? Number(item.layer?.quantity) || 0 : Infinity;
+    const cap = item ? layerAvailableQty(item.layer) : Infinity;
     const next = Math.max(1, Math.min(cap, (parseInt(line.quantity, 10) || 0) + by));
     // One box per unit: a line for three pairs needs three boxes, and leaving the packaging at
     // its old count is how a basket passes the stock check and short-changes the store room.
@@ -443,9 +464,8 @@ export default function Pos() {
                 onChange={(layerId) => {
                   const item = pickerItems.find((i) => i.value === String(layerId));
                   if (!item) return;
-                  setLines((prev) => applyScanToBatchLines(prev, item, {
-                    inventory, products, saleCurrency: currencyForItem(item), cbuRate,
-                  }).lines);
+                  // Same path as a scan, so a refusal is spoken rather than swallowed.
+                  addItem(item);
                 }}
                 placeholder={tr('pos.search')}
                 aria-label={tr('pos.addItem')}
@@ -484,7 +504,10 @@ export default function Pos() {
                   const unit = Number(line.selling_price) || 0;
                   const off = Number(line.discount_price) || 0;
                   const item = pickerItems.find((i) => i.value === String(line.layer));
-                  const inStock = item ? Number(item.layer?.quantity) || 0 : 0;
+                  // What is free to sell. A unit promised to an unfinished sale is on the shelf
+                  // but not for this customer, so counting it here would offer goods the till
+                  // will refuse a moment later.
+                  const inStock = item ? layerAvailableQty(item.layer) : 0;
                   const pkg = line.packageLines?.[0]?.package_type || '';
                   return (
                     <li className="pos__line" key={line.key}>

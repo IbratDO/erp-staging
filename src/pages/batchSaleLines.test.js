@@ -142,3 +142,61 @@ describe('applyScanToBatchLines', () => {
     expect(JSON.stringify(original)).toBe(snapshot);
   });
 });
+
+describe('a layer an unfinished sale has already spoken for', () => {
+  /**
+   * The goods are physically on the shelf but promised to a sale nobody has finished, so the
+   * basket may not take them — and must say which sale to go and deal with. Reported apart from
+   * a sold-out layer on purpose: "there is no more in stock" sends somebody to count a shelf that
+   * visibly has the item on it, which reads as the screen being wrong.
+   */
+  const heldItem = (batchId, onShelf, available, sales) => ({
+    value: String(batchId),
+    label: `#${batchId} DS Runner`,
+    layer: {
+      ...layer(batchId, onShelf),
+      available_quantity: available,
+      held_by_sales: sales,
+    },
+  });
+
+  it('refuses it and names the sale holding it', () => {
+    const { lines, result } = applyScanToBatchLines(
+      [emptyBatchLine('k0')], heldItem(11, 3, 0, [412]), ctx(layer(11, 3)),
+    );
+    expect(result.kind).toBe('at-hold-cap');
+    expect(result.sales).toBe('#412');
+    // Nothing was chosen: the blank line is still blank.
+    expect(lines[0].layer).toBe('');
+  });
+
+  it('names every sale when more than one holds it', () => {
+    const { result } = applyScanToBatchLines(
+      [emptyBatchLine('k0')], heldItem(11, 3, 0, [412, 413]), ctx(layer(11, 3)),
+    );
+    expect(result.sales).toBe('#412, #413');
+  });
+
+  it('lets the free units through and stops at the hold', () => {
+    // Five on the shelf, two free. The shop can still sell the two.
+    const held = heldItem(11, 5, 2, [412]);
+    let lines = [emptyBatchLine('k0')];
+    for (let i = 0; i < 2; i += 1) {
+      ({ lines } = applyScanToBatchLines(lines, held, ctx(layer(11, 5))));
+    }
+    expect(lines[0].quantity).toBe('2');
+
+    const capped = applyScanToBatchLines(lines, held, ctx(layer(11, 5)));
+    expect(capped.result.kind).toBe('at-hold-cap');
+    expect(capped.lines).toBe(lines); // untouched, same reference
+  });
+
+  it('still calls an empty layer empty, even when it is also held', () => {
+    // A layer that is both out of stock and held has nothing to reclaim by finishing that sale,
+    // so the message that can actually be acted on is the sold-out one.
+    const { result } = applyScanToBatchLines(
+      [emptyBatchLine('k0')], heldItem(11, 0, 0, [412]), ctx(layer(11, 0)),
+    );
+    expect(result.kind).toBe('at-stock-cap');
+  });
+});

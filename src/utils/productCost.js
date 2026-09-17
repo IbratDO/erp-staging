@@ -123,7 +123,15 @@ export function layerSalePickerLabel(product, layer) {
   const price = formatSellingPrice(quote?.amount, quote?.currency) || '—';
   const qty = Number(layer.quantity) || 0;
   const layerNo = layer.batch_id != null ? `Layer #${layer.batch_id}` : 'Layer';
-  return `${layerNo} · ${core} · ${price} · ${qty} in stock`;
+  const base = `${layerNo} · ${core} · ${price} · ${qty} in stock`;
+  // Units an unfinished sale has already spoken for. Read off the same layer row the rest of this
+  // label uses, so nothing had to change at the two call sites — and a layer row without the field
+  // (every older caller, and every existing test fixture) reads as no hold and prints as before.
+  const held = Number(layer.held_quantity) || 0;
+  if (held <= 0) return base;
+  const sales = Array.isArray(layer.held_by_sales) ? layer.held_by_sales : [];
+  const who = sales.length ? ` (${sales.map((id) => `#${id}`).join(', ')})` : '';
+  return `${base} · ${held} held${who}`;
 }
 
 /**

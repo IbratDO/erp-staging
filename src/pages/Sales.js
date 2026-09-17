@@ -30,6 +30,9 @@ import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields
 import FormSearchableSelect from '../components/FormSearchableSelect';
 import { matchesProductCatalogFilters, getCascadedFilterOptions, getCascadedDateOptions } from '../utils/productFilterUtils';
 import { layerSalePickerLabel } from '../utils/productCost';
+// Availability is not the same as what is on the shelf, and the rule for telling them apart lives
+// in one place so this page and the Kassa cannot drift on it.
+import { layerAvailableQty, layerHeldSales } from './batchSaleChecks';
 import {
   EMPTY_PKG_LINES,
   applyLayerToLine,
@@ -1073,11 +1076,27 @@ const Sales = () => {
       const batchId = parseInt(l.inventory_batch_id, 10);
       const need = parseInt(l.quantity, 10) || 0;
       const layer = findInventoryLayer(freshInventory, batchId);
-      const available = layer ? Number(layer.quantity) || 0 : 0;
-      if (!layer || available < need) {
-        const pid = parseInt(l.product, 10);
+      const onShelf = layer ? Number(layer.quantity) || 0 : 0;
+      const pid = parseInt(l.product, 10);
+      if (!layer || onShelf < need) {
         showNotification(
-          t('notifications.errLayerStock', { pid, need, available }),
+          t('notifications.errLayerStock', { pid, need, available: onShelf }),
+          'error'
+        );
+        return;
+      }
+      // On the shelf but promised elsewhere: a sale that has been rung up and not finished takes
+      // nothing out of stock, so without this the same pair sells twice. Asked after the check
+      // above so a genuinely empty layer still reports as empty rather than as held.
+      const available = layerAvailableQty(layer);
+      if (available < need) {
+        showNotification(
+          t('notifications.errLayerHeld', {
+            pid,
+            need,
+            available,
+            sales: layerHeldSales(layer).map((id) => `#${id}`).join(', '),
+          }),
           'error'
         );
         return;
@@ -1090,12 +1109,26 @@ const Sales = () => {
       needByProduct.set(pid, (needByProduct.get(pid) || 0) + q);
     }
     for (const [pid, need] of needByProduct) {
-      const available = freshInventory
-        .filter((x) => Number(x.product) === pid)
-        .reduce((s, it) => s + (Number(it.quantity) || 0), 0);
-      if (available < need) {
+      const rows = freshInventory.filter((x) => Number(x.product) === pid);
+      const onShelf = rows.reduce((s, it) => s + (Number(it.quantity) || 0), 0);
+      if (onShelf < need) {
         showNotification(
-          t('notifications.errInventory', { pid, need, available }),
+          t('notifications.errInventory', { pid, need, available: onShelf }),
+          'error'
+        );
+        return;
+      }
+      // Enough goods, but not enough free ones. A hold that named no particular layer — a sale
+      // rung up without picking one — only shows up at this level, so the product check has to
+      // ask the question too rather than trusting the per-layer loop above.
+      const available = rows.reduce((s, it) => s + layerAvailableQty(it), 0);
+      if (available < need) {
+        const sales = [...new Set(rows.flatMap((it) => layerHeldSales(it)))]
+          .sort((a, b) => a - b)
+          .map((id) => `#${id}`)
+          .join(', ');
+        showNotification(
+          t('notifications.errProductHeld', { pid, need, available, sales }),
           'error'
         );
         return;

@@ -17,13 +17,44 @@
  */
 
 /**
+ * How many units of a layer may actually be sold right now.
+ *
+ * Not the same as what is on the shelf. A sale that has been rung up but not finished takes
+ * nothing out of stock — the goods are still physically there — yet they are promised to that
+ * sale, and selling them again is how one pair leaves the shop twice. The server counts those
+ * holds and serves `available_quantity` beside `quantity`; this is the one place that decides
+ * which of the two a sale screen means.
+ *
+ * Falls back to `quantity` when the field is absent, so an older cached response, or a test
+ * fixture written before holds existed, behaves exactly as it did.
+ */
+export function layerAvailableQty(layer) {
+  if (!layer) return 0;
+  const available = Number(layer.available_quantity);
+  if (Number.isFinite(available)) return available;
+  return Number(layer.quantity) || 0;
+}
+
+/** The unfinished sales holding this layer, for naming in the refusal. */
+export function layerHeldSales(layer) {
+  const sales = layer?.held_by_sales;
+  return Array.isArray(sales) ? sales : [];
+}
+
+/**
  * @returns {null} when the basket is fine, otherwise `{ code, params }`:
  *
  *   'no-lines'      nothing with an item on it
  *   'no-price'      a line with an item but no price
  *   'layer-stock'   a chosen FIFO layer has fewer units than the basket asks of it
+ *   'layer-held'    the units exist but an unfinished sale has already spoken for them
  *   'product-stock' the product has enough across layers, but not on the ones chosen
+ *   'product-held'  the product has enough on the shelf, but not once holds are taken off
  *   'package-missing' / 'package-stock'  the packaging the lines ask for is short
+ *
+ * The two `-held` codes are kept apart from the two `-stock` ones on purpose: "not enough stock"
+ * sends somebody to count the shelf, where the goods are sitting exactly as the screen said.
+ * "Held by sale #412" sends them to the one thing they can actually resolve.
  */
 export function checkBatchLines(lines, { inventory = [], packages = [] } = {}) {
   const withProduct = (lines || []).filter((l) => l?.layer && l?.product);
@@ -45,10 +76,26 @@ export function checkBatchLines(lines, { inventory = [], packages = [] } = {}) {
   }
   for (const [batchId, need] of needByLayer) {
     const layer = (inventory || []).find((x) => Number(x.batch_id) === batchId);
-    const available = layer ? Number(layer.quantity) || 0 : 0;
-    if (available < need) {
+    const onShelf = layer ? Number(layer.quantity) || 0 : 0;
+    if (onShelf < need) {
       const pid = layer ? Number(layer.product) : null;
-      return { code: 'layer-stock', params: { pid, need, available } };
+      return { code: 'layer-stock', params: { pid, need, available: onShelf } };
+    }
+    // Enough on the shelf, but some of it is spoken for. Asked second so a genuinely empty layer
+    // still reports as empty rather than as held.
+    const available = layerAvailableQty(layer);
+    if (available < need) {
+      const sales = layerHeldSales(layer);
+      return {
+        code: 'layer-held',
+        params: {
+          pid: layer ? Number(layer.product) : null,
+          need,
+          available,
+          held: onShelf - available,
+          sales: sales.map((id) => `#${id}`).join(', '),
+        },
+      };
     }
   }
 
@@ -58,11 +105,24 @@ export function checkBatchLines(lines, { inventory = [], packages = [] } = {}) {
     needByProduct.set(pid, (needByProduct.get(pid) || 0) + (parseInt(line.quantity, 10) || 0));
   }
   for (const [pid, need] of needByProduct) {
-    const available = (inventory || [])
-      .filter((x) => Number(x.product) === pid)
-      .reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+    const rows = (inventory || []).filter((x) => Number(x.product) === pid);
+    const onShelf = rows.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+    if (onShelf < need) {
+      return { code: 'product-stock', params: { pid, need, available: onShelf } };
+    }
+    const available = rows.reduce((sum, it) => sum + layerAvailableQty(it), 0);
     if (available < need) {
-      return { code: 'product-stock', params: { pid, need, available } };
+      const sales = [...new Set(rows.flatMap((it) => layerHeldSales(it)))].sort((a, b) => a - b);
+      return {
+        code: 'product-held',
+        params: {
+          pid,
+          need,
+          available,
+          held: onShelf - available,
+          sales: sales.map((id) => `#${id}`).join(', '),
+        },
+      };
     }
   }
 

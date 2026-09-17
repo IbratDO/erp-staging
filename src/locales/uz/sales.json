@@ -406,6 +406,8 @@
     "errAddLine": "Kamida bitta mahsulot tanlangan qator qo‘shing.",
     "errSellingPrice": "Har bir qator uchun sotuv narxini kiriting (mahsulot tanlang).",
     "errLayerStock": "Tanlangan qatlamda mahsulot #{{pid}} uchun zaxira yetarli emas: kerak {{need}}, bor {{available}}.",
+    "errLayerHeld": "Bu partiya hali yakunlanmagan sotuvda band: {{sales}}. Bo‘sh: {{available}}, kerak: {{need}}. Avval o‘sha sotuvni yakunlang yoki bekor qiling.",
+    "errProductHeld": "Bu mahsulot hali yakunlanmagan sotuvda band: {{sales}}. Bo‘sh: {{available}}, kerak: {{need}}. Avval o‘sha sotuvni yakunlang yoki bekor qiling.",
     "errInventory": "Mahsulot #{{pid}} uchun omborda yetarli emas: kerak {{need}}, bor {{available}}.",
     "errPkgNotInInventory": "«{{type}}» qadoq turi omborda yo‘q.",
     "errPkgStock": "«{{type}}» qadoq yetarli emas: kerak {{need}}, bor {{have}}.",
@@ -488,11 +490,14 @@
     "needItems": "Avval savatga mahsulot qo'shing.",
     "needCustomer": "To'lash uchun mijozni tanlang.",
     "discarded": "To'lov bekor qilindi — savat saqlanmadi.",
+    "atHoldCap": "{{name}} — hali yakunlanmagan sotuvda band: {{sales}}. Avval o‘sha sotuvni yakunlang yoki bekor qiling.",
     "check": {
       "no-lines": "Savat bo'sh.",
       "no-price": "Har bir mahsulotga narx kiriting.",
       "layer-stock": "Bu partiyada yetarli emas: kerak {{need}}, mavjud {{available}}.",
+      "layer-held": "Bu partiya hali yakunlanmagan sotuvda band: {{sales}}. Bo‘sh: {{available}}, kerak: {{need}}. Avval o‘sha sotuvni yakunlang yoki bekor qiling.",
       "product-stock": "Omborda yetarli emas: kerak {{need}}, mavjud {{available}}.",
+      "product-held": "Bu mahsulot hali yakunlanmagan sotuvda band: {{sales}}. Bo‘sh: {{available}}, kerak: {{need}}. Avval o‘sha sotuvni yakunlang yoki bekor qiling.",
       "package-missing": "«{{type}}» qadoq omborda yo'q.",
       "package-stock": "«{{type}}» qadoq yetarli emas: kerak {{need}}, mavjud {{have}}."
     }

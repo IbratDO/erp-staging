@@ -9,6 +9,7 @@
 import { resolveLayerListPrice } from '../utils/productCost';
 import { usdToUzs, uzsToUsd } from '../utils/saleCompletePayHelpers';
 import { layerSellingQuote } from '../utils/inventorySelling';
+import { layerAvailableQty, layerHeldSales } from './batchSaleChecks';
 
 export const EMPTY_PKG_LINES = () => [{ key: `${Date.now()}`, package_type: '', quantity: 1 }];
 
@@ -103,6 +104,11 @@ function quantityAlreadyOnLines(lines, layerId) {
  *   'incremented'   the layer was already on a line, so that line's quantity went up
  *   'added'         it filled the first empty line, or was appended as a new one
  *   'at-stock-cap'  the basket already holds every unit this layer has; nothing changed
+ *   'at-hold-cap'   the shelf has more, but an unfinished sale has spoken for them; nothing changed
+ *
+ * **The two caps are told apart because they send the operator to different places.** Sold out
+ * means go and look at the shelf. Held means go and finish sale #412 — the goods are physically
+ * right there, which makes "there is no more in stock" not just unhelpful but visibly untrue.
  *
  * **A rescan increments rather than adding a line.** Scanning three identical boxes means
  * quantity 3 — three separate lines would become three one-unit `Sale` rows for one product,
@@ -115,10 +121,30 @@ function quantityAlreadyOnLines(lines, layerId) {
  */
 export function applyScanToBatchLines(lines, pickerItem, ctx) {
   const layerId = String(pickerItem.value);
-  const stock = Number(pickerItem.layer?.quantity) || 0;
+  // What may actually be sold, not what is on the shelf: units promised to a sale somebody has
+  // not finished are still physically here, and scanning past them fills the basket with goods
+  // that will be refused at the till. The cap has to know the difference.
+  const stock = layerAvailableQty(pickerItem.layer);
   const label = pickerItem.label || '';
 
   if (quantityAlreadyOnLines(lines, layerId) >= stock) {
+    const heldSales = layerHeldSales(pickerItem.layer);
+    const onShelf = Number(pickerItem.layer?.quantity) || 0;
+    // Held is the reason only when the shelf genuinely holds more than this basket may take. A
+    // layer that is both empty and held is simply empty, and saying "held" would send somebody
+    // chasing a sale that cannot give them anything.
+    if (heldSales.length && onShelf > stock) {
+      return {
+        lines,
+        result: {
+          kind: 'at-hold-cap',
+          key: null,
+          label,
+          stock,
+          sales: heldSales.map((id) => `#${id}`).join(', '),
+        },
+      };
+    }
     return { lines, result: { kind: 'at-stock-cap', key: null, label, stock } };
   }
 
