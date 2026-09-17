@@ -487,6 +487,7 @@
     "checkoutBusy": "Yuborilmoqda…",
     "needItems": "Avval savatga mahsulot qo'shing.",
     "needCustomer": "To'lash uchun mijozni tanlang.",
+    "discarded": "To'lov bekor qilindi — savat saqlanmadi.",
     "check": {
       "no-lines": "Savat bo'sh.",
       "no-price": "Har bir mahsulotga narx kiriting.",

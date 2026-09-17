@@ -70,6 +70,11 @@ export default function Pos() {
   const [currencyOverride, setCurrencyOverride] = useState('');
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [paySale, setPaySale] = useState(null);
+  // The sales `batch_create` just made, held only until they are paid for or thrown away. The
+  // till creates its rows before the payment window opens — that is what lets the window be
+  // handed the real sales instead of guessing at them — so backing out of that window leaves
+  // them behind, and this is what names them to the discard route.
+  const [unpaidIds, setUnpaidIds] = useState([]);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const seqRef = useRef(0);
@@ -105,6 +110,10 @@ export default function Pos() {
   useEffect(() => {
     primeScanBeep();
     loadShelf().catch(() => say('error', tr('pos.errLoad')));
+    // Baskets a crash, a refresh or a closed laptop left behind — the ones the payment window's
+    // own close handler never got to clear. The server decides what is stale and only ever looks
+    // at this user's own untouched till rows, so a basket open on another screen is safe.
+    api.post('/sales/discard_unpaid/', {}).catch(() => { /* housekeeping, never in the way */ });
     api.get('/exchange-rate/')
       .then((r) => setCbuRate(r.data?.rate ?? null))
       .catch(() => { /* a same-currency basket never needs it */ });
@@ -300,6 +309,9 @@ export default function Pos() {
 
       const { data } = await api.post('/sales/batch_create/', {
         customer: parseInt(customer, 10),
+        // The Sotuvlar batch form posts an identical body to this endpoint, so the till has to
+        // name itself: only a basket rung up here may later be discarded unpaid.
+        source: 'pos',
         defaults: { sale_type: 'bought_from_shop', sale_currency: saleCurrency, status: 'pending' },
         // Built by the same function the Sotuvlar modal uses — see `batchItemFromLine` for why
         // the price sent is the list price whenever a discount is present.
@@ -307,6 +319,7 @@ export default function Pos() {
       });
       const created = data.created || [];
       if (!created.length) { say('error', tr('pos.errCreate')); return; }
+      setUnpaidIds(created.map((s) => s.id));
       setPaySale(buildCombinedSaleForGroup(created));
     } catch (err) {
       const d = err?.response?.data;
@@ -314,6 +327,36 @@ export default function Pos() {
     } finally {
       setBusy(false);
     }
+  };
+
+  /**
+   * Back out of the payment window: throw the rows away rather than leave them lying about.
+   *
+   * Pressing To'lash creates the sales, so changing your mind at the payment window used to leave
+   * pending rows in Sotuvlar describing a purchase that never happened. Nothing has moved at this
+   * point — no stock, no money — so they are deleted outright rather than cancelled; a
+   * «Bekor qilindi» row for every mis-press teaches the shop to ignore cancelled sales.
+   *
+   * **The basket on screen is deliberately kept.** Backing out is usually "wait, wrong price" or
+   * "wrong customer", and the next thing wanted is the same basket with one thing changed, not an
+   * empty counter. Pressing To'lash again simply creates fresh rows.
+   *
+   * A failure here is swallowed: the shop is not blocked from serving the next customer because
+   * some tidying-up did not go through, and the till's own sweep clears the row next time it opens.
+   */
+  const discardUnpaid = useCallback(async (ids) => {
+    if (!ids?.length) return;
+    try {
+      await api.post('/sales/discard_unpaid/', { sales: ids });
+    } catch { /* the sweep on the next till open is the backstop */ }
+  }, []);
+
+  const abandonPayment = async () => {
+    const ids = unpaidIds;
+    setUnpaidIds([]);
+    setPaySale(null);
+    await discardUnpaid(ids);
+    if (ids.length) say('ok', tr('pos.discarded'));
   };
 
   /** Print the chek and clear the counter for the next customer. */
@@ -334,6 +377,7 @@ export default function Pos() {
     }
     setLines([emptyBatchLine()]);
     setCustomer('');
+    setUnpaidIds([]);
     setPaySale(null);
     loadShelf().catch(() => {});
     say('ok', tr('pos.done'));
@@ -628,7 +672,7 @@ export default function Pos() {
       {paySale && (
         <SaleCompletePayForm
           sale={paySale}
-          onClose={() => setPaySale(null)}
+          onClose={abandonPayment}
           onSuccess={() => finishSale(paySale.id)}
           showNotification={(text, kind) => say(kind === 'error' ? 'error' : 'ok', text)}
         />

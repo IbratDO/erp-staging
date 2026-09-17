@@ -487,6 +487,7 @@
     "checkoutBusy": "Sending…",
     "needItems": "Add a product to the basket first.",
     "needCustomer": "Choose a customer to take payment.",
+    "discarded": "Payment cancelled — the basket was not saved.",
     "check": {
       "no-lines": "The basket is empty.",
       "no-price": "Every item needs a price.",
