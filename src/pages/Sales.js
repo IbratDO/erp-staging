@@ -628,7 +628,10 @@ const Sales = () => {
 
   const fetchSales = async () => {
     try {
-      const response = await apiGetAll('/sales/');
+      // The slim row: no supplier costs on the nested product, and no `paid_legs`, which cost one
+      // database query per sale. Returns asks the same endpoint without `lite` and still gets the
+      // full row, because it needs `paid_legs` to work out a refund.
+      const response = await apiGetAll('/sales/', { params: { lite: 1 } });
       const salesList = response.data.results || response.data;
       setSales(salesList);
       applyFilters(salesList);
