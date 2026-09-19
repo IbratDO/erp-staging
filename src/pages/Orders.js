@@ -538,6 +538,10 @@ const Orders = () => {
   const [balancesLoaded, setBalancesLoaded] = useState(false);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  // False while the finished orders are still arriving behind the open ones. The footer totals
+  // read this: a sum over half the rows is not a smaller number, it is the wrong one, and a
+  // figure that climbs while somebody reads it looks like a fault rather than a page loading.
+  const [ordersFullyLoaded, setOrdersFullyLoaded] = useState(false);
   const [filters, setFilters] = useState({
     category_type: '',
     category: [],
@@ -733,12 +737,31 @@ const Orders = () => {
 
   const fetchOrders = async () => {
     try {
-      const response = await apiGetAll('/orders/');
-      const ordersList = response.data.results || response.data;
-      setOrders(ordersList);
-      applyFilters(ordersList);
+      // Two passes, in the order the shop cares about. Orders still moving through the supplier
+      // pipeline come first, so the rows with a button waiting appear at once; everything already
+      // shelved, sold or cancelled follows behind.
+      //
+      // `lite` throughout: the slim row drops the supplier-cost columns the table never shows,
+      // and answers "sold?" and "ever received?" for the whole page at once instead of asking
+      // the database twice per order.
+      setOrdersFullyLoaded(false);
+      const openRes = await apiGetAll('/orders/', { params: { lite: 1, open: 1 } });
+      const openOrders = openRes.data.results || openRes.data;
+      setOrders(openOrders);
+      applyFilters(openOrders);
+      setLoading(false);
+
+      const doneRes = await apiGetAll('/orders/', { params: { lite: 1, open: 0 } });
+      const doneOrders = doneRes.data.results || doneRes.data;
+      const allOrders = [...openOrders, ...doneOrders];
+      setOrders(allOrders);
+      applyFilters(allOrders);
+      setOrdersFullyLoaded(true);
     } catch (error) {
       console.error('Error fetching orders:', error);
+      // Whatever arrived is all there is going to be, so let the totals describe it rather than
+      // leaving the footer showing "—" for ever.
+      setOrdersFullyLoaded(true);
     } finally {
       setLoading(false);
     }
@@ -4431,39 +4454,56 @@ const Orders = () => {
               <td colSpan={orderFooterLabelColSpan} style={{ textAlign: 'right' }}>
                 {t('table.total', { ns: 'orders' })}
               </td>
-              <td style={{ fontWeight: 600 }}>{formatAppNumber(orderColumnTotals.quantity)}</td>
+              {/*
+                Every figure waits for the whole list. While the finished orders are still
+                arriving the row shows "—" rather than a running subtotal: a total over half the
+                rows is not a smaller number, it is the wrong one.
+              */}
               <td style={{ fontWeight: 600 }}>
-                {orderColumnTotals.weight > 0 ? `${formatAppNumber(orderColumnTotals.weight)} kg` : '—'}
+                {ordersFullyLoaded ? formatAppNumber(orderColumnTotals.quantity) : '—'}
+              </td>
+              <td style={{ fontWeight: 600 }}>
+                {ordersFullyLoaded && orderColumnTotals.weight > 0
+                  ? `${formatAppNumber(orderColumnTotals.weight)} kg`
+                  : '—'}
               </td>
               <td
                 style={{ fontWeight: 600 }}
                 title={t('table.avgSellingHint', { ns: 'orders' })}
               >
-                {orderColumnTotals.avgSellingPerUnitOrdered > 0
+                {ordersFullyLoaded && orderColumnTotals.avgSellingPerUnitOrdered > 0
                   ? `$${orderColumnTotals.avgSellingPerUnitOrdered.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {orderColumnTotals.quantity > 0
+                {ordersFullyLoaded && orderColumnTotals.quantity > 0
                   ? `$${orderColumnTotals.avgCostPerUnit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {orderColumnTotals.costTotal > 0
+                {ordersFullyLoaded && orderColumnTotals.costTotal > 0
                   ? `$${orderColumnTotals.costTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {orderColumnTotals.orderUzs > 0 ? `${formatAppNumber(orderColumnTotals.orderUzs)} ${uzsLabel}` : '—'}
+                {ordersFullyLoaded && orderColumnTotals.orderUzs > 0
+                  ? `${formatAppNumber(orderColumnTotals.orderUzs)} ${uzsLabel}`
+                  : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {orderColumnTotals.orderUsd > 0 ? `$${orderColumnTotals.orderUsd.toFixed(2)}` : '—'}
+                {ordersFullyLoaded && orderColumnTotals.orderUsd > 0
+                  ? `$${orderColumnTotals.orderUsd.toFixed(2)}`
+                  : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {orderColumnTotals.cargoUzs > 0 ? `${formatAppNumber(orderColumnTotals.cargoUzs)} ${uzsLabel}` : '—'}
+                {ordersFullyLoaded && orderColumnTotals.cargoUzs > 0
+                  ? `${formatAppNumber(orderColumnTotals.cargoUzs)} ${uzsLabel}`
+                  : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {orderColumnTotals.cargoUsd > 0 ? `$${orderColumnTotals.cargoUsd.toFixed(2)}` : '—'}
+                {ordersFullyLoaded && orderColumnTotals.cargoUsd > 0
+                  ? `$${orderColumnTotals.cargoUsd.toFixed(2)}`
+                  : '—'}
               </td>
               <td colSpan="5">—</td>
             </tr>

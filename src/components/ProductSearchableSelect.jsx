@@ -19,6 +19,14 @@ export default function ProductSearchableSelect({
   triggerClassName = '',
   'aria-label': ariaLabel,
   emptyHint = null,
+  // Shown on the trigger while the caller is still fetching its items, instead of the
+  // "no products in stock" message. Without it, a picker whose data is loading looks exactly
+  // like a shop with an empty warehouse — which is what the Sotuvlar form did for the half
+  // second after it opened, once its stock stopped being fetched on page load.
+  //
+  // A label rather than a boolean: this component only loads the `products` namespace, and the
+  // caller already has `common` to hand.
+  loadingLabel = null,
   inventoryRows = null,
 }) {
   const { t } = useAppTranslation('products');
@@ -104,7 +112,7 @@ export default function ProductSearchableSelect({
   const noOptions = optionCount === 0;
 
   const handleToggle = () => {
-    if (disabled || noOptions) return;
+    if (disabled || loadingLabel || noOptions) return;
     setOpen((o) => {
       const next = !o;
       if (next) setQuery('');
@@ -243,7 +251,7 @@ export default function ProductSearchableSelect({
       <button
         ref={triggerRef}
         type="button"
-        disabled={disabled || noOptions}
+        disabled={disabled || !!loadingLabel || noOptions}
         onClick={handleToggle}
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -251,7 +259,9 @@ export default function ProductSearchableSelect({
         className={triggerClassName || undefined}
         style={triggerStyle}
       >
-        {noOptions ? t('picker.noProductsInStock') : display || resolvedPlaceholder}
+        {/* Loading is checked first: an empty list mid-fetch is not an empty warehouse. */}
+        {loadingLabel
+          || (noOptions ? t('picker.noProductsInStock') : display || resolvedPlaceholder)}
       </button>
       {panel}
       {emptyHint && noOptions ? (

@@ -449,6 +449,11 @@ const Sales = () => {
   const [inventory, setInventory] = useState([]);
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
+  // False while the finished sales are still arriving behind the open ones. The footer totals
+  // read this: a sum taken over half the rows is not a smaller total, it is a wrong one, and a
+  // figure that climbs while somebody reads it looks like an accounting fault rather than a page
+  // still loading. Money Balance once totalled 50 of 216 rows and did exactly that.
+  const [salesFullyLoaded, setSalesFullyLoaded] = useState(false);
 
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [batchCustomer, setBatchCustomer] = useState('');
@@ -505,12 +510,38 @@ const Sales = () => {
 
   useEffect(() => {
     fetchSales();
-    fetchProducts();
-    fetchInventory();
     fetchCustomers();
     fetchPackages();
+    // Products and stock layers are deliberately **not** loaded here. Nothing in the table reads
+    // them — every row renders from its own `product_detail` — and they are only wanted once the
+    // new-sale form is open, where they fill the picker. Measured on staging, fetching them up
+    // front cost 455 kB / 854 ms and 211 kB / 598 ms on a page that shows neither. They now load
+    // when the form opens; see the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * The picker's data, fetched when the new-sale form actually opens.
+   *
+   * Keyed on `showBatchForm` rather than hung off the button, so it happens however the form is
+   * opened. `showBatchForm` starts false, so this never fires on first render.
+   *
+   * Products come from the session cache (`getCachedProducts`), so reopening the form costs
+   * nothing; the stock layers are re-read each time on purpose — somebody else may have sold the
+   * last pair since the form was last open, and a stale picker is how a basket gets built against
+   * stock that is already gone.
+   */
+  const [pickerLoading, setPickerLoading] = useState(false);
+
+  useEffect(() => {
+    if (!showBatchForm) return;
+    // Tracked so the picker can say "loading" rather than "no products in stock" while this is
+    // in flight — the two look identical from an empty list, and only one of them is true.
+    setPickerLoading(true);
+    Promise.all([fetchProducts(), fetchInventory()])
+      .finally(() => setPickerLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBatchForm]);
   
   const fetchPackages = async () => {
     if (!hasPermission('packages.view')) {
@@ -631,12 +662,31 @@ const Sales = () => {
       // The slim row: no supplier costs on the nested product, and no `paid_legs`, which cost one
       // database query per sale. Returns asks the same endpoint without `lite` and still gets the
       // full row, because it needs `paid_legs` to work out a refund.
-      const response = await apiGetAll('/sales/', { params: { lite: 1 } });
-      const salesList = response.data.results || response.data;
-      setSales(salesList);
-      applyFilters(salesList);
+      // Two passes, in the order the shop cares about. The sales still being worked on come
+      // first — on production that is a handful of rows against hundreds — so the page is usable
+      // almost at once; everything already finished follows behind it.
+      //
+      // The slim row throughout: no supplier costs on the nested product, and no `paid_legs`,
+      // which cost one database query per sale. Returns asks this same endpoint without `lite`
+      // and still gets the full row, because it needs `paid_legs` to work out a refund.
+      setSalesFullyLoaded(false);
+      const openRes = await apiGetAll('/sales/', { params: { lite: 1, open: 1 } });
+      const openSales = openRes.data.results || openRes.data;
+      setSales(openSales);
+      applyFilters(openSales);
+      setLoading(false);
+
+      const doneRes = await apiGetAll('/sales/', { params: { lite: 1, open: 0 } });
+      const doneSales = doneRes.data.results || doneRes.data;
+      const allSales = [...openSales, ...doneSales];
+      setSales(allSales);
+      applyFilters(allSales);
+      setSalesFullyLoaded(true);
     } catch (error) {
       console.error('Error fetching sales:', error);
+      // Whatever arrived is all there is going to be, so let the totals describe it rather than
+      // leaving the footer showing "—" for ever.
+      setSalesFullyLoaded(true);
     } finally {
       setLoading(false);
     }
@@ -849,7 +899,9 @@ const Sales = () => {
 
   const fetchInventory = async () => {
     try {
-      const response = await apiGetAll('/inventory/layers/');
+      // The picker's row: no supplier or cargo costs, which this page never shows. The Ombor
+      // page asks the same endpoint without `lite` and still gets them.
+      const response = await apiGetAll('/inventory/layers/', { params: { lite: 1 } });
       setInventory(response.data.results || response.data);
     } catch (error) {
       console.error('Error fetching inventory:', error);
@@ -1027,7 +1079,7 @@ const Sales = () => {
     }
     let freshInventory = inventory;
     try {
-      const invRes = await apiGetAll('/inventory/layers/');
+      const invRes = await apiGetAll('/inventory/layers/', { params: { lite: 1 } });
       freshInventory = invRes.data.results || invRes.data;
       setInventory(freshInventory);
     } catch (err) {
@@ -3529,6 +3581,9 @@ const Sales = () => {
                               triggerClassName="batch-sale-lines__control"
                               placeholder={t('batch.productPlaceholder')}
                               aria-label={t('batch.product')}
+                              loadingLabel={
+                                pickerLoading ? t('actions.loading', { ns: 'common' }) : null
+                              }
                             />
                           </td>
                           <td className="batch-sale-lines__td--num">
@@ -4023,10 +4078,18 @@ const Sales = () => {
               <td colSpan={SALES_FOOTER_LABEL_COL_SPAN} style={{ textAlign: 'right' }}>
                 {t('table.totalFooter', { ns: 'sales' })}
               </td>
-              <td style={{ fontWeight: 600 }}>{salesColumnTotals.quantity.toLocaleString()}</td>
+              {/*
+                Every figure here waits for the whole list. While the finished sales are still
+                arriving the row shows "—" rather than a running subtotal: a total over half the
+                rows is not a smaller number, it is the wrong one, and one that climbs as you
+                watch reads as an accounting fault rather than a page still loading.
+              */}
+              <td style={{ fontWeight: 600 }}>
+                {salesFullyLoaded ? salesColumnTotals.quantity.toLocaleString() : '—'}
+              </td>
               <td>—</td>
               <td style={{ fontWeight: 600 }}>
-                {!filteredSales.length
+                {!salesFullyLoaded || !filteredSales.length
                   ? '—'
                   : salesColumnTotals.totalAmountCurrency
                     ? formatDisplayAmount(
@@ -4036,7 +4099,7 @@ const Sales = () => {
                     : formatPlainAmount(salesColumnTotals.totalAmount)}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {!filteredSales.length
+                {!salesFullyLoaded || !filteredSales.length
                   ? '—'
                   : salesColumnTotals.totalDiscount > 0
                     ? salesColumnTotals.totalDiscountCurrency
@@ -4048,10 +4111,14 @@ const Sales = () => {
                     : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {salesColumnTotals.uzs > 0 ? `${salesColumnTotals.uzs.toLocaleString()} UZS` : '—'}
+                {salesFullyLoaded && salesColumnTotals.uzs > 0
+                  ? `${salesColumnTotals.uzs.toLocaleString()} UZS`
+                  : '—'}
               </td>
               <td style={{ fontWeight: 600 }}>
-                {salesColumnTotals.usd > 0 ? `$${salesColumnTotals.usd.toFixed(2)}` : '—'}
+                {salesFullyLoaded && salesColumnTotals.usd > 0
+                  ? `$${salesColumnTotals.usd.toFixed(2)}`
+                  : '—'}
               </td>
               <td colSpan={SALES_TABLE_COLUMN_COUNT - SALES_FOOTER_LABEL_COL_SPAN - 6}>—</td>
             </tr>

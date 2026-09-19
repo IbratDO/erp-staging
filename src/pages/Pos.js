@@ -94,7 +94,7 @@ export default function Pos() {
 
   const loadShelf = useCallback(async () => {
     const [inv, cust, prods, pkgs] = await Promise.all([
-      apiGetAll('/inventory/layers/'),
+      apiGetAll('/inventory/layers/', { params: { lite: 1 } }),
       apiGetAll('/customers/'),
       getCachedProducts(api),
       // Packaging is optional stock: a shop that does not box anything has none, and the till
@@ -304,7 +304,7 @@ export default function Pos() {
       // server after the customer is at the counter is the worst moment to find out.
       let shelf = inventory;
       try {
-        const fresh = await apiGetAll('/inventory/layers/');
+        const fresh = await apiGetAll('/inventory/layers/', { params: { lite: 1 } });
         shelf = fresh.data.results || fresh.data || [];
         setInventory(shelf);
       } catch { /* keep what we have and let the server be the backstop */ }
