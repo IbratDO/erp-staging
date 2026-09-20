@@ -11,38 +11,53 @@ export default function SortableTh({
   children,
   className = '',
   align,
+  /**
+   * Refuse to sort, for a table whose rows have not all arrived.
+   *
+   * Sorting is client-side, so it can only order the rows already fetched. On a list that loads
+   * progressively that produces a confidently wrong answer — the cheapest delivery of the fifty
+   * loaded, presented as the cheapest of three hundred — and a sorted table is persuasive enough
+   * that nobody thinks to doubt it. Defaults to off, so every existing caller is unaffected.
+   */
+  disabled = false,
   style: userStyle,
   ...rest
 }) {
   const active = sortCol === columnId;
   const mergedStyle = {
-    cursor: 'pointer',
+    cursor: disabled ? 'default' : 'pointer',
     userSelect: 'none',
     ...(align ? { textAlign: align } : {}),
     ...(userStyle || {}),
   };
+  const sort = (e) => {
+    e.stopPropagation();
+    if (disabled) return;
+    onSort(columnId);
+  };
   return (
     <th
       {...rest}
-      className={`data-table-sortable ${className}`.trim()}
+      className={
+        `data-table-sortable${disabled ? ' data-table-sortable--disabled' : ''} ${className}`.trim()
+      }
       style={mergedStyle}
       role="columnheader"
       scope="col"
+      // The arrow stays when disabled: a refetch can begin with a sort already applied, and the
+      // rows on screen really are still in that order, so hiding it would misdescribe the table.
       aria-sort={
         active ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined
       }
-      onClick={(e) => {
-        e.stopPropagation();
-        onSort(columnId);
-      }}
+      aria-disabled={disabled || undefined}
+      onClick={sort}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          e.stopPropagation();
-          onSort(columnId);
+          sort(e);
         }
       }}
-      tabIndex={0}
+      tabIndex={disabled ? -1 : 0}
     >
       <span style={{ verticalAlign: 'middle' }}>
         {children}

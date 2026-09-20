@@ -19,23 +19,49 @@ import api from './api';
  * parallel. An endpoint with pagination disabled returns a plain array and is passed
  * straight through, so this is safe to use everywhere.
  *
+ * `config.onFirstPage` is for lists long enough that waiting for all of them is the delay: it is
+ * handed the first page as soon as it arrives, so a page can paint its first rows while the rest
+ * are still in flight. The promise still resolves with every row, so a caller that ignores it
+ * behaves exactly as before. It is called once, always, including when the first page is the only
+ * one — a caller must never have to handle "the callback did not fire" as a separate case.
+ *
  * @param {string} url  Path relative to the api baseURL; query string allowed.
- * @param {object} [config]  Extra axios config.
+ * @param {object} [config]  Extra axios config, plus the optional `onFirstPage` callback.
+ * @param {(rows: Array, info: { count: number, done: boolean }) => void} [config.onFirstPage]
  * @returns {Promise<{ data: Array, count: number }>}
  */
 export default async function apiGetAll(url, config = {}) {
-  const first = await api.get(url, config);
+  // Kept out of the axios config: it is ours, not axios's, and it would otherwise be passed on
+  // to every page request as an unknown option.
+  const { onFirstPage, ...axiosConfig } = config;
+  const announce = (rows, count, done) => {
+    if (typeof onFirstPage === 'function') onFirstPage([...rows], { count, done });
+  };
+
+  const first = await api.get(url, axiosConfig);
   const body = first.data;
 
-  if (Array.isArray(body)) return { data: body, count: body.length };
-  if (!body || !Array.isArray(body.results)) return { data: [], count: 0 };
+  if (Array.isArray(body)) {
+    announce(body, body.length, true);
+    return { data: body, count: body.length };
+  }
+  if (!body || !Array.isArray(body.results)) {
+    announce([], 0, true);
+    return { data: [], count: 0 };
+  }
 
   const rows = [...body.results];
   const total = Number(body.count);
 
   if (!body.next || !Number.isFinite(total) || rows.length >= total) {
-    return { data: rows, count: Number.isFinite(total) ? total : rows.length };
+    const only = Number.isFinite(total) ? total : rows.length;
+    announce(rows, only, true);
+    return { data: rows, count: only };
   }
+
+  // Announced before the remaining pages are requested, not after: the whole point is that the
+  // caller paints these rows while the rest are still travelling.
+  announce(rows, total, false);
 
   const pageSize = rows.length;
   if (pageSize <= 0) return { data: rows, count: total };
@@ -47,7 +73,9 @@ export default async function apiGetAll(url, config = {}) {
   for (let page = 2; page <= lastPage; page += 1) {
     const params = new URLSearchParams(query);
     params.set('page', String(page));
-    requests.push(api.get(`${path}?${params.toString()}`, config));
+    // `axiosConfig`, not `config`: the latter still carries `onFirstPage`, which is ours and
+    // would ride along on every one of these as an unknown axios option.
+    requests.push(api.get(`${path}?${params.toString()}`, axiosConfig));
   }
 
   const responses = await Promise.all(requests);

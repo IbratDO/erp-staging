@@ -148,6 +148,10 @@ const Dispatchers = () => {
   const [dispatchers, setDispatchers] = useState([]);
   const [activeDispatchers, setActiveDispatchers] = useState([]);
   const [dispatches, setDispatches] = useState([]);
+  // False until every page of deliveries has arrived. The cost total sums the rows it holds, so
+  // while rows are still coming in it would quote a figure for part of the list as though it
+  // were the whole of it — and column sorting would rank part of the list the same way.
+  const [dispatchesFullyLoaded, setDispatchesFullyLoaded] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [selectedDispatcher, setSelectedDispatcher] = useState(null);
   const [dispatcherDetail, setDispatcherDetail] = useState(null);
@@ -213,11 +217,28 @@ const Dispatchers = () => {
       if (filters.status) params.status = filters.status;
       if (filters.dispatcher) params.dispatcher = filters.dispatcher;
       if (filters.serviceType) params.dispatch_type = filters.serviceType;
-      const res = await apiGetAll('/dispatches/', { params });
+      // Reset before the request rather than after. Changing a filter re-runs this, and a flag
+      // left true would let the footer quote the previous filter's total against the new list.
+      setDispatchesFullyLoaded(false);
+      const res = await apiGetAll('/dispatches/', {
+        params,
+        // The server already sorts the deliveries still needing work to the top, so the first
+        // page is the fifty worth seeing first. Paint them straight away and let the rest of
+        // the list arrive behind them.
+        onFirstPage: (rows, { done }) => {
+          setDispatches(rows);
+          setLoading(false);
+          if (done) setDispatchesFullyLoaded(true);
+        },
+      });
       const list = res.data.results || res.data;
       setDispatches(list);
+      setDispatchesFullyLoaded(true);
     } catch (e) {
       console.error('Error fetching dispatches:', e);
+      // Whatever arrived is all there is going to be, so let the total describe that rather than
+      // leaving the footer showing "—" for ever.
+      setDispatchesFullyLoaded(true);
     } finally {
       setLoading(false);
     }
@@ -1053,20 +1074,25 @@ const Dispatchers = () => {
           )}
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
+        {/*
+          Fixed height with the header pinned, so a long list scrolls inside the box instead of
+          pushing the page down. `data-table-scroll` is the same container the other tall tables
+          use; it carries the sticky `thead` rule, which a bare overflow div does not.
+        */}
+        <div className="data-table-scroll">
           <table className="data-table">
             <thead>
               <tr>
-                <SortableTh columnId="id" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('table.id', { ns: 'common' })}</SortableTh>
-                <SortableTh columnId="sale_id" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.sale')}</SortableTh>
-                <SortableTh columnId="product" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.product')}</SortableTh>
-                <SortableTh columnId="customer" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.customer')}</SortableTh>
-                <SortableTh columnId="dispatch_type_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.type')}</SortableTh>
-                <SortableTh columnId="delivery_cost_key" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.deliveryCost')}</SortableTh>
-                <SortableTh columnId="dispatcher_name" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('filters.dispatcher')}</SortableTh>
-                <SortableTh columnId="delivered_at" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.delivered')}</SortableTh>
-                <SortableTh columnId="logistics_notes" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.notes')}</SortableTh>
-                <SortableTh columnId="status" sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('table.status', { ns: 'common' })}</SortableTh>
+                <SortableTh columnId="id" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('table.id', { ns: 'common' })}</SortableTh>
+                <SortableTh columnId="sale_id" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.sale')}</SortableTh>
+                <SortableTh columnId="product" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.product')}</SortableTh>
+                <SortableTh columnId="customer" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.customer')}</SortableTh>
+                <SortableTh columnId="dispatch_type_key" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.type')}</SortableTh>
+                <SortableTh columnId="delivery_cost_key" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.deliveryCost')}</SortableTh>
+                <SortableTh columnId="dispatcher_name" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('filters.dispatcher')}</SortableTh>
+                <SortableTh columnId="delivered_at" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.delivered')}</SortableTh>
+                <SortableTh columnId="logistics_notes" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('shipments.columns.notes')}</SortableTh>
+                <SortableTh columnId="status" disabled={!dispatchesFullyLoaded} sortCol={allDeliveriesSort.sortCol} sortDir={allDeliveriesSort.sortDir} onSort={allDeliveriesSort.onHeaderClick}>{t('table.status', { ns: 'common' })}</SortableTh>
                 <th>{t('table.actions', { ns: 'common' })}</th>
               </tr>
             </thead>
@@ -1138,7 +1164,15 @@ const Dispatchers = () => {
                   {t('workspace.totalFiltered')}
                 </td>
                 <td style={{ fontWeight: 600, fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
-                  {allDeliveriesCostTotals.uzs > 0 || allDeliveriesCostTotals.usd > 0
+                  {/*
+                    "—" until every row is in. This sums the rows the page is holding, so during
+                    the background load it would print a real-looking delivery-cost total for
+                    part of the list and then quietly correct itself — the same reason the
+                    Sotuvlar footer waits.
+                  */}
+                  {!dispatchesFullyLoaded
+                    ? '—'
+                    : allDeliveriesCostTotals.uzs > 0 || allDeliveriesCostTotals.usd > 0
                     ? [
                         allDeliveriesCostTotals.uzs > 0
                           ? `${formatAppNumber(allDeliveriesCostTotals.uzs)} ${uzsLabel}`

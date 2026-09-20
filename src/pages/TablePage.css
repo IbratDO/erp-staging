@@ -599,6 +599,19 @@
   filter: brightness(1.08);
 }
 
+/*
+  A header that cannot sort yet, because the table is still loading rows. Without this it kept
+  the hover highlight and read as clickable, so the only feedback for a dead control was that
+  nothing happened — which looks like a broken page rather than a deliberate wait.
+*/
+.data-table-sortable--disabled {
+  opacity: 0.7;
+}
+
+.data-table-sortable--disabled:hover {
+  filter: none;
+}
+
 .data-table-sortable:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.65);
   outline-offset: -2px;
