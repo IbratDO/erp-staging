@@ -6,6 +6,8 @@ export default function useManagementKpisData({
   month,
   expensesGranularity,
   marketingGranularity,
+  topProductsGranularity,
+  marketingCustomerGranularity,
   enabled,
   marketingOnly = false,
   errorMessage = 'Failed to load management KPIs',
@@ -24,6 +26,8 @@ export default function useManagementKpisData({
       month: month || undefined,
       expenses_granularity: expensesGranularity,
       marketing_sold_granularity: marketingGranularity,
+      top_products_granularity: topProductsGranularity,
+      marketing_customer_granularity: marketingCustomerGranularity,
       include_turnover: false,
     };
     try {
@@ -60,7 +64,10 @@ export default function useManagementKpisData({
       setLoading(false);
       setTurnoverLoading(false);
     }
-  }, [year, month, expensesGranularity, marketingGranularity, enabled, marketingOnly, errorMessage]);
+  }, [
+    year, month, expensesGranularity, marketingGranularity, topProductsGranularity,
+    marketingCustomerGranularity, enabled, marketingOnly, errorMessage,
+  ]);
 
   useEffect(() => {
     if (enabled) load();

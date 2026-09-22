@@ -306,15 +306,9 @@ const DashboardLegacy = () => {
           label={td('soldUnitsToday')}
           value={(kpis?.net_sold_units ?? kpis?.sold_units ?? 0).toLocaleString()}
           sub={
-            // Same-day returns only — see the note on the matching card in DashboardModern.
-            !targetologView && (kpis?.same_day_return_units ?? 0) > 0
-              ? td('netUnitsSub', {
-                  gross: (kpis?.sold_units ?? 0).toLocaleString(),
-                  returned: (kpis?.same_day_return_units ?? 0).toLocaleString(),
-                })
-              : kpis?.scope === 'own'
-                ? td('scopeOwn')
-                : td('scopeAll')
+            // Unfinished sales started today — see the note on the matching card in
+            // DashboardModern for why this replaced the scope text and the returns note.
+            td('unfinishedSalesToday', { n: (kpis?.open_sales_today ?? 0).toLocaleString() })
           }
         />
         {!targetologView ? (
@@ -388,6 +382,9 @@ const DashboardLegacy = () => {
             chartType="area"
             onLegendClick={handleLegendCustomer}
             activeCross={crossFilter.customerType}
+            // Same hover order as the modern dashboard: the two draw the same chart, and the
+            // one place they were allowed to differ is how this component came to be shared.
+            reverseTooltip
           />
           {!targetologView ? (
           <ChartPanel

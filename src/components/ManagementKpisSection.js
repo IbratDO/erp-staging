@@ -392,10 +392,24 @@ export function MarketingPerItemChart({ data, marketingGranularity, setMarketing
   );
 }
 
-function MarketingPerCustomerChart({ data }) {
+function MarketingPerCustomerChart({ data, granularity = 'weekly', onGranularityChange }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
   return (
-    <MgmtChart title={t('mgmt.marketingPerCustomer')}>
+    <MgmtChart
+      title={t('mgmt.marketingPerCustomer')}
+      controls={
+        onGranularityChange ? (
+          <ToggleGroup
+            value={granularity}
+            onChange={onGranularityChange}
+            options={[
+              { value: 'weekly', label: t('mgmt.weekly') },
+              { value: 'monthly', label: t('mgmt.monthly') },
+            ]}
+          />
+        ) : null
+      }
+    >
       <ResponsiveContainer width="100%" height={240}>
         <BarChart data={data?.marketing_per_new_customer_weekly || []}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -431,12 +445,35 @@ function MarketingPerCustomerChart({ data }) {
   );
 }
 
-/** Marketing-per-sold-item moved to the Umumiy tab, beside the net-profit chart, so the
- *  two headline efficiency numbers sit together; this tab keeps the per-customer view. */
-export function MarketingCharts({ data }) {
+/**
+ * The two marketing efficiency charts, side by side.
+ *
+ * Per-sold-item also appears on the Umumiy tab beside net profit, where it was deliberately put
+ * so the two headline efficiency numbers sit together. It is the same component reading the same
+ * payload in both places — rendered twice, not duplicated, so the two cannot drift.
+ *
+ * `mgmt-grid`, not `mgmt-charts-grid`: the latter has no CSS rule anywhere in the project, so a
+ * second child under it would simply stack beneath the first instead of sitting beside it.
+ */
+export function MarketingCharts({
+  data,
+  marketingGranularity,
+  setMarketingGranularity,
+  customerGranularity,
+  setCustomerGranularity,
+}) {
   return (
-    <div className="mgmt-charts-grid">
-      <MarketingPerCustomerChart data={data} />
+    <div className="mgmt-grid">
+      <MarketingPerItemChart
+        data={data}
+        marketingGranularity={marketingGranularity}
+        setMarketingGranularity={setMarketingGranularity}
+      />
+      <MarketingPerCustomerChart
+        data={data}
+        granularity={customerGranularity}
+        onGranularityChange={setCustomerGranularity}
+      />
     </div>
   );
 }
@@ -586,11 +623,35 @@ export function SalesMgmtCharts({ data }) {
   );
 }
 
-export function TopProductsBlock({ data }) {
+export function TopProductsBlock({ data, granularity, onGranularityChange }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
   return (
     <div className="mgmt-chart-card mgmt-top-products mgmt-top-products-wide">
-      <h4>{t('mgmt.top5Products')}</h4>
+      {/*
+        The toggle only appears when a caller supplies a handler, so the Legacy dashboard's own
+        copy of this card is untouched and keeps the monthly window it has always shown.
+      */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '8px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <h4 style={{ margin: 0 }}>{t('mgmt.top5Products')}</h4>
+        {onGranularityChange ? (
+          <ToggleGroup
+            value={granularity || 'monthly'}
+            onChange={onGranularityChange}
+            options={[
+              { value: 'weekly', label: t('mgmt.weekly') },
+              { value: 'monthly', label: t('mgmt.monthly') },
+            ]}
+          />
+        ) : null}
+      </div>
       {!(data?.top_products_by_month?.length) ? (
         <p className="mgmt-empty">{t('mgmt.noSalesInPeriod')}</p>
       ) : (

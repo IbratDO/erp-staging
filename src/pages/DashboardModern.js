@@ -198,6 +198,12 @@ const DashboardModern = () => {
   const [expensesGranularity, setExpensesGranularity] = useState('monthly');
   const [marketingGranularity, setMarketingGranularity] = useState('weekly');
   const [salesCountGranularity, setSalesCountGranularity] = useState('monthly');
+  // Server-side, unlike the chart toggles above it: the blocks are ranked in the query, so
+  // changing this refetches rather than re-slicing what is already loaded.
+  const [topProductsGranularity, setTopProductsGranularity] = useState('monthly');
+  // Its own window rather than sharing the per-item toggle beside it: one control silently
+  // changing its neighbour's period reads as a bug, not a feature.
+  const [marketingCustomerGranularity, setMarketingCustomerGranularity] = useState('weekly');
   // Both margin series arrive in one payload, so this only picks which to draw — no refetch.
   const [managerMarginGranularity, setManagerMarginGranularity] = useState('monthly');
   // Changes what each weekday bar is an average *of* — months, or single weeks. The bars stay
@@ -246,6 +252,8 @@ const DashboardModern = () => {
     month,
     expensesGranularity,
     marketingGranularity,
+    topProductsGranularity,
+    marketingCustomerGranularity,
     enabled: canViewMarketing,
     marketingOnly: mgmtMarketingOnly,
     errorMessage: t('mgmt.loadError', { ns: 'dashboard' }),
@@ -479,18 +487,13 @@ const DashboardModern = () => {
               label={td('soldUnitsToday')}
               value={(kpis?.net_sold_units ?? kpis?.sold_units ?? 0).toLocaleString()}
               sub={
-                // Same-day returns only, matching what the figure above nets off. A return of
-                // something sold last week belongs to the Qaytarishlar card, not here — showing
-                // it under a number it was never subtracted from made the two look like they
-                // disagreed.
-                !targetologView && (kpis?.same_day_return_units ?? 0) > 0
-                  ? td('netUnitsSub', {
-                      gross: (kpis?.sold_units ?? 0).toLocaleString(),
-                      returned: (kpis?.same_day_return_units ?? 0).toLocaleString(),
-                    })
-                  : kpis?.scope === 'own'
-                    ? td('scopeOwn')
-                    : td('scopeAll')
+                // Always the unfinished count, so the line means the same thing every day
+                // rather than changing character whenever something sold today came back.
+                // Nothing is lost by dropping the returns note: the value above is already the
+                // net figure, and "Qaytarishlar (bugun)" carries the returns in its own card.
+                //
+                // Counts sales, not units — a single sale of five shirts is one unfinished sale.
+                td('unfinishedSalesToday', { n: (kpis?.open_sales_today ?? 0).toLocaleString() })
               }
             />
             {!targetologView ? (
@@ -642,7 +645,11 @@ const DashboardModern = () => {
           {canViewMgmt ? (
             <section className="mgmt-section">
               <SalesMgmtCharts data={mgmtData} />
-              <TopProductsBlock data={mgmtData} />
+              <TopProductsBlock
+                data={mgmtData}
+                granularity={topProductsGranularity}
+                onGranularityChange={setTopProductsGranularity}
+              />
             </section>
           ) : null}
         </>
@@ -661,11 +668,20 @@ const DashboardModern = () => {
                 chartType="area"
                 onLegendClick={handleLegendCustomer}
                 activeCross={crossFilter.customerType}
+                // Series are sorted alphabetically, so the stack is New below Old. The hover
+                // reads the other way round — the returning customers first, then the new ones.
+                reverseTooltip
               />
             </div>
           </section>
           <section className="mgmt-section">
-            <MarketingCharts data={mgmtData} />
+            <MarketingCharts
+              data={mgmtData}
+              marketingGranularity={marketingGranularity}
+              setMarketingGranularity={setMarketingGranularity}
+              customerGranularity={marketingCustomerGranularity}
+              setCustomerGranularity={setMarketingCustomerGranularity}
+            />
           </section>
         </>
       )}

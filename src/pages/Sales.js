@@ -88,6 +88,7 @@ import {
   saleLikeForDisplayRow,
   sumSalesDiscountTotals,
   saleDiscountTotalAmount,
+  compareSaleDisplayRows,
 } from '../utils/saleGroupDisplay';
 
 function formatBatchCreateError(data, t) {
@@ -781,17 +782,11 @@ const Sales = () => {
     if (saleSort.sortCol && SALE_DISPLAY_SORT_ACCESSORS[saleSort.sortCol]) {
       return saleSort.sortRows(rows);
     }
-    return [...rows].sort((a, b) => {
-      const aSale = saleLikeForDisplayRow(a);
-      const bSale = saleLikeForDisplayRow(b);
-      const aDone = SALE_TERMINAL_STATUSES.has(aSale.status) ? 1 : 0;
-      const bDone = SALE_TERMINAL_STATUSES.has(bSale.status) ? 1 : 0;
-      if (aDone !== bDone) return aDone - bDone;
-      const ta = new Date(aSale.display_date || aSale.sale_date).getTime() || 0;
-      const tb = new Date(bSale.display_date || bSale.sale_date).getTime() || 0;
-      return tb - ta;
-    });
-  }, [salesDisplayRows, saleSort, SALE_TERMINAL_STATUSES]);
+    // Open first by workflow stage, longest-waiting at the top; finished below, newest first.
+    // The rule reads the rows' underlying lines rather than the display status — see
+    // `compareSaleDisplayRows`, which is where it is tested.
+    return [...rows].sort(compareSaleDisplayRows);
+  }, [salesDisplayRows, saleSort]);
 
   const salesColumnTotals = useMemo(() => {
     const list = filteredSales;

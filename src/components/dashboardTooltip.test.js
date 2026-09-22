@@ -18,7 +18,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 
-import { nonZeroTooltip } from './dashboardCharts';
+import { nonZeroTooltip, seriesTooltip } from './dashboardCharts';
 
 const STYLE = { background: '#fff' };
 
@@ -93,5 +93,73 @@ describe('when there is nothing to show', () => {
 
   test('nor one with no series behind it', () => {
     expect(nonZeroTooltip({ active: true, payload: [] }, STYLE)).toBeNull();
+  });
+});
+
+/**
+ * The order rows are listed in, for "Yangi va mavjud mijozlar".
+ *
+ * The series are sorted alphabetically before they are drawn, so the stack is built New below
+ * Old — and Recharts names series in declaration order, meaning the hover led with "New
+ * customers" while the band on top of the chart was the old ones. Reversed, the box reads
+ * top-down in the order the bands are actually drawn.
+ *
+ * Opt-in per chart rather than changed for everybody: this tooltip serves five charts on the
+ * modern dashboard, and what reads correctly for one stack is not automatically right elsewhere.
+ */
+function showRows(props, options) {
+  const node = seriesTooltip({ active: true, label: 'Sen', ...props }, STYLE, options);
+  if (node === null) return null;
+  act(() => root.render(node));
+  return container.textContent;
+}
+
+/** The order the entries are declared in, which is the order Recharts hands them over. */
+const CUSTOMERS = [entry('New customers', 12), entry('Old customers', 30)];
+
+describe('reversing the hover order', () => {
+  test('the old customers are listed above the new ones', () => {
+    const text = showRows({ payload: CUSTOMERS }, { reverse: true });
+
+    expect(text.indexOf('Old customers')).toBeLessThan(text.indexOf('New customers'));
+  });
+
+  test('left alone, the original order is kept', () => {
+    // The guard for the other four charts drawn by this component.
+    const text = showRows({ payload: CUSTOMERS });
+
+    expect(text.indexOf('New customers')).toBeLessThan(text.indexOf('Old customers'));
+  });
+
+  test('every row survives the reversal, with its figure', () => {
+    const text = showRows({ payload: CUSTOMERS }, { reverse: true });
+
+    expect(text).toContain('30');
+    expect(text).toContain('12');
+  });
+
+  test("the caller's own array is not reordered", () => {
+    /*
+      Recharts owns the payload array it passes in, and `reverse()` works in place. Reordering it
+      during a render would reach back into the chart's own book-keeping — the kind of fault that
+      shows up somewhere else entirely, long after the hover has gone.
+    */
+    const payload = [...CUSTOMERS];
+
+    showRows({ payload }, { reverse: true });
+
+    expect(payload.map((e) => e.name)).toEqual(['New customers', 'Old customers']);
+  });
+
+  test('a zero row is still dropped when both options are asked for', () => {
+    // Nothing on this chart needs both today, but the two must compose rather than one
+    // silently winning — that is exactly the sort of thing found much later, by accident.
+    const text = showRows(
+      { payload: [entry('New customers', 0), entry('Old customers', 4)] },
+      { hideZero: true, reverse: true },
+    );
+
+    expect(text).toContain('Old customers');
+    expect(text).not.toContain('New customers');
   });
 });

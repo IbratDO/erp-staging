@@ -40,11 +40,19 @@ import { CHART_PALETTE, OTHERS_SLOT, slotKey } from '../utils/dashboardAnalytics
  * Only the rows are dropped, never a series: the colours, the legend and the stack order stay
  * exactly as they are, so the same person keeps the same colour on every bar.
  */
-export function nonZeroTooltip({ active, payload, label }, tooltipStyle) {
+export function seriesTooltip({ active, payload, label }, tooltipStyle, options = {}) {
+  const { hideZero = false, reverse = false } = options;
   if (!active || !payload?.length) return null;
-  const rows = payload.filter((entry) => Number(entry?.value) !== 0);
+  // Copied either way. `reverse()` mutates in place, and this array belongs to Recharts —
+  // reordering it during a render would quietly reorder the chart's own book-keeping.
+  const kept = hideZero
+    ? payload.filter((entry) => Number(entry?.value) !== 0)
+    : [...payload];
   // Nothing at all on this bar. An empty box reads as a glitch, so show none.
-  if (!rows.length) return null;
+  if (!kept.length) return null;
+  // Recharts lists series in the order they were declared, which on a stacked chart is the
+  // *bottom* band first. Reversed, the hover reads top-down in the order the bands are drawn.
+  const rows = reverse ? kept.reverse() : kept;
   return (
     <div style={{ ...tooltipStyle, padding: '8px 10px' }}>
       <div style={{ marginBottom: 4 }}>{label}</div>
@@ -61,6 +69,16 @@ export function nonZeroTooltip({ active, payload, label }, tooltipStyle) {
   );
 }
 
+/**
+ * The hover box with the sold-nothing rows dropped — the long-standing behaviour, unchanged.
+ *
+ * A thin wrapper now, so that filtering and ordering are one piece of code rather than two
+ * near-copies that could disagree about how a row is drawn.
+ */
+export function nonZeroTooltip(props, tooltipStyle) {
+  return seriesTooltip(props, tooltipStyle, { hideZero: true });
+}
+
 export function ChartPanel({
   title,
   data,
@@ -71,6 +89,13 @@ export function ChartPanel({
   activeCross,
   emptyLabel = '',
   hideZeroSeries = false,
+  /**
+   * List the hover rows top band first instead of bottom band first.
+   *
+   * Opt-in per chart: this component draws five charts on the modern dashboard alone, and the
+   * order that reads correctly for one stack is not automatically right for the others.
+   */
+  reverseTooltip = false,
   controls = null,
 }) {
   const height = 280;
@@ -120,8 +145,14 @@ export function ChartPanel({
             <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
             <Tooltip
               contentStyle={tooltipStyle}
-              {...(hideZeroSeries
-                ? { content: (props) => nonZeroTooltip(props, tooltipStyle) }
+              {...(hideZeroSeries || reverseTooltip
+                ? {
+                    content: (props) =>
+                      seriesTooltip(props, tooltipStyle, {
+                        hideZero: hideZeroSeries,
+                        reverse: reverseTooltip,
+                      }),
+                  }
                 : {})}
             />
             <Legend {...legendProps} />
@@ -145,8 +176,14 @@ export function ChartPanel({
             <YAxis tick={{ fontSize: 12 }} allowDecimals={chartType === 'weekday'} />
             <Tooltip
               contentStyle={tooltipStyle}
-              {...(hideZeroSeries
-                ? { content: (props) => nonZeroTooltip(props, tooltipStyle) }
+              {...(hideZeroSeries || reverseTooltip
+                ? {
+                    content: (props) =>
+                      seriesTooltip(props, tooltipStyle, {
+                        hideZero: hideZeroSeries,
+                        reverse: reverseTooltip,
+                      }),
+                  }
                 : {})}
             />
             <Legend {...legendProps} />

@@ -194,3 +194,98 @@ export function saleLikeForDisplayRow(row) {
     },
   };
 }
+
+/**
+ * Where an unfinished sale sits in the workflow, least advanced first.
+ *
+ * Only statuses a sale can still be worked on belong here; terminal ones never reach this,
+ * because `compareSaleDisplayRows` separates finished from open before consulting it. An
+ * unrecognised status ranks after all of these rather than throwing, so adding a status to the
+ * model degrades to "listed last among the open rows" instead of scrambling the table.
+ */
+export const SALE_OPEN_STAGE_ORDER = ['pending', 'reserved', 'confirmed', 'dispatched'];
+
+const ROW_TERMINAL_STATUSES = new Set(['completed', 'returned', 'cancelled']);
+
+/** The sale records behind one table row — a group's lines, or the single sale. */
+export function displayRowLines(row) {
+  if (!row) return [];
+  if (row.type === 'group') return row.sales || [];
+  return row.sale ? [row.sale] : [];
+}
+
+/**
+ * Has everything in this row been dealt with?
+ *
+ * Asked of the underlying lines, never of the row's display status — which is the whole point.
+ * A group whose lines disagree carries the synthetic status `mixed`, and one completed line
+ * beside one returned line is enough to trigger it. `mixed` is not terminal, so judging by the
+ * label pinned such rows above genuinely open sales **permanently**, however long ago every
+ * item in them was finished.
+ *
+ * `groupDisplayStatus` is deliberately left alone: the badge and this rule shared it on purpose
+ * after they once drifted apart, and a row that sorts as finished while displaying "Aralash" is
+ * the correct pairing — the label describes the lines, this describes whether work remains.
+ *
+ * Cancelled lines do not speak for the row, matching `aggregateGroupSales`. A row that is
+ * entirely cancelled is finished.
+ */
+export function displayRowIsFinished(row) {
+  const lines = displayRowLines(row);
+  if (!lines.length) return true;
+  const active = lines.filter((s) => s?.status !== 'cancelled');
+  const judged = active.length ? active : lines;
+  return judged.every((s) => ROW_TERMINAL_STATUSES.has(s?.status));
+}
+
+/**
+ * How far from done the row is — the least advanced of its unfinished lines.
+ *
+ * A group is only as finished as its most-behind item: one line still `pending` while another
+ * is already `dispatched` means the outstanding work is the pending one, so that is where the
+ * row belongs in the queue.
+ */
+export function displayRowStageRank(row) {
+  let rank = Number.MAX_SAFE_INTEGER;
+  for (const sale of displayRowLines(row)) {
+    if (!sale || ROW_TERMINAL_STATUSES.has(sale.status)) continue;
+    const i = SALE_OPEN_STAGE_ORDER.indexOf(sale.status);
+    rank = Math.min(rank, i === -1 ? SALE_OPEN_STAGE_ORDER.length : i);
+  }
+  return rank;
+}
+
+/** When the row started: the earliest moment among its lines. */
+export function displayRowTime(row) {
+  let earliest = 0;
+  for (const sale of displayRowLines(row)) {
+    const t = new Date(sale?.display_date || sale?.sale_date).getTime() || 0;
+    if (t > 0 && (earliest === 0 || t < earliest)) earliest = t;
+  }
+  return earliest;
+}
+
+/**
+ * Default order of the Sotuvlar table: what still needs doing, then what is done.
+ *
+ * Open sales come first, ordered by how far from finished they are, and within a stage the one
+ * that has been waiting longest sits at the top — so the row most overdue for attention is the
+ * first thing on screen. Finished rows follow, most recent first, because there the question is
+ * "what happened lately" rather than "what needs doing".
+ */
+export function compareSaleDisplayRows(a, b) {
+  const aDone = displayRowIsFinished(a) ? 1 : 0;
+  const bDone = displayRowIsFinished(b) ? 1 : 0;
+  if (aDone !== bDone) return aDone - bDone;
+
+  const ta = displayRowTime(a);
+  const tb = displayRowTime(b);
+
+  if (!aDone) {
+    const ra = displayRowStageRank(a);
+    const rb = displayRowStageRank(b);
+    if (ra !== rb) return ra - rb;
+    return ta - tb;
+  }
+  return tb - ta;
+}
