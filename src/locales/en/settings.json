@@ -1,0 +1,15 @@
+{
+  "title": "Settings",
+  "intro": "The shop's name. It appears on the receipt, above the menu, in the browser tab and on the login screen.",
+  "saved": "Saved.",
+  "form": {
+    "shopName": "Shop name",
+    "shopNameHint": "This is the name printed on the receipt. Left empty, the previous name is used.",
+    "save": "Save",
+    "saving": "Saving…"
+  },
+  "errors": {
+    "loadFailed": "Could not load the settings.",
+    "saveFailed": "Could not save. Please try again."
+  }
+}

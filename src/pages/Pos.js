@@ -11,6 +11,8 @@ import ProductSearchableSelect from '../components/ProductSearchableSelect';
 import SaleCompletePayForm from '../components/SaleCompletePayForm';
 import { buildReceiptHtml } from '../components/receiptPrint';
 import printHtmlDocument from '../utils/printHtml';
+import { useSettings } from '../contexts/SettingsContext';
+import { resolveShopName, readCachedShopSettings } from '../utils/shopIdentity';
 import useAppTranslation from '../hooks/useAppTranslation';
 import useBarcodeScanner from '../hooks/useBarcodeScanner';
 import { usePermissions } from '../hooks/usePermissions';
@@ -59,6 +61,7 @@ export default function Pos() {
   const navigate = useNavigate();
   const { hasPermission } = usePermissions();
   const canPay = hasPermission('sales.complete_pay');
+  const { settings } = useSettings();
 
   const [lines, setLines] = useState([emptyBatchLine()]);
   const [customer, setCustomer] = useState('');
@@ -385,7 +388,10 @@ export default function Pos() {
     try {
       const res = await api.get(`/sales/${saleId}/receipt/`);
       const html = buildReceiptHtml(res.data, {
-        shopName: tr('receipt.shopName'), subtotal: tr('receipt.subtotal'),
+        // The shop names itself; see the same call in Sales.js. The locale string stays as the last
+        // fallback rung so a failed settings fetch still prints a named chek.
+        shopName: resolveShopName(settings, readCachedShopSettings(), tr('receipt.shopName')),
+        subtotal: tr('receipt.subtotal'),
         discount: tr('receipt.discount'), total: tr('receipt.total'),
         creditTitle: tr('receipt.creditTitle'), creditDue: tr('receipt.creditDue'),
         giveaway: tr('receipt.giveaway'), thanks: tr('receipt.thanks'),

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { resolveShopName } from '../utils/shopIdentity';
 import { usePermissions } from '../hooks/usePermissions';
 import { getRoleDisplayName } from '../utils/permissions';
 import { translateMenuItems } from '../utils/i18nMenu';
@@ -15,6 +17,9 @@ const Layout = () => {
   const { user, logout } = useAuth();
   const { menuItems } = usePermissions();
   const { t } = useTranslation('common');
+  const { settings } = useSettings();
+  // The shop's own name above the menu, falling back to the product name until one is set.
+  const brand = resolveShopName(settings, null, t('app.title'));
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -85,7 +90,7 @@ const Layout = () => {
       )}
       <aside className={sidebarClass}>
         <div className="sidebar-header">
-          <h2>{t('app.title')}</h2>
+          <h2>{brand}</h2>
           <button
             className="sidebar-toggle"
             onClick={toggleSidebar}

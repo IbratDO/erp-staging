@@ -17,6 +17,8 @@ import SaleCompletePayForm from '../components/SaleCompletePayForm';
 import { buildReceiptHtml } from '../components/receiptPrint';
 import { canPrintReceiptFor } from './receiptButton';
 import printHtmlDocument from '../utils/printHtml';
+import { useSettings } from '../contexts/SettingsContext';
+import { resolveShopName, readCachedShopSettings } from '../utils/shopIdentity';
 import SaleDeliverySettlementForm from '../components/SaleDeliverySettlementForm';
 import SaleChangeFields from '../components/SaleChangeFields';
 import {
@@ -387,6 +389,7 @@ const Sales = () => {
   const tableRef = useRef(null);
   const { t, tStatus, monthOptions } = useAppTranslation(['sales', 'common', 'status']);
   const { hasPermission, hasAnyPermission } = usePermissions();
+  const { settings } = useSettings();
 
 
   const regionChoices = useMemo(
@@ -2298,7 +2301,10 @@ const Sales = () => {
     try {
       const res = await api.get(`/sales/${saleId}/receipt/`);
       const html = buildReceiptHtml(res.data, {
-        shopName: t('receipt.shopName', { ns: 'sales' }),
+        // The shop's own name comes from the settings row, not from the locale files — a shop names
+        // itself and a proper noun does not translate. The locale string is still the last rung of
+        // the fallback, so a failed settings fetch prints what it always printed.
+        shopName: resolveShopName(settings, readCachedShopSettings(), t('receipt.shopName', { ns: 'sales' })),
         subtotal: t('receipt.subtotal', { ns: 'sales' }),
         discount: t('receipt.discount', { ns: 'sales' }),
         total: t('receipt.total', { ns: 'sales' }),

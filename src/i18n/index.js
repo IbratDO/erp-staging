@@ -29,6 +29,7 @@ import uzAudit from '../locales/uz/audit.json';
 import uzPenalties from '../locales/uz/penalties.json';
 import uzWorkers from '../locales/uz/workers.json';
 import uzBonusRules from '../locales/uz/bonusRules.json';
+import uzSettings from '../locales/uz/settings.json';
 
 import ruCommon from '../locales/ru/common.json';
 import ruStatus from '../locales/ru/status.json';
@@ -56,6 +57,7 @@ import ruAudit from '../locales/ru/audit.json';
 import ruPenalties from '../locales/ru/penalties.json';
 import ruWorkers from '../locales/ru/workers.json';
 import ruBonusRules from '../locales/ru/bonusRules.json';
+import ruSettings from '../locales/ru/settings.json';
 
 import enCommon from '../locales/en/common.json';
 import enStatus from '../locales/en/status.json';
@@ -83,6 +85,7 @@ import enAudit from '../locales/en/audit.json';
 import enPenalties from '../locales/en/penalties.json';
 import enWorkers from '../locales/en/workers.json';
 import enBonusRules from '../locales/en/bonusRules.json';
+import enSettings from '../locales/en/settings.json';
 
 /**
  * Uzbek or Russian, whichever this browser last chose — see `utils/appLanguage`.
@@ -120,6 +123,7 @@ const resources = {
     penalties: uzPenalties,
     workers: uzWorkers,
     bonusRules: uzBonusRules,
+    settings: uzSettings,
   },
   ru: {
     common: ruCommon,
@@ -148,6 +152,7 @@ const resources = {
     penalties: ruPenalties,
     workers: ruWorkers,
     bonusRules: ruBonusRules,
+    settings: ruSettings,
   },
   en: {
     common: enCommon,
@@ -176,6 +181,7 @@ const resources = {
     penalties: enPenalties,
     workers: enWorkers,
     bonusRules: enBonusRules,
+    settings: enSettings,
   },
 };
 

@@ -1,0 +1,15 @@
+{
+  "title": "Sozlamalar",
+  "intro": "Do‘kon nomi. Bu nom chekda, menyu tepasida, brauzer oynasida va kirish sahifasida ko‘rinadi.",
+  "saved": "Saqlandi.",
+  "form": {
+    "shopName": "Do‘kon nomi",
+    "shopNameHint": "Chekda shu nom chiqadi. Bo‘sh qoldirilsa, avvalgi nom ishlatiladi.",
+    "save": "Saqlash",
+    "saving": "Saqlanmoqda…"
+  },
+  "errors": {
+    "loadFailed": "Sozlamalarni yuklab bo‘lmadi.",
+    "saveFailed": "Saqlanmadi. Qaytadan urinib ko‘ring."
+  }
+}

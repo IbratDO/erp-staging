@@ -29,6 +29,9 @@ export const ROUTE_PERMISSIONS = {
   '/dispatchers': 'dispatch.view',
   '/workers': 'workers.view',
   '/jarimalar': 'penalties.manage',
+  // Sozlamalar — the shop's own name. Admin only: the Founder role is withheld from
+  // `settings.manage` on the server at the owner's request, so it fails this check too.
+  '/settings': 'settings.manage',
 };
 
 /** Paths each role may see in the sidebar (null = permission-based only). */
@@ -122,6 +125,7 @@ export const MENU_ITEMS = [
   { path: '/audit-logs', labelKey: 'nav.auditLogs', icon: '📝', permission: 'audit_logs.view' },
   { path: '/bonus-rules', labelKey: 'nav.bonusRules', icon: '🎁', permission: 'bonus.manage' },
   { path: '/users', labelKey: 'nav.users', icon: '👤', permission: 'users.view' },
+  { path: '/settings', labelKey: 'nav.settings', icon: '⚙️', permission: 'settings.manage' },
   { path: '/change-password', labelKey: 'nav.changePassword', icon: '🔑' },
 ];
 

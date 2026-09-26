@@ -30,7 +30,8 @@
     "auditLogs": "Audit jurnali",
     "bonusRules": "Bonus qoidalari",
     "users": "Foydalanuvchilar",
-    "changePassword": "Parolni o‘zgartirish"
+    "changePassword": "Parolni o‘zgartirish",
+    "settings": "Sozlamalar"
   },
   "auth": {
     "username": "Foydalanuvchi nomi",

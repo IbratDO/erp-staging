@@ -30,7 +30,8 @@
     "auditLogs": "Журнал действий",
     "bonusRules": "Правила бонусов",
     "users": "Пользователи",
-    "changePassword": "Смена пароля"
+    "changePassword": "Смена пароля",
+    "settings": "Настройки"
   },
   "auth": {
     "username": "Логин",

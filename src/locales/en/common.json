@@ -30,7 +30,8 @@
     "auditLogs": "Audit Logs",
     "bonusRules": "Bonus Rules",
     "users": "Users",
-    "changePassword": "Change password"
+    "changePassword": "Change password",
+    "settings": "Settings"
   },
   "auth": {
     "username": "Username",

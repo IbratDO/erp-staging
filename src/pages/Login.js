@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { useSettings } from '../contexts/SettingsContext';
+import { resolveShopName } from '../utils/shopIdentity';
 import { canAccessRoute, getDefaultHomePath } from '../utils/permissions';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
 import './Login.css';
@@ -13,6 +15,9 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { settings } = useSettings();
+  // Read from `/settings/public/`, which answers without a token — nobody has one on this screen.
+  const shopName = resolveShopName(settings, null, t('app.title'));
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -39,7 +44,7 @@ const Login = () => {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1>{t('app.title')}</h1>
+        <h1>{shopName}</h1>
         <h2>{t('app.subtitle')}</h2>
         <BusyForm onSubmit={handleSubmit}>
           <div className="form-group">
