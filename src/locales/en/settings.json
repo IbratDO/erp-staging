@@ -1,15 +1,19 @@
 {
   "title": "Settings",
-  "intro": "The shop's name. It appears on the receipt, above the menu, in the browser tab and on the login screen.",
+  "intro": "The shop's name and how it works. The name appears on the receipt, above the menu, in the browser tab and on the login screen.",
   "saved": "Saved.",
   "form": {
     "shopName": "Shop name",
     "shopNameHint": "This is the name printed on the receipt. Left empty, the previous name is used.",
     "save": "Save",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "nasiya": "Credit sales (nasiya)",
+    "nasiyaHint": "Off: no new debt can be opened, and Qarzdorlik disappears once every existing debt is settled. Existing debts stay visible and collectable."
   },
   "errors": {
     "loadFailed": "Could not load the settings.",
     "saveFailed": "Could not save. Please try again."
-  }
+  },
+  "featuresTitle": "Features",
+  "featuresIntro": "Which features this shop uses. A feature switched off disappears from the menu and from the forms."
 }

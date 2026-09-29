@@ -21,8 +21,11 @@ const userWith = (roleCode, permissions) => ({
 
 // What the server actually sends each of these roles for this code. Founder is withheld it; Admin
 // holds it; nobody else is granted it at all.
-const admin = userWith('administrator', ['settings.manage', 'sales.view', 'dashboard.view']);
-const founder = userWith('admin', ['sales.view', 'dashboard.view', 'users.view']);
+//
+// The codes read the way they are spelled since the 2026-09-27 swap: `founder` is Founder and `admin`
+// is Admin. Before it, Founder was coded `admin`, which is what this file would have had to explain.
+const admin = userWith('admin', ['settings.manage', 'sales.view', 'dashboard.view']);
+const founder = userWith('founder', ['sales.view', 'dashboard.view', 'users.view']);
 const ceo = userWith('ceo', ['sales.view', 'dashboard.view']);
 const cashier = userWith('sales_manager', ['sales.view', 'dashboard.view']);
 

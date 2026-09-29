@@ -114,7 +114,7 @@ describe('saving', () => {
     act(() => {
       submit().click();
     });
-    expect(onSave).toHaveBeenCalledWith('Lady Luxe Shop');
+    expect(onSave).toHaveBeenCalledWith({ shop_name: 'Lady Luxe Shop' });
   });
 
   it('sends an emptied box through, rather than silently doing nothing', () => {
@@ -125,7 +125,7 @@ describe('saving', () => {
     act(() => {
       submit().click();
     });
-    expect(onSave).toHaveBeenCalledWith('');
+    expect(onSave).toHaveBeenCalledWith({ shop_name: '' });
   });
 
   it('does not fire again while a save is already in flight', () => {
@@ -153,7 +153,7 @@ describe('saving', () => {
         new Event('submit', { bubbles: true, cancelable: true }),
       );
     });
-    expect(onSave).toHaveBeenCalledWith('Immense Shop');
+    expect(onSave).toHaveBeenCalledWith({ shop_name: 'Immense Shop' });
   });
 
   it('returns the save promise so the button stays held down for the whole request', async () => {
@@ -219,3 +219,4 @@ describe('what it tells the user', () => {
     expect(container.textContent).toContain('Chekda shu nom chiqadi.');
   });
 });
+

@@ -2254,7 +2254,8 @@ const Sales = () => {
   );
   // Offered whenever anything is still owing, not only once a payment has come up short.
   const sellReservedCreditAvailable =
-    sellReservedSaleForForm != null
+    hasPermission('sales.mark_credit')
+    && sellReservedSaleForForm != null
     && sellReservedPayMeta.gap != null
     && sellReservedPayMeta.gap > (sellReservedPayMeta.sc === 'UZS' ? 1 : 0.005);
   // Same rule as Complete & Pay: keyed off the gross surplus, so the panel does not vanish the

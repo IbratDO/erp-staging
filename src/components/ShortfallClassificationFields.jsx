@@ -1,6 +1,7 @@
 import React from 'react';
 import AmountInput from './AmountInput';
 import { formatDisplayAmount } from '../utils/currencyFormat';
+import { usePermissions } from '../hooks/usePermissions';
 
 /**
  * Discount / currency-difference classification for a payment shortfall.
@@ -18,7 +19,14 @@ import { formatDisplayAmount } from '../utils/currencyFormat';
  * sends `credit_due_date` and posts to an endpoint that classifies credit — the courier's own
  * step-1 proposal does neither, and offering it there would promise a debt nothing would open.
  */
-export default function ShortfallClassificationFields({ form, setForm, meta, t, allowCredit = false }) {
+export default function ShortfallClassificationFields({
+  form, setForm, meta, t, allowCredit = false,
+}) {
+  // Gated here rather than at the four call sites, so none of them can forget it. `allowCredit`
+  // stays the per-call-site opt-in it always was — the courier's own step 1 passes false — and the
+  // permission narrows it further: it is masked for everyone when the shop has nasiya switched off.
+  const { hasPermission } = usePermissions();
+  const creditOffered = allowCredit && hasPermission('sales.mark_credit');
   const onCredit = !!form.apply_credit;
   // Money over the amount due is a different question with a different pair of answers, and
   // Discount is not one of them — you cannot forgive a surplus. Branching here rather than at
@@ -29,7 +37,7 @@ export default function ShortfallClassificationFields({ form, setForm, meta, t, 
   return (
     <>
       <p style={{ margin: '0 0 10px', fontSize: '0.9em', color: '#555', lineHeight: 1.45 }}>
-        {allowCredit ? t('completePay.shortfallHintCredit') : t('completePay.shortfallHint')}
+        {creditOffered ? t('completePay.shortfallHintCredit') : t('completePay.shortfallHint')}
       </p>
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
         <input
@@ -72,7 +80,7 @@ export default function ShortfallClassificationFields({ form, setForm, meta, t, 
         />
         <span>{t('completePay.conversionDifferenceOption')}</span>
       </label>
-      {allowCredit && (
+      {creditOffered && (
         <>
           <label
             style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginTop: 12 }}

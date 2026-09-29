@@ -80,8 +80,8 @@ export const ROLE_HIDDEN_MENU_PATHS = {
   ],
   // Founder no longer manages accounts — that moved to Admin with the role split — so the Users
   // page goes and the self-service password page comes back in its place.
-  admin: ['/bonus-rules', '/users'],
-  administrator: ['/bonus-rules', '/change-password'],
+  founder: ['/bonus-rules', '/users'],
+  admin: ['/bonus-rules', '/change-password'],
   investor: ['/users', '/workers', '/audit-logs', '/bonus-rules'],
   sales_manager: ['/inventory/packages'],
 };
@@ -176,29 +176,33 @@ export function isCEO(user) {
 /**
  * The two top roles. Mirrors FOUNDER_LEVEL_ROLE_CODES on the server.
  *
- * Founder and Admin carry the same authority today and are separated so they can stop doing so
- * later. Anything asking "is this one of the people who run the place?" belongs here; anything
+ * Founder and Admin no longer carry the same authority: Admin holds `settings.manage` and Founder
+ * does not. Anything asking "is this one of the people who run the place?" belongs here; anything
  * asking "may this person do X?" belongs in a permission code instead, which is what will still
  * be right once the two lists diverge.
  */
-export const FOUNDER_LEVEL_ROLES = ['admin', 'administrator'];
+export const FOUNDER_LEVEL_ROLES = ['founder', 'admin'];
 
 export function isAdmin(user) {
   return FOUNDER_LEVEL_ROLES.includes(getRoleCode(user));
 }
 
-/** Display label for role (Founder instead of Admin). Pass optional t from useTranslation('common'). */
+/**
+ * Display label for a role. Pass optional t from useTranslation('common').
+ *
+ * **No special cases any more.** This used to map the code `admin` to the label "Founder", because
+ * the codes and the labels disagreed: Founder was coded `admin` and Admin was coded `administrator`,
+ * so the word "admin" meant one role in the code and a different one on screen. Migration 0148
+ * renamed them to `founder` and `admin`, so every code resolves to its own label through
+ * `roles.<code>` and there is nothing left to translate by hand.
+ */
 export function getRoleDisplayName(user, t) {
   if (!user) return '';
   const code = getRoleCode(user);
   if (t) {
-    if (code === 'admin') return t('roles.founder');
-    const key = `roles.${code}`;
-    const translated = t(key, { defaultValue: '' });
+    const translated = t(`roles.${code}`, { defaultValue: '' });
     if (translated) return translated;
   }
-  if (code === 'admin') return 'Founder';
-  if (code === 'administrator') return 'Admin';
   if (user.role_name) return user.role_name;
   return code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }

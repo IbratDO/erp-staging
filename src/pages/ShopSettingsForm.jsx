@@ -9,8 +9,13 @@ import BusyForm, { SubmitButton } from '../components/BusyForm';
  * component tests mount a component directly with `react-dom/client` — so a form that reached for
  * `useSettings()` itself would be a form no test could drive.
  *
- * It owns the text in the box and nothing else. Loading, saving and telling the rest of the app the
- * name changed all belong to the page.
+ * **What the shop is called, and nothing else.** What the shop *does* is a different question with
+ * different consequences — switching a feature off changes who can do what — so it has its own card
+ * and its own Save in `ShopFeaturesForm`. One form for both meant one Save button that did two
+ * unrelated things, and a typo in the name could not be abandoned without also abandoning a toggle.
+ *
+ * Loading, saving and telling the rest of the app that something changed all belong to the page, and
+ * `onSave` hands it a plain object shaped like the PATCH body.
  */
 const ShopSettingsForm = ({
   initialName = '',
@@ -37,7 +42,7 @@ const ShopSettingsForm = ({
     // the request; a handler that returns nothing leaves its `busy` state up for a single tick,
     // which is the same as not having it.
     if (saving) return undefined;
-    return onSave?.(shopName);
+    return onSave?.({ shop_name: shopName });
   };
 
   if (loading) {

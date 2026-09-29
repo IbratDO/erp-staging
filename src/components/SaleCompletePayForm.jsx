@@ -32,6 +32,9 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   const { t } = useAppTranslation(['sales', 'common']);
   const { hasPermission } = usePermissions();
   const canGiveaway = hasPermission('sales.giveaway');
+  // Masked for everybody when the shop has Nasiya savdo switched off, so the same check answers
+  // both "may this person lend?" and "does this shop lend at all?". See `feature_flags` on the server.
+  const canMarkCredit = hasPermission('sales.mark_credit');
   const groupSales = sale?.groupSales?.length ? sale.groupSales : null;
   const [paymentFormData, setPaymentFormData] = useState(() => emptyPaymentFormState());
   const [exchangeRate, setExchangeRate] = useState(null);
@@ -89,7 +92,12 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   const changeTol = shortfallMeta.sc === 'UZS' ? 1 : 0.005;
   // Credit is offered only against a genuine shortfall. There is nothing to owe on a surplus,
   // and the server would reject it, so the box should not be there to tick.
-  const creditAvailable = shortfallMeta.short != null && shortfallMeta.short > changeTol;
+  //
+  // The permission is folded in here rather than at the checkbox so everything downstream follows:
+  // the shortfall hint stops mentioning nasiya, and `staleCredit` clears an `apply_credit` that a
+  // stale form still carries — which matters the moment an Admin switches the feature off mid-shift.
+  const creditAvailable =
+    canMarkCredit && shortfallMeta.short != null && shortfallMeta.short > changeTol;
   const onCredit = !!paymentFormData.apply_credit;
   // Bepul is offered only when the sale really is free: nothing typed in either currency, and
   // something actually owing. Part-paid is a discount on a real sale, and the server refuses

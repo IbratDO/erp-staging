@@ -1,15 +1,19 @@
 {
   "title": "Sozlamalar",
-  "intro": "Do‘kon nomi. Bu nom chekda, menyu tepasida, brauzer oynasida va kirish sahifasida ko‘rinadi.",
+  "intro": "Do‘kon nomi va qanday ishlashi. Nom chekda, menyu tepasida, brauzer oynasida va kirish sahifasida ko‘rinadi.",
   "saved": "Saqlandi.",
   "form": {
     "shopName": "Do‘kon nomi",
     "shopNameHint": "Chekda shu nom chiqadi. Bo‘sh qoldirilsa, avvalgi nom ishlatiladi.",
     "save": "Saqlash",
-    "saving": "Saqlanmoqda…"
+    "saving": "Saqlanmoqda…",
+    "nasiya": "Nasiya savdo",
+    "nasiyaHint": "O‘chirilsa, yangi nasiya ochilmaydi va Qarzdorlik bo‘limi barcha qarzlar to‘langach yo‘qoladi. Mavjud qarzlar ko‘rinib turadi va ularni yig‘ish mumkin."
   },
   "errors": {
     "loadFailed": "Sozlamalarni yuklab bo‘lmadi.",
     "saveFailed": "Saqlanmadi. Qaytadan urinib ko‘ring."
-  }
+  },
+  "featuresTitle": "Imkoniyatlar",
+  "featuresIntro": "Do‘kon qaysi imkoniyatlardan foydalanadi. O‘chirilgan imkoniyat menyudan va shakllardan yo‘qoladi."
 }
