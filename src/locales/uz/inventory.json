@@ -55,7 +55,8 @@
     "costLine": "{{qty}} × {{unit}} = {{total}} kassadan yechiladi",
     "addLine": "Qator qo‘shish",
     "lineNumber": "{{number}}-qator",
-    "basketCost": "{{count}} ta qator uchun kassadan jami: {{uzs}} / {{usd}}"
+    "basketCost": "{{count}} ta qator uchun kassadan jami: {{uzs}} / {{usd}}",
+    "costCurrency": "Tannarx valyutasi"
   },
   "table": {
     "categoryType": "Kategoriya turi",
@@ -78,7 +79,7 @@
   "notifications": {
     "errQuantity": "To‘g‘ri miqdorni kiriting (kamida 1).",
     "errSellingPrice": "Sotuv narxini (dona) kiriting.",
-    "errSupplierCost": "Tannarxni so‘mda, dollarda yoki ikkalasida kiriting.",
+    "errSupplierCost": "Tannarxni kiriting va valyutasini tanlang.",
     "errSave": "Ombor yozuvini saqlashda xatolik",
     "errSelectProduct": "Kamida bitta qatorda mahsulotni tanlang."
   },

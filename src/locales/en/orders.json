@@ -246,7 +246,7 @@
     "cargoUnitVariesHint": "Varies per product — expand the group to see each line's own cargo cost",
     "createdBy": "Created By",
     "orderedNote": "Note",
-    "date": "Date",
+    "date": "Order placed date",
     "total": "Total",
     "avgSellingHint": "Weighted average planned USD-only line totals per unit ordered (UZS-only lines excluded; no FX)",
     "noOrders": "No orders found",

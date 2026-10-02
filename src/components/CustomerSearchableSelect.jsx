@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import apiGetAll from '../utils/fetchAllPages';
+import selectedFirst from '../utils/selectedFirst';
 import useAppTranslation from '../hooks/useAppTranslation';
 
 function customerLabel(c) {
@@ -63,9 +64,16 @@ export default function CustomerSearchableSelect({
     [sourceCustomers, customers, value],
   );
 
+  // The chosen customer sits at the top. Picking closes the panel, so the move is only ever seen on
+  // the next open. Under `asyncSearch` the rows come from the server a page at a time, so the chosen
+  // customer may not be among them at all — then there is simply nothing to lift, and the list is
+  // left as the server ordered it rather than having a row invented for it.
   const filtered = useMemo(
-    () => (asyncSearch ? sourceCustomers : sourceCustomers.filter((c) => customerMatchesSearch(c, query))),
-    [asyncSearch, sourceCustomers, query],
+    () => selectedFirst(
+      asyncSearch ? sourceCustomers : sourceCustomers.filter((c) => customerMatchesSearch(c, query)),
+      (c) => String(c.id) === String(value),
+    ),
+    [asyncSearch, sourceCustomers, query, value],
   );
 
   useEffect(() => {

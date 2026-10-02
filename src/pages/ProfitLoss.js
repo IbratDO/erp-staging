@@ -197,6 +197,17 @@ const ProfitLoss = () => {
                 {fmtUsd(profitLoss.totals.total_income_usd)}
               </div>
             </div>
+            {/* A return belongs to the period it happened in, not to the period its sale was made
+                in, so the total above is not the sum of the rows further down. Showing the figure
+                explicitly is what makes that difference readable instead of looking like an error. */}
+            <div className="metric-card" style={{ border: '2px solid #fd7e14' }}>
+              <div className="metric-label" title={t('metrics.periodReturnsHint')}>
+                {t('metrics.periodReturns')}
+              </div>
+              <div className="metric-value" style={{ color: '#fd7e14', fontSize: '1.6em' }}>
+                {fmtUsd(profitLoss.totals.total_period_refunds_usd)}
+              </div>
+            </div>
             <div className="metric-card" style={{ border: '2px solid #dc3545' }}>
               <div className="metric-label">{t('metrics.netCogs')}</div>
               <div className="metric-value" style={{ color: '#dc3545', fontSize: '1.6em' }}>

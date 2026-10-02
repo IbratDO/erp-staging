@@ -14,7 +14,9 @@
     "operatingExpenses": "Operating expenses",
     "conversionDiff": "Conversion differences",
     "otherIncome": "Other income",
-    "netProfitLoss": "Net profit / loss"
+    "netProfitLoss": "Net profit / loss",
+    "periodReturns": "Returns (this period)",
+    "periodReturnsHint": "Money refunded for goods brought back in this period, whichever month they were sold in. That is why the total may not equal the sum of the rows below."
   },
   "sales": {
     "title": "Sales (USD, UZS converted at transaction-date rate)",

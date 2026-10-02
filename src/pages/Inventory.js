@@ -41,6 +41,10 @@ const EMPTY_FORM = {
   selling_price_currency: 'USD',
   unit_supplier_cost_usd: '',
   unit_supplier_cost_uzs: '',
+  // Which of the two columns above the typed cost goes into. The backend keeps both — a cost
+  // genuinely can be part dollars and part soum — but this form quotes one currency per line, so
+  // the unused column is sent as empty.
+  unit_supplier_cost_currency: 'USD',
   // The two pickers that only narrow the product list. Per line rather than shared, because a
   // basket is usually a mix — one pair of shoes and three shirts — and a single shared filter
   // would have to be cleared and re-set between every line.
@@ -490,8 +494,8 @@ const Inventory = () => {
         alert(`${where}: ${t('notifications.errSellingPrice')}`);
         return;
       }
-      // Either box, or both. A layer with no cost is free stock, and every sale off it would
-      // read as pure profit.
+      // A layer with no cost is free stock, and every sale off it would read as pure profit. Both
+      // columns are still checked: the form fills one, but the other may arrive from elsewhere.
       if (!(usd > 0) && !(uzs > 0)) {
         alert(`${where}: ${t('notifications.errSupplierCost')}`);
         return;
@@ -773,23 +777,52 @@ const Inventory = () => {
                               <AmountInput
                                 className="batch-sale-lines__control"
                                 style={{ flex: 1, minWidth: 0 }}
-                                placeholder={t('form.usdPerUnit')}
-                                aria-label={t('form.costUsdLabel')}
-                                value={line.unit_supplier_cost_usd}
-                                onChange={(e) =>
-                                  updateLine(line.key, { unit_supplier_cost_usd: e.target.value })
+                                placeholder={
+                                  line.unit_supplier_cost_currency === 'UZS'
+                                    ? t('form.uzsPerUnit')
+                                    : t('form.usdPerUnit')
                                 }
-                              />
-                              <AmountInput
-                                className="batch-sale-lines__control"
-                                style={{ flex: 1, minWidth: 0 }}
-                                placeholder={t('form.uzsPerUnit')}
-                                aria-label={t('form.costUzsLabel')}
-                                value={line.unit_supplier_cost_uzs}
-                                onChange={(e) =>
-                                  updateLine(line.key, { unit_supplier_cost_uzs: e.target.value })
+                                value={
+                                  line.unit_supplier_cost_currency === 'UZS'
+                                    ? line.unit_supplier_cost_uzs
+                                    : line.unit_supplier_cost_usd
                                 }
+                                onChange={(e) =>
+                                  updateLine(
+                                    line.key,
+                                    line.unit_supplier_cost_currency === 'UZS'
+                                      ? { unit_supplier_cost_uzs: e.target.value, unit_supplier_cost_usd: '' }
+                                      : { unit_supplier_cost_usd: e.target.value, unit_supplier_cost_uzs: '' },
+                                  )
+                                }
+                                aria-label={t('form.costPerUnit')}
                               />
+                              {/* One currency per line, like the price beside it. The two columns
+                                  behind this still exist and a cost really can be part dollars and
+                                  part soum — but nobody has ever entered one that way (0 of 366
+                                  layers), so the form quotes one and sends the other empty.
+                                  Switching the dropdown carries the number across rather than
+                                  losing it. */}
+                              <select
+                                style={{ width: '76px', flex: '0 0 auto' }}
+                                value={line.unit_supplier_cost_currency}
+                                onChange={(e) => {
+                                  const next = e.target.value;
+                                  const held =
+                                    line.unit_supplier_cost_currency === 'UZS'
+                                      ? line.unit_supplier_cost_uzs
+                                      : line.unit_supplier_cost_usd;
+                                  updateLine(line.key, {
+                                    unit_supplier_cost_currency: next,
+                                    unit_supplier_cost_usd: next === 'USD' ? held : '',
+                                    unit_supplier_cost_uzs: next === 'UZS' ? held : '',
+                                  });
+                                }}
+                                aria-label={t('form.costCurrency')}
+                              >
+                                <option value="USD">USD</option>
+                                <option value="UZS">UZS</option>
+                              </select>
                             </div>
                             {costTotals.lines.map((hint) => (
                               <span

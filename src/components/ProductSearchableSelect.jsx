@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallba
 import { createPortal } from 'react-dom';
 import { productSalePickerLabel } from '../utils/productCost';
 import { layerMatchesSearch, productMatchesSearch } from '../utils/productSearch';
+import selectedFirst from '../utils/selectedFirst';
 import useAppTranslation from '../hooks/useAppTranslation';
 
 /**
@@ -48,14 +49,22 @@ export default function ProductSearchableSelect({
     return products.find((p) => String(p.id) === String(value));
   }, [useItems, pickerItems, products, value]);
 
+  // The chosen row sits at the top, so reopening the picker shows what is already on the line
+  // instead of making you hunt for it in a list of hundreds. Picking closes the panel, so the move
+  // is only ever seen on the next open.
   const filtered = useMemo(() => {
-    if (useItems) {
+    const matches = useItems
       // Layer rows carry their own number and barcode; both are searchable, because the
       // number on the row is what staff read off the box in their hand.
-      return pickerItems.filter((item) => layerMatchesSearch(item, query));
-    }
-    return products.filter((p) => productMatchesSearch(p, query));
-  }, [useItems, pickerItems, products, query]);
+      ? pickerItems.filter((item) => layerMatchesSearch(item, query))
+      : products.filter((p) => productMatchesSearch(p, query));
+    return selectedFirst(
+      matches,
+      useItems
+        ? (item) => String(item.value) === String(value)
+        : (p) => String(p.id) === String(value),
+    );
+  }, [useItems, pickerItems, products, query, value]);
 
   const updatePanelPos = useCallback(() => {
     const el = triggerRef.current;

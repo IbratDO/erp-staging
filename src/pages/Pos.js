@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import api from '../utils/api';
 import apiGetAll from '../utils/fetchAllPages';
+import AmountInput from '../components/AmountInput';
 import CustomerQuickAddModal from '../components/CustomerQuickAddModal';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import FormSearchableSelect from '../components/FormSearchableSelect';
@@ -552,21 +553,23 @@ export default function Pos() {
 
                       {/* No currency badge inside the box: the column heading above names it, and
                           a badge would push the digits out of line with their own heading. */}
-                      <input
+                      {/* Grouped digits: 150000 reads as 150 000. A som price runs to six digits
+                          and an ungrouped one is genuinely hard to check at a counter with somebody
+                          waiting. `AmountInput` hands back the raw value, so the basket still stores
+                          "150000" and nothing downstream knows the difference.
+                          `wide={false}` because `.amount-input--wide` would put a 10ch floor under
+                          these boxes and push the till's grid out of line. */}
+                      <AmountInput
                         className="pos__line-price"
-                        type="number"
-                        min="0"
-                        step="0.01"
+                        wide={false}
                         value={line.selling_price}
                         onChange={(e) => repriceLine(line.key, 'selling_price', e.target.value)}
                         aria-label={tr('pos.colPrice', { currency: unitName })}
                       />
 
-                      <input
+                      <AmountInput
                         className="pos__line-price"
-                        type="number"
-                        min="0"
-                        step="0.01"
+                        wide={false}
                         placeholder="0"
                         value={line.discount_price || ''}
                         onChange={(e) => repriceLine(line.key, 'discount_price', e.target.value)}

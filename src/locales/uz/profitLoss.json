@@ -14,7 +14,9 @@
     "operatingExpenses": "Operatsion xarajatlar",
     "conversionDiff": "Konversion tafovutlar",
     "otherIncome": "Boshqa daromad",
-    "netProfitLoss": "Sof foyda / zarar"
+    "netProfitLoss": "Sof foyda / zarar",
+    "periodReturns": "Qaytarilganlar (shu davrda)",
+    "periodReturnsHint": "Shu davrda qaytarilgan tovarlar uchun qaytarilgan pul — tovar qaysi oyda sotilganidan qat’i nazar. Shuning uchun jami quyidagi qatorlar yig‘indisiga teng bo‘lmasligi mumkin."
   },
   "sales": {
     "title": "Sotuvlar (USD, UZS tranzaksiya sanasi kursida)",

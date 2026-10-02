@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import selectedFirst from '../utils/selectedFirst';
 
 function normalizeOptions(options) {
   return (options || []).map((o) =>
@@ -40,11 +41,15 @@ export default function FormSearchableSelect({
     [normalized, value],
   );
 
+  // The chosen row sits at the top. Picking closes the panel, so the move is only ever seen on the
+  // next open — nothing shifts under the cursor while the list is in front of you.
   const filtered = useMemo(() => {
     const q = String(query || '').trim().toLowerCase();
-    if (!q) return normalized;
-    return normalized.filter((o) => String(o.label || '').toLowerCase().includes(q));
-  }, [normalized, query]);
+    const matches = !q
+      ? normalized
+      : normalized.filter((o) => String(o.label || '').toLowerCase().includes(q));
+    return selectedFirst(matches, (o) => String(o.value) === String(value));
+  }, [normalized, query, value]);
 
   const updatePanelPos = useCallback(() => {
     const el = triggerRef.current;

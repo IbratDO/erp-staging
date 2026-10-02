@@ -246,7 +246,7 @@
     "cargoUnitVariesHint": "Har bir mahsulotda farq qiladi — har bir qatorning o'z yuk narxini ko'rish uchun guruhni oching",
     "createdBy": "Yaratgan",
     "orderedNote": "Izoh",
-    "date": "Sana",
+    "date": "Buyurtma berilgan sana",
     "total": "Jami",
     "avgSellingHint": "Buyurtma bo‘yicha rejalashtirilgan USD sotuv o‘rtachasi (faqat USD qatorlar; FX yo‘q)",
     "noOrders": "Buyurtmalar topilmadi",

@@ -55,7 +55,8 @@
     "costLine": "{{qty}} × {{unit}} = {{total}} leaves the till",
     "addLine": "Add line",
     "lineNumber": "Line {{number}}",
-    "basketCost": "Total out of the till for {{count}} line(s): {{uzs}} / {{usd}}"
+    "basketCost": "Total out of the till for {{count}} line(s): {{uzs}} / {{usd}}",
+    "costCurrency": "Cost currency"
   },
   "table": {
     "categoryType": "Category type",
@@ -78,7 +79,7 @@
   "notifications": {
     "errQuantity": "Please enter a valid quantity (at least 1).",
     "errSellingPrice": "Enter a selling price per unit.",
-    "errSupplierCost": "Enter the unit cost in so'm, in dollars, or in both.",
+    "errSupplierCost": "Enter the cost and choose its currency.",
     "errSave": "Error saving inventory item",
     "errSelectProduct": "Choose a product on at least one line."
   },

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import selectedFirst from '../utils/selectedFirst';
 
 function normalizeOptions(options) {
   return (options || []).map((o) =>
@@ -32,11 +33,29 @@ export default function FormMultiSelect({
   const selectedSet = useMemo(() => new Set((values || []).map(String)), [values]);
   const normalized = useMemo(() => normalizeOptions(options), [options]);
 
+  // What you have ticked is at the top of the list — but the order is taken from the selection as it
+  // stood when the panel *opened*, and held there until the panel is opened again.
+  //
+  // This is the whole reason the seed exists rather than ordering straight off `selectedSet`. Several
+  // boxes get ticked in one visit here, and reordering on each tick would slide the next row up into
+  // the place the cursor was already travelling to, so the second tick lands on the wrong row. The
+  // list has to stand still while it is in front of you.
+  const [orderSeed, setOrderSeed] = useState(() => new Set());
+
   const filtered = useMemo(() => {
     const q = String(query || '').trim().toLowerCase();
-    if (!q) return normalized;
-    return normalized.filter((o) => String(o.label || '').toLowerCase().includes(q));
-  }, [normalized, query]);
+    const matches = !q
+      ? normalized
+      : normalized.filter((o) => String(o.label || '').toLowerCase().includes(q));
+    return selectedFirst(matches, (o) => orderSeed.has(String(o.value)));
+  }, [normalized, query, orderSeed]);
+
+  // Both ways in go through here — the trigger and the keyboard — so the order is seeded however the
+  // panel was opened.
+  const openPanel = useCallback(() => {
+    setOrderSeed(new Set(selectedSet));
+    setOpen(true);
+  }, [selectedSet]);
 
   const display = useMemo(() => {
     if (!selectedSet.size) return '';
@@ -217,11 +236,15 @@ export default function FormMultiSelect({
         aria-controls={listboxId}
         aria-haspopup="listbox"
         aria-label={ariaLabel}
-        onClick={() => { if (!disabled) setOpen((o) => !o); }}
+        onClick={() => {
+          if (disabled) return;
+          if (open) setOpen(false);
+          else openPanel();
+        }}
         onKeyDown={(e) => {
           if (!disabled && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
             e.preventDefault();
-            setOpen(true);
+            openPanel();
           }
         }}
         style={{
