@@ -87,5 +87,33 @@
     "productsList": "Mahsulotlar",
     "noMatches": "Mos keluvchi yo‘q",
     "noProductsInStock": "Omborda mahsulot yo‘q"
+  },
+  "importExcel": {
+    "blockedByProblems": "Xato qatorlar bor. Hammasi birga saqlanadi, shuning uchun faylni tuzatib qaytadan yuklang.",
+    "button": "⬆ Excel'dan yuklash",
+    "chooseFile": "Excel faylni tanlang",
+    "confirm": "Tasdiqlash",
+    "countAdd": "{{count}} ta qo‘shiladi",
+    "countError": "{{count}} ta xato",
+    "countUnchanged": "{{count}} ta o‘zgarmaydi",
+    "countUpdate": "{{count}} ta yangilanadi",
+    "detail": "Izoh",
+    "done": "Tayyor: {{created}} ta qo‘shildi, {{updated}} ta yangilandi, {{unchanged}} ta o‘zgarmadi.",
+    "downloadTemplate": "⬇ Shablonni yuklab olish",
+    "hasProblem": "Xato",
+    "identityNote": "Brend, Model, O'lcham va Rang mahsulotni aniqlaydi. Mavjud mahsulotda faqat Turi va Kategoriya yangilanadi; bu to'rttasi boshqa bo'lsa, yangi mahsulot qo'shiladi.",
+    "imported": "Excel'dan yuklandi: {{created}} ta qo‘shildi, {{updated}} ta yangilandi.",
+    "intro": "Shablonni yuklab oling, to'ldiring va shu yerga yuklang. Avval nima bo'lishini ko'rsatamiz — tasdiqlamaguningizcha hech narsa saqlanmaydi.",
+    "readFailed": "Faylni o'qib bo'lmadi.",
+    "rowColumn": "Qator",
+    "rowLabel": "{{row}}-qator",
+    "saveFailed": "Saqlashda xatolik, hech narsa saqlanmadi.",
+    "startOver": "Boshqa fayl",
+    "templateFailed": "Shablonni yuklab olishda xatolik.",
+    "title": "Excel'dan yuklash",
+    "unchanged": "O'zgarmaydi",
+    "whatHappens": "Nima bo‘ladi",
+    "willAdd": "Qo'shiladi",
+    "willUpdate": "Yangilanadi"
   }
 }

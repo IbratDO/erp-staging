@@ -124,6 +124,12 @@ const inFlightWrites = new Map();
 
 function writeKey(method, url, data) {
   let body = '';
+  // A FormData is never a duplicate of another FormData. It stringifies to `{}`, so two uploads of
+  // *different* files to one URL would share a key and the second would be handed the first one's
+  // answer — a preview of the file you just replaced. Opt out the way an unserialisable body does.
+  if (typeof FormData !== 'undefined' && data instanceof FormData) {
+    return null;
+  }
   if (data !== undefined && data !== null) {
     try {
       body = typeof data === 'string' ? data : JSON.stringify(data);

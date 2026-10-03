@@ -87,5 +87,33 @@
     "productsList": "Products",
     "noMatches": "No matches",
     "noProductsInStock": "No products in stock"
+  },
+  "importExcel": {
+    "blockedByProblems": "Some rows have problems. Rows are saved all together, so fix the file and upload it again.",
+    "button": "⬆ Import from Excel",
+    "chooseFile": "Choose an Excel file",
+    "confirm": "Confirm",
+    "countAdd": "{{count}} to add",
+    "countError": "{{count}} with a problem",
+    "countUnchanged": "{{count}} unchanged",
+    "countUpdate": "{{count}} to update",
+    "detail": "Detail",
+    "done": "Done: {{created}} added, {{updated}} updated, {{unchanged}} unchanged.",
+    "downloadTemplate": "⬇ Download template",
+    "hasProblem": "Problem",
+    "identityNote": "Brand, Model, Size and Color identify the product. On a product that already exists only Type and Category are updated; if any of those four differ, a new product is added.",
+    "imported": "Imported from Excel: {{created}} added, {{updated}} updated.",
+    "intro": "Download the template, fill it in and upload it here. You will see what would happen first — nothing is saved until you confirm.",
+    "readFailed": "The file could not be read.",
+    "rowColumn": "Row",
+    "rowLabel": "row {{row}}",
+    "saveFailed": "Saving failed, so nothing was saved.",
+    "startOver": "Another file",
+    "templateFailed": "The template could not be downloaded.",
+    "title": "Import from Excel",
+    "unchanged": "No change",
+    "whatHappens": "What happens",
+    "willAdd": "Will be added",
+    "willUpdate": "Will be updated"
   }
 }

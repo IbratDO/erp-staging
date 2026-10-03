@@ -14,6 +14,7 @@ import FormSearchableSelect from '../components/FormSearchableSelect';
 import ProductCatalogFilterFields from '../components/ProductCatalogFilterFields';
 import FilterPanel from '../components/FilterPanel';
 import TableDownloadButton from '../components/TableDownloadButton';
+import ProductImportModal from '../components/ProductImportModal';
 import { matchesProductCatalogFilters, getCascadedFilterOptions, getCascadedDateOptions } from '../utils/productFilterUtils';
 import './TablePage.css';
 import {
@@ -122,7 +123,7 @@ const Products = () => {
   // The rendered table, so the download button can read exactly what is on the screen —
   // current filters, current sort, current columns. See utils/tableCsv.
   const tableRef = useRef(null);
-  const { t, monthOptions } = useAppTranslation(['products', 'common']);
+  const { t, language, monthOptions } = useAppTranslation(['products', 'common']);
   const { hasPermission } = usePermissions();
 
   const canCreate = hasPermission('products.create');
@@ -136,6 +137,7 @@ const Products = () => {
   );
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showImport, setShowImport] = useState(false);
   const [notification, setNotification] = useState({ message: '', type: '', visible: false });
 
   const showNotification = (message, type = 'success') => {
@@ -590,6 +592,18 @@ const Products = () => {
         </button>
         )}
       </div>
+
+      <ProductImportModal
+        open={showImport && canCreate}
+        onClose={() => setShowImport(false)}
+        api={api}
+        t={t}
+        lang={language}
+        onImported={(result) => {
+          showNotification(t('importExcel.imported', result));
+          fetchProducts();
+        }}
+      />
 
       {/* A window in front of the page rather than a card above the table: the form is long
           enough that opening it used to push the table out of sight entirely. Editing opens the
@@ -1131,6 +1145,13 @@ const Products = () => {
             filename="mahsulotlar"
             rowCount={filteredProducts.length}
           />
+          {/* Adding one product at a time means one entry per size and colour, so a new range is
+              dozens of them. Gated on the same permission as adding one by hand. */}
+          {canCreate ? (
+            <ActionButton type="button" onClick={() => setShowImport(true)}>
+              {t('importExcel.button')}
+            </ActionButton>
+          ) : null}
         </div>
         <div className="data-table-scroll">
         <table className="data-table" ref={tableRef}>

@@ -131,4 +131,22 @@ describe('a write that is already in the air', () => {
     adapter.calls[0].resolve();
     await Promise.all([a, b]);
   });
+
+  test('two uploads are never collapsed into one, even to the same url', async () => {
+    // Every FormData stringifies to `{}`, so keying on the body made two *different* files look
+    // identical: the second upload was handed the first one's promise, and the screen showed a
+    // preview of the file that had just been replaced. A form body opts out of the guard entirely.
+    const wrong = new FormData();
+    wrong.append('file', new File(['a'], 'wrong.xlsx'));
+    const right = new FormData();
+    right.append('file', new File(['b'], 'right.xlsx'));
+
+    const a = api.post('/products/import_preview/', wrong);
+    const b = api.post('/products/import_preview/', right);
+    await settled();
+
+    expect(adapter.calls).toHaveLength(2);
+    adapter.calls.forEach((call) => call.resolve());
+    await Promise.all([a, b]);
+  });
 });
