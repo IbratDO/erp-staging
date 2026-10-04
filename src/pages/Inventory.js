@@ -26,6 +26,8 @@ import FilterPanel from '../components/FilterPanel';
 import useCbuExchangeRate from '../hooks/useCbuExchangeRate';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
 import TableDownloadButton from '../components/TableDownloadButton';
+import StockImportModal from '../components/StockImportModal';
+import ActionButton from '../components/ActionButton';
 import { inventorySellingCell, invSellingPriceNum } from '../utils/inventorySelling';
 import { layerToLabelData } from '../utils/layerLabel';
 import { buildBatchLabelSheetHtml, buildLabelSheetHtml, totalLabelCount } from '../components/labelPrint';
@@ -142,7 +144,7 @@ const Inventory = () => {
   // The rendered table, so the download button can read exactly what is on the screen —
   // current filters, current sort, current columns. See utils/tableCsv.
   const tableRef = useRef(null);
-  const { t, tStatus, monthOptions } = useAppTranslation(['inventory', 'common', 'status']);
+  const { t, tStatus, language, monthOptions } = useAppTranslation(['inventory', 'common', 'status']);
   const { hasPermission } = usePermissions();
   const canAddInventory = hasPermission('inventory.create');
   // Granted to the Founder role alone: cancelling a line puts cash back into the till.
@@ -200,6 +202,7 @@ const Inventory = () => {
     month: '',
     layer: '',
   });
+  const [showImport, setShowImport] = useState(false);
   const [formLines, setFormLines] = useState(() => [newFormLine()]);
   const [originOptions, setOriginOptions] = useState([]);
   // Only while the form is open: the rate is what a soum cost gets frozen against, so it is
@@ -1088,6 +1091,18 @@ const Inventory = () => {
             filename="ombor-mahsulotlar"
             rowCount={filteredInventory.length}
           />
+          {/* A delivery is dozens of layers typed one at a time. Same permission as adding one by
+              hand, and the same classes as the download button it pairs with. */}
+          {canAddInventory ? (
+            <ActionButton
+              type="button"
+              className="btn-edit table-download-btn"
+              onClick={() => setShowImport(true)}
+              title={t('importExcel.buttonHint')}
+            >
+              {t('importExcel.button')}
+            </ActionButton>
+          ) : null}
         </div>
         <div className="data-table-scroll">
         <table className="data-table" ref={tableRef}>
@@ -1307,6 +1322,21 @@ const Inventory = () => {
 
       {/* Counting no longer changes stock, so there is nothing to refresh on the way out — but a
           count can run for a while and the table behind it will have moved on regardless. */}
+      <StockImportModal
+        open={showImport && canAddInventory}
+        onClose={() => setShowImport(false)}
+        api={api}
+        t={t}
+        lang={language}
+        onImported={(result) => {
+          fetchInventory();
+          // Same reason as the form: the buy rewrites each product's selling price and country.
+          invalidateProductsCache();
+          fetchProducts();
+          fetchOriginOptions();
+        }}
+      />
+
       <StockCountModal
         open={showStockCount}
         onClose={() => { setShowStockCount(false); fetchInventory(); }}
