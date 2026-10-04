@@ -115,6 +115,42 @@ describe('before a file is chosen', () => {
     mount({ api: previewingApi() });
     expect(text()).toContain('importExcel.identityNote');
   });
+
+  it('opens the hidden file input from its own button', () => {
+    // The input is hidden so the dialog can show buttons that match the rest of the UI instead of
+    // the browser's grey file control. That makes this wiring the only way in: if the button stops
+    // reaching the input there is no way to choose a file at all, and the feature is unusable.
+    mount({ api: previewingApi() });
+    const input = fileInput();
+    expect(input.style.display).toBe('none');
+
+    const opened = jest.fn();
+    input.click = opened;
+    const chooser = buttons().find((b) => b.textContent.includes('importExcel.chooseFile'));
+    act(() => {
+      chooser.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(opened).toHaveBeenCalled();
+  });
+
+  it('keeps the input reachable by name for anyone not using a mouse', () => {
+    mount({ api: previewingApi() });
+    expect(fileInput().getAttribute('aria-label')).toBe('importExcel.chooseFile');
+  });
+
+  it('gives every action button the same box, so none can end up a different size', () => {
+    // jsdom computes nothing from the stylesheet, so the metrics themselves cannot be asserted here.
+    // What can be is the thing that guarantees them: `btn-dialog` sets padding, font-size, line-height
+    // and min-height for all of them, and only the colour comes from btn-edit/btn-primary. A button
+    // that misses it falls back to its colour class's own size — which is how the download button
+    // ended up shorter than the one beside it, and how the symbol in its label made it taller again.
+    mount({ api: previewingApi() });
+    const actionButtons = buttons().filter((b) => /btn-edit|btn-primary/.test(b.className));
+    expect(actionButtons.length).toBeGreaterThanOrEqual(2);
+    actionButtons.forEach((b) => {
+      expect(b.className).toContain('btn-dialog');
+    });
+  });
 });
 
 describe('after a file is chosen', () => {
@@ -147,6 +183,14 @@ describe('after a file is chosen', () => {
     mount({ api });
     await pickFile();
     expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('names the file that was chosen, since the input no longer shows it', async () => {
+    mount({ api: previewingApi() });
+    expect(text()).toContain('importExcel.noFileChosen');
+    await pickFile('yangi-kelgan.xlsx');
+    expect(text()).toContain('yangi-kelgan.xlsx');
+    expect(text()).not.toContain('importExcel.noFileChosen');
   });
 });
 

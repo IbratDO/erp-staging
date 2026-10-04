@@ -108,6 +108,9 @@ const STYLES = `
   .receipt__line { display: flex; justify-content: space-between; gap: 2mm; }
   .receipt__line span:last-child { white-space: nowrap; }
   .receipt__total { font-size: 13.5pt; font-weight: 700; }
+  /* The returned mark has to survive a thermal printer with no colour, so it leans on weight
+     and a bracket rather than a tint the paper cannot show. */
+  .receipt__returned { font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4pt; }
   /* The debt is the part a customer must not miss, so it is boxed rather than listed. */
   .receipt__credit {
     border: 1px solid #000; padding: 1.2mm; margin-top: 1.5mm; font-size: 10.5pt;
@@ -130,6 +133,7 @@ function itemMarkup(item, currency, labels) {
   const total = item.is_giveaway
     ? labels.giveaway
     : formatReceiptMoney(item.total, currency);
+  const note = returnedNote(item, qty, labels);
   return `
     <div class="receipt__item">
       <div class="receipt__name">${esc(name)}</div>
@@ -138,7 +142,37 @@ function itemMarkup(item, currency, labels) {
         <span>${qty} × ${esc(unit)}</span>
         <span>${esc(total)}</span>
       </div>
+      ${note ? `<div class="receipt__returned">${esc(note)}</div>` : ''}
     </div>`;
+}
+
+/**
+ * "Qaytarilgan" under a line whose goods came back.
+ *
+ * Three states, because they are three different things to the person holding the paper:
+ *
+ *  * the whole line came back and was refunded -> just the word;
+ *  * part of it came back -> the word and how many, since the line above still shows what was
+ *    bought and the two would otherwise contradict each other;
+ *  * it came back but the money has not been paid out yet -> the word and that it is pending, so a
+ *    customer still owed a refund is not handed paper implying the matter is closed.
+ *
+ * The quantity is substituted here rather than by the caller, because the number differs per line
+ * and `labels` is built once for the whole receipt. Same `{{n}}` placeholder idiom the searchable
+ * selects use for their free-text label.
+ */
+function returnedNote(item, soldQty, labels) {
+  const returned = Number(item.returned_quantity) || 0;
+  if (returned <= 0) return '';
+  const pending = Number(item.refund_pending_quantity) || 0;
+  const partial = returned < soldQty;
+  const base = partial && labels.returnedPartial
+    ? String(labels.returnedPartial).replace(/\{\{n\}\}/g, String(returned))
+    : labels.returned;
+  if (pending > 0 && labels.refundPending) {
+    return `${base} (${labels.refundPending})`;
+  }
+  return base || '';
 }
 
 function summaryMarkup(receipt, labels) {
@@ -155,6 +189,20 @@ function summaryMarkup(receipt, labels) {
   }
   rows.push(`<div class="receipt__line receipt__total"><span>${esc(labels.total)}</span>`
     + `<span>${esc(formatReceiptMoney(receipt.total, ccy))}</span></div>`);
+
+  // What came back, and what the purchase comes to without it. Both absent on an ordinary sale, so
+  // the paper is unchanged for the great majority of receipts.
+  //
+  // The server deducts only what it has actually paid back, so these three figures always close:
+  // total minus refunded is exactly the net printed below them. A line still awaiting its refund is
+  // marked against the item and deliberately left in the total.
+  const refunded = Number(receipt.refunded_total) || 0;
+  if (refunded > 0) {
+    rows.push(`<div class="receipt__line"><span>${esc(labels.refundedTotal)}</span>`
+      + `<span>-${esc(formatReceiptMoney(refunded, ccy))}</span></div>`);
+    rows.push(`<div class="receipt__line receipt__total"><span>${esc(labels.netTotal)}</span>`
+      + `<span>${esc(formatReceiptMoney(receipt.net_total, ccy))}</span></div>`);
+  }
   return rows.join('');
 }
 

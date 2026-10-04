@@ -1146,9 +1146,18 @@ const Products = () => {
             rowCount={filteredProducts.length}
           />
           {/* Adding one product at a time means one entry per size and colour, so a new range is
-              dozens of them. Gated on the same permission as adding one by hand. */}
+              dozens of them. Gated on the same permission as adding one by hand.
+
+              Same classes as the download button it sits next to: they are a pair — one takes the
+              table out to Excel, the other brings it back — so they should be the same size and
+              colour rather than one of them being an unstyled browser default. */}
           {canCreate ? (
-            <ActionButton type="button" onClick={() => setShowImport(true)}>
+            <ActionButton
+              type="button"
+              className="btn-edit table-download-btn"
+              onClick={() => setShowImport(true)}
+              title={t('importExcel.buttonHint')}
+            >
               {t('importExcel.button')}
             </ActionButton>
           ) : null}

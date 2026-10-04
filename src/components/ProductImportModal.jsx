@@ -134,9 +134,29 @@ export default function ProductImportModal({ open, onClose, api, t, lang, onImpo
           {t('importExcel.intro')}
         </p>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <ActionButton type="button" onClick={getTemplate} disabled={busy}>
+        {/* The file input itself is hidden and driven by the button beside it. A bare
+            `<input type="file">` renders as the browser's own grey control, which looks like nothing
+            else on the page and cannot be sized or coloured; the shop should see two buttons that
+            match the rest of the UI, with the chosen filename after them. */}
+        <div className="form-actions" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Both buttons in this row carry `btn-dialog`, so they are the same box and only the
+              colour differs. See the rule: the symbol in this label would otherwise make it taller
+              than the plain-text button beside it. */}
+          <ActionButton
+            type="button"
+            className="btn-edit btn-dialog"
+            onClick={getTemplate}
+            disabled={busy}
+          >
             {t('importExcel.downloadTemplate')}
+          </ActionButton>
+          <ActionButton
+            type="button"
+            className="btn-primary btn-dialog"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+          >
+            {t('importExcel.chooseFile')}
           </ActionButton>
           <input
             ref={fileRef}
@@ -144,8 +164,12 @@ export default function ProductImportModal({ open, onClose, api, t, lang, onImpo
             accept=".xlsx"
             aria-label={t('importExcel.chooseFile')}
             disabled={busy}
+            style={{ display: 'none' }}
             onChange={(e) => choose(e.target.files?.[0] || null)}
           />
+          <span style={{ color: file ? '#2c3e50' : '#718096', fontSize: '0.88em' }}>
+            {file ? file.name : t('importExcel.noFileChosen')}
+          </span>
         </div>
 
         <p style={{ margin: 0, color: '#718096', fontSize: '0.82em' }}>
@@ -241,15 +265,22 @@ export default function ProductImportModal({ open, onClose, api, t, lang, onImpo
           </div>
         ) : null}
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        {/* `form-actions` is the row every other dialog in the project uses for its buttons, with the
+            secondary action in `btn-edit` and the one that commits in `btn-primary`. */}
+        <div className="form-actions" style={{ justifyContent: 'flex-end' }}>
           {file && !result ? (
-            <ActionButton type="button" onClick={reset} disabled={busy}>
+            <ActionButton
+              type="button"
+              className="btn-edit btn-dialog"
+              onClick={reset}
+              disabled={busy}
+            >
               {t('importExcel.startOver')}
             </ActionButton>
           ) : null}
           <ActionButton
             type="button"
-            className="btn-primary"
+            className="btn-primary btn-dialog"
             onClick={confirm}
             disabled={busy || !preview?.can_commit}
           >

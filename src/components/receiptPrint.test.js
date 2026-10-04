@@ -29,6 +29,11 @@ const labels = {
   creditDue: "To'lash sanasi",
   giveaway: 'Bepul',
   thanks: 'Xaridingiz uchun rahmat!',
+  returned: 'QAYTARILGAN',
+  returnedPartial: 'QAYTARILGAN: {{n}} dona',
+  refundPending: "to'lov kutilmoqda",
+  refundedTotal: 'Qaytarildi',
+  netTotal: 'Sof jami',
 };
 
 const receipt = (over = {}) => ({
@@ -221,5 +226,85 @@ describe('hostile content', () => {
 
   it.each([[null], [undefined]])('returns nothing for %j', (v) => {
     expect(buildReceiptHtml(v, labels)).toBe('');
+  });
+});
+
+
+describe('an item that came back', () => {
+  /**
+   * The returned line stays on the paper, because the customer did take it home and the chek in
+   * their pocket lists it. What changes is that it says so, and that the summary stops claiming
+   * they paid for it.
+   */
+  const twoItems = (overFirst = {}, overSecond = {}) => receipt({
+    items: [
+      {
+        sale_id: 1, brand: 'On', model: 'Cloudtilt', size: '41', color: 'White',
+        quantity: 1, unit_price: '100.00', total: '100.00', is_giveaway: false,
+        returned_quantity: 0, refund_pending_quantity: 0, ...overFirst,
+      },
+      {
+        sale_id: 2, brand: 'On', model: 'Cloudrunner', size: '42', color: 'Black',
+        quantity: 1, unit_price: '60.00', total: '60.00', is_giveaway: false,
+        returned_quantity: 1, refund_pending_quantity: 0, ...overSecond,
+      },
+    ],
+    subtotal: '160.00', total: '160.00',
+    refunded_total: '60.00', net_total: '100.00',
+  });
+
+  it('marks the line it came back on, and only that one', () => {
+    const html = buildReceiptHtml(twoItems(), labels);
+    expect(html).toContain('QAYTARILGAN');
+    // Matched as an element: the class name also appears in the embedded stylesheet, so searching
+    // for the bare string is true of every receipt ever printed.
+    expect(html.match(/<div class="receipt__returned">/g)).toHaveLength(1);
+  });
+
+  it('keeps the returned item on the paper', () => {
+    // A reprint that dropped it would not match the chek the customer is holding, and the Returns
+    // page scans that code expecting to find the line.
+    const html = buildReceiptHtml(twoItems(), labels);
+    expect(html).toContain('Cloudrunner');
+  });
+
+  it('shows what was paid back and what the purchase came to', () => {
+    const html = buildReceiptHtml(twoItems(), labels);
+    expect(html).toContain('Qaytarildi');
+    expect(html).toContain('-60.00 y.e');
+    expect(html).toContain('Sof jami');
+    expect(html).toContain('100.00 y.e');
+  });
+
+  it('says how many came back when only part of a line did', () => {
+    // The line above still reads "2 ×", so a bare "returned" would contradict it.
+    const html = buildReceiptHtml(twoItems({}, {
+      quantity: 2, unit_price: '30.00', total: '60.00', returned_quantity: 1,
+    }), labels);
+    expect(html).toContain('QAYTARILGAN: 1 dona');
+  });
+
+  it('says the refund is still owed when it has not been paid', () => {
+    // The goods are back but the money is not, and the customer must not be handed paper implying
+    // the matter is closed.
+    const html = buildReceiptHtml(twoItems({}, {
+      returned_quantity: 1, refund_pending_quantity: 1,
+    }), labels);
+    expect(html).toContain("to'lov kutilmoqda");
+  });
+
+  it('adds nothing to an ordinary sale', () => {
+    // The great majority of cheks. Both figures absent means the paper is byte-for-byte what it was.
+    const html = buildReceiptHtml(receipt(), labels);
+    expect(html).not.toContain('<div class="receipt__returned">');
+    expect(html).not.toContain('Qaytarildi');
+    expect(html).not.toContain('Sof jami');
+  });
+
+  it('survives an older payload that carries no return fields', () => {
+    // A receipt fetched before this shipped, or a cached response, has neither key.
+    const html = buildReceiptHtml(twoItems({}, { returned_quantity: undefined }), labels);
+    expect(html).toBeTruthy();
+    expect(html).not.toContain('<div class="receipt__returned">');
   });
 });

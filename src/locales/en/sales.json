@@ -437,7 +437,12 @@
     "giveaway": "Free",
     "thanks": "Thank you for your purchase!",
     "failed": "The receipt could not be printed.",
-    "reprintHint": "Print this purchase's receipt again"
+    "reprintHint": "Print this purchase's receipt again",
+    "returned": "RETURNED",
+    "returnedPartial": "RETURNED: {{n}} pcs",
+    "refundPending": "refund pending",
+    "refundedTotal": "Refunded",
+    "netTotal": "Net total"
   },
   "pos": {
     "title": "Till",

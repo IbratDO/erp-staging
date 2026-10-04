@@ -437,7 +437,12 @@
     "giveaway": "Bepul",
     "thanks": "Xaridingiz uchun rahmat!",
     "failed": "Chekni chop etib bo'lmadi.",
-    "reprintHint": "Ushbu xaridning chekini qayta chop etish"
+    "reprintHint": "Ushbu xaridning chekini qayta chop etish",
+    "returned": "QAYTARILGAN",
+    "returnedPartial": "QAYTARILGAN: {{n}} dona",
+    "refundPending": "to'lov kutilmoqda",
+    "refundedTotal": "Qaytarildi",
+    "netTotal": "Sof jami"
   },
   "pos": {
     "title": "Kassa",

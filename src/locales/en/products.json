@@ -91,6 +91,7 @@
   "importExcel": {
     "blockedByProblems": "Some rows have problems. Rows are saved all together, so fix the file and upload it again.",
     "button": "⬆ Import from Excel",
+    "buttonHint": "Fill in products from an Excel file",
     "chooseFile": "Choose an Excel file",
     "confirm": "Confirm",
     "countAdd": "{{count}} to add",
@@ -104,6 +105,7 @@
     "identityNote": "Brand, Model, Size and Color identify the product. On a product that already exists only Type and Category are updated; if any of those four differ, a new product is added.",
     "imported": "Imported from Excel: {{created}} added, {{updated}} updated.",
     "intro": "Download the template, fill it in and upload it here. You will see what would happen first — nothing is saved until you confirm.",
+    "noFileChosen": "No file chosen",
     "readFailed": "The file could not be read.",
     "rowColumn": "Row",
     "rowLabel": "row {{row}}",

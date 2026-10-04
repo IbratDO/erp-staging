@@ -2312,6 +2312,13 @@ const Sales = () => {
         creditTitle: t('receipt.creditTitle', { ns: 'sales' }),
         creditDue: t('receipt.creditDue', { ns: 'sales' }),
         giveaway: t('receipt.giveaway', { ns: 'sales' }),
+        // A returned line is still on the paper, so it has to say so. `returnedPartial`
+        // carries a `{{n}}` the receipt fills in per line.
+        returned: t('receipt.returned', { ns: 'sales' }),
+        returnedPartial: t('receipt.returnedPartial', { ns: 'sales' }),
+        refundPending: t('receipt.refundPending', { ns: 'sales' }),
+        refundedTotal: t('receipt.refundedTotal', { ns: 'sales' }),
+        netTotal: t('receipt.netTotal', { ns: 'sales' }),
         thanks: t('receipt.thanks', { ns: 'sales' }),
       });
       if (html) printHtmlDocument(html);

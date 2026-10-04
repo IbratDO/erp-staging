@@ -91,6 +91,7 @@
   "importExcel": {
     "blockedByProblems": "Xato qatorlar bor. Hammasi birga saqlanadi, shuning uchun faylni tuzatib qaytadan yuklang.",
     "button": "⬆ Excel'dan yuklash",
+    "buttonHint": "Excel fayldan mahsulotlarni to'ldirish",
     "chooseFile": "Excel faylni tanlang",
     "confirm": "Tasdiqlash",
     "countAdd": "{{count}} ta qo‘shiladi",
@@ -104,6 +105,7 @@
     "identityNote": "Brend, Model, O'lcham va Rang mahsulotni aniqlaydi. Mavjud mahsulotda faqat Turi va Kategoriya yangilanadi; bu to'rttasi boshqa bo'lsa, yangi mahsulot qo'shiladi.",
     "imported": "Excel'dan yuklandi: {{created}} ta qo‘shildi, {{updated}} ta yangilandi.",
     "intro": "Shablonni yuklab oling, to'ldiring va shu yerga yuklang. Avval nima bo'lishini ko'rsatamiz — tasdiqlamaguningizcha hech narsa saqlanmaydi.",
+    "noFileChosen": "Fayl tanlanmagan",
     "readFailed": "Faylni o'qib bo'lmadi.",
     "rowColumn": "Qator",
     "rowLabel": "{{row}}-qator",

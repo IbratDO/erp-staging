@@ -396,6 +396,11 @@ export default function Pos() {
         discount: tr('receipt.discount'), total: tr('receipt.total'),
         creditTitle: tr('receipt.creditTitle'), creditDue: tr('receipt.creditDue'),
         giveaway: tr('receipt.giveaway'), thanks: tr('receipt.thanks'),
+        returned: tr('receipt.returned'),
+        returnedPartial: tr('receipt.returnedPartial'),
+        refundPending: tr('receipt.refundPending'),
+        refundedTotal: tr('receipt.refundedTotal'),
+        netTotal: tr('receipt.netTotal'),
       });
       if (html) printHtmlDocument(html);
     } catch {

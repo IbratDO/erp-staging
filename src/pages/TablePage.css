@@ -661,6 +661,42 @@
   background-color: #e67e22;
 }
 
+/*
+  One box for every button in a dialog's action row, whatever colour class it carries.
+
+  Two problems it solves, and the second is the one that is hard to spot.
+
+  `.btn-edit` is sized for a cell in a table — 12px text, 5px padding — so beside a `.btn-primary`
+  it reads as a different kind of control at a different height. Its `margin-right`, there to space
+  buttons packed into a cell, also lands on top of a `form-actions` `gap` and pushes the row
+  off-centre.
+
+  And **a label containing a symbol was taller than one without.** `⬇` is not in the UI font, so it
+  falls back to a symbol font whose line box is taller; that stretched the button around it and made
+  its text look bigger than the plain-text button beside it, even though both had the same padding
+  and `font-size`. An explicit `line-height` plus `min-height` fixes the box so no glyph can inflate
+  it, and the flex centring keeps the label in the middle of that fixed box.
+
+  Applied to *both* buttons in a row rather than only the odd one out: parity by construction beats
+  one class copying another's numbers and drifting the next time either is touched. Only the colour
+  then comes from `.btn-edit` / `.btn-primary`. The phone rules below are a two-class selector, so
+  they still win and a narrow screen still gets full-width 44px targets.
+*/
+.btn-dialog {
+  padding: 10px 20px;
+  font-size: 14px;
+  line-height: 1.2;
+  min-height: 40px;
+  border: none;
+  border-radius: 5px;
+  margin: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
 /* Per-line action buttons inside an expanded group row read smaller than the collapsed
    row's own group-wide action buttons, so the two levels are visually distinguishable. */
 .sale-group-detail-row .btn-status,
