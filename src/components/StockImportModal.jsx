@@ -10,6 +10,16 @@ import {
 } from '../utils/stockImportApi';
 
 /**
+ * The verdicts that spend money. **Both** of them: a row creating a product buys stock too.
+ *
+ * This was `=== 'buy'` and dropped every create row on the way to the server, so a file of nothing
+ * but new products sent an empty list and came back "rows must be a non-empty array". The server
+ * keeps the same pair in `inventory_import.BUYING`; if a third verdict is ever added, both lists
+ * have to learn it.
+ */
+const BUYS = ['buy', 'create_and_buy'];
+
+/**
  * Buying a delivery's worth of stock from a spreadsheet.
  *
  * The Mahsulotlar version of this dialog could only ever produce a wrong list. **This one spends the
@@ -91,7 +101,7 @@ export default function StockImportModal({ open, onClose, api, t, lang, onImport
     setRowErrors([]);
     try {
       const rows = preview.rows
-        .filter((r) => r.action === 'buy')
+        .filter((r) => BUYS.includes(r.action))
         .map((r) => ({ row_num: r.row_num, ...r.values }));
       const res = await commitStockImport(api, rows);
       setResult(res.data);
@@ -123,8 +133,13 @@ export default function StockImportModal({ open, onClose, api, t, lang, onImport
   const usd = (raw) => money(raw, 2);
 
   const num = { textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
-  const actionLabel = { buy: t('importExcel.willBuy'), error: t('importExcel.hasProblem') };
-  const actionColor = { buy: '#2f855a', error: '#c53030' };
+  const actionLabel = {
+    buy: t('importExcel.willBuy'),
+    create_and_buy: t('importExcel.willCreateAndBuy'),
+    error: t('importExcel.hasProblem'),
+  };
+  // The create verdict gets its own colour: it is the one that changes Mahsulotlar as well.
+  const actionColor = { buy: '#2f855a', create_and_buy: '#2b6cb0', error: '#c53030' };
 
   const moneyRows = useMemo(() => {
     if (!summary) return null;
@@ -233,6 +248,10 @@ export default function StockImportModal({ open, onClose, api, t, lang, onImport
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: '0.85em' }}>
             <Chip color="#2f855a" label={t('importExcel.countBuy', { count: summary.to_buy })} />
             <Chip color="#2b6cb0" label={t('importExcel.countUnits', { count: summary.total_units })} />
+            {summary.to_create_products ? (
+              <Chip color="#2b6cb0"
+                    label={t('importExcel.countNewProducts', { count: summary.to_create_products })} />
+            ) : null}
             {summary.errors ? (
               <Chip color="#c53030" label={t('importExcel.countError', { count: summary.errors })} />
             ) : null}

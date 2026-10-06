@@ -201,6 +201,7 @@
     "confirmBuy": "Tasdiqlash va sotib olish",
     "countBuy": "{{count}} ta qator",
     "countError": "{{count}} ta xato",
+    "countNewProducts": "{{count}} ta yangi mahsulot",
     "countUnits": "{{count}} dona",
     "detail": "Izoh",
     "done": "Tayyor: {{bought}} ta qator, {{units}} dona olindi. Sarflandi: {{usd}} y.e va {{uzs}} so‘m.",
@@ -229,6 +230,7 @@
     "whatHappens": "Nima bo‘ladi",
     "whereFrom": "Qayerdan",
     "willBuy": "Olinadi",
+    "willCreateAndBuy": "Yangi mahsulot + olinadi",
     "willSpend": "Sarflanadi"
   }
 }

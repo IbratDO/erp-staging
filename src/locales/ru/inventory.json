@@ -201,6 +201,7 @@
     "confirmBuy": "Подтвердить и купить",
     "countBuy": "строк: {{count}}",
     "countError": "с ошибкой: {{count}}",
+    "countNewProducts": "новых товаров: {{count}}",
     "countUnits": "шт: {{count}}",
     "detail": "Примечание",
     "done": "Готово: строк {{bought}}, шт {{units}}. Потрачено: {{usd}} USD и {{uzs}} сум.",
@@ -229,6 +230,7 @@
     "whatHappens": "Что произойдёт",
     "whereFrom": "Откуда",
     "willBuy": "Будет куплено",
+    "willCreateAndBuy": "Новый товар + покупка",
     "willSpend": "Будет потрачено"
   }
 }

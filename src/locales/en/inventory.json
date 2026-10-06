@@ -201,6 +201,7 @@
     "confirmBuy": "Confirm and buy",
     "countBuy": "{{count}} rows",
     "countError": "{{count}} with a problem",
+    "countNewProducts": "{{count}} new products",
     "countUnits": "{{count}} units",
     "detail": "Detail",
     "done": "Done: {{bought}} rows, {{units}} units. Spent {{usd}} USD and {{uzs}} UZS.",
@@ -229,6 +230,7 @@
     "whatHappens": "What happens",
     "whereFrom": "Where from",
     "willBuy": "Will be bought",
+    "willCreateAndBuy": "New product + bought",
     "willSpend": "Will spend"
   }
 }

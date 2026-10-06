@@ -223,6 +223,67 @@ describe('what the row shows', () => {
   });
 });
 
+describe('a row that also creates a product', () => {
+  const creating = () => previewBody({
+    summary: { to_buy: 1, to_create_products: 1 },
+    rows: [row({
+      action: 'create_and_buy',
+      product_id: null,
+      product_label: 'Puma / RS-X / 42 / Oq',
+      values: { ...row().values, brand: 'Puma', model: 'RS-X',
+                category_type: 'sports', category: 'Krossovka' },
+      warnings: ['This creates a new product "Puma / RS-X / 42 / Oq". Did you mean the existing "Puma / RS-Z / 42 / Oq"?'],
+    })],
+  });
+
+  it('says so on the row rather than calling it an ordinary buy', async () => {
+    mount({ api: apiWith(creating()) });
+    await pickFile();
+    expect(text()).toContain('importExcel.willCreateAndBuy');
+  });
+
+  it('counts the new products separately from the rows', async () => {
+    // Buying stock and changing the catalogue are two different things to agree to.
+    mount({ api: apiWith(creating()) });
+    await pickFile();
+    expect(text()).toContain('importExcel.countNewProducts');
+  });
+
+  it('sends the create rows to the server when confirmed', async () => {
+    /**
+     * The bug this file shipped with. The confirm filter kept only `action === 'buy'`, so a file of
+     * nothing but new products posted an empty list and the server answered "rows must be a
+     * non-empty array" — a dead end with no way to tell what was wrong.
+     *
+     * Nothing caught it because the confirm tests all used rows with the plain `buy` verdict, and
+     * the create-verdict tests only looked at what was rendered. A verdict is not supported until
+     * something confirms it.
+     */
+    const api = apiWith(creating());
+    mount({ api });
+    await pickFile();
+    await act(async () => {
+      confirmButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(api.post).toHaveBeenCalledTimes(1);
+    const [, body] = api.post.mock.calls[0];
+    expect(body.rows).toHaveLength(1);
+    expect(body.rows[0].brand).toBe('Puma');
+    // The two columns that only a new product needs must travel with it.
+    expect(body.rows[0].category_type).toBe('sports');
+    expect(body.rows[0].category).toBe('Krossovka');
+  });
+
+  it('shows the did-you-mean warning without blocking the file', async () => {
+    // Air Max 90 and Air Max 95 are different shoes, so this can only ever be a warning.
+    mount({ api: apiWith(creating()) });
+    await pickFile();
+    expect(text()).toContain('Did you mean');
+    expect(confirmButton().disabled).toBe(false);
+  });
+});
+
 describe('what blocks the button', () => {
   it('a short till does not', async () => {
     // The owner's decision: load the stock, top the till up afterwards.
