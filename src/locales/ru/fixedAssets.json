@@ -37,13 +37,17 @@
     "written_off": "Списано"
   },
   "payment": {
-    "title": "Оплата",
+    "availableNow": "В кассе",
+    "confirm": "Подтвердить",
+    "confirmReceive": "Получено",
+    "owed": "К оплате",
     "payTitle": "Оплата средства №{{id}} — {{name}}",
+    "receiveExplain": "Подтвердите, что «{{name}}» получен. Актив станет активным. Деньги здесь не двигаются.",
     "receiveTitle": "Приём средства №{{id}} — {{name}}",
     "sellTitle": "Продажа средства — {{name}}",
-    "uzsPayment": "Оплата в UZS",
+    "title": "Оплата",
     "usdPayment": "Оплата в USD",
-    "confirm": "Подтвердить"
+    "uzsPayment": "Оплата в UZS"
   },
   "table": {
     "name": "Название",
@@ -82,5 +86,35 @@
     "removed": "Заказ на закупку удалён.",
     "deleteFailed": "Не удалось удалить",
     "enterPayment": "Введите хотя бы одну сумму оплаты."
+  },
+  "importExcel": {
+    "button": "⬆ Загрузить из Excel",
+    "buttonHint": "Добавить основные средства из файла Excel",
+    "chooseFile": "Выберите файл Excel",
+    "colCost": "Стоимость",
+    "colDate": "Дата",
+    "colName": "Название",
+    "confirm": "Подтвердить",
+    "countAdd": "добавится: {{count}}",
+    "countError": "с ошибкой: {{count}}",
+    "countOwed": "К оплате: {{usd}} USD / {{uzs}} сум",
+    "countSkip": "пропустим: {{count}}",
+    "detail": "Примечание",
+    "done": "Готово: добавлено активов {{created}}.",
+    "downloadTemplate": "⬇ Скачать шаблон",
+    "hasProblem": "Ошибка",
+    "imported": "Загружено из Excel: активов {{created}}.",
+    "intro": "Скачайте шаблон, заполните и загрузите здесь. Активы добавляются как «заказаны, не оплачены» — из кассы ничего не уходит, оплата позже на этой странице.",
+    "noFileChosen": "Файл не выбран",
+    "readFailed": "Не удалось прочитать файл.",
+    "rowColumn": "Строка",
+    "rowLabel": "строка {{row}}",
+    "saveFailed": "Ошибка сохранения, ничего не сохранено.",
+    "startOver": "Другой файл",
+    "templateFailed": "Не удалось скачать шаблон.",
+    "title": "Основные средства — загрузка из Excel",
+    "whatHappens": "Что произойдёт",
+    "willAdd": "Добавится",
+    "willSkip": "Будет пропущено"
   }
 }

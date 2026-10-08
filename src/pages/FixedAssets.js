@@ -3,7 +3,11 @@ import api from '../utils/api';
 import Modal from '../components/Modal';
 import apiGetAll from '../utils/fetchAllPages';
 import { useAuth } from '../contexts/AuthContext';
-import { cashBalanceTotalByCurrency, formatInsufficientLedgerMessage } from '../utils/currencyFormat';
+import {
+  cashBalanceTotalByCurrency,
+  formatDisplayAmount,
+  formatInsufficientLedgerMessage,
+} from '../utils/currencyFormat';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
 import { formatAppNumber } from '../utils/localeFormat';
@@ -12,6 +16,8 @@ import AmountInput from '../components/AmountInput';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
 import ActionButton from '../components/ActionButton';
 import TableDownloadButton from '../components/TableDownloadButton';
+import SimpleImportModal from '../components/SimpleImportModal';
+import { fixedAssetImportApi } from '../utils/simpleImportApi';
 
 const CATEGORY_VALUES = [
   'vehicle',
@@ -49,9 +55,10 @@ const FixedAssets = () => {
   // The rendered table, so the download button can read exactly what is on the screen —
   // current filters, current sort, current columns. See utils/tableCsv.
   const tableRef = useRef(null);
-  const { t } = useAppTranslation(['fixedAssets', 'common']);
+  const { t, language } = useAppTranslation(['fixedAssets', 'common']);
   const uzsLabel = t('currency.uzs', { ns: 'common' });
   const { hasPermission } = useAuth();
+  const [showImport, setShowImport] = useState(false);
   const isAdmin = hasPermission('fixed_assets.create');
   const [assets, setAssets] = useState([]);
   const [balances, setBalances] = useState([]);
@@ -277,6 +284,8 @@ const FixedAssets = () => {
     setPaymentForm(defaultPaymentState);
   };
 
+  const paymentAsset = assets.find((a) => a.id === paymentForm.assetId) || null;
+
   const paymentTitle = () => {
     const a = assets.find((x) => x.id === paymentForm.assetId);
     if (!a) return t('payment.title');
@@ -402,6 +411,45 @@ const FixedAssets = () => {
         title={paymentTitle()}
       >
           <BusyForm onSubmit={handlePaymentSubmit}>
+            {/* What this dialog is about to do, in words.
+             *
+             * "Qabul qilish" hides the amount boxes and the notes field, so without this the whole
+             * dialog was a title, a gap, and two buttons — a confirmation that never said what it
+             * was confirming. Paying showed two empty boxes and no mention of what was owed or what
+             * the till held, while refusing the submission afterwards if either was wrong. */}
+            {paymentAsset ? (
+              <div className="form-card" style={{ marginBottom: 12, padding: 12 }}>
+                {paymentForm.action === 'receive' ? (
+                  <p style={{ margin: 0, fontSize: '0.92em', color: '#2c3e50' }}>
+                    {t('payment.receiveExplain', { name: paymentAsset.name })}
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4,
+                                fontSize: '0.92em' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                      <span style={{ color: '#718096' }}>{t('payment.owed')}</span>
+                      <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {formatDisplayAmount(
+                          paymentAsset.payable_amount ?? paymentAsset.purchase_cost,
+                          paymentAsset.currency,
+                        )}
+                      </strong>
+                    </div>
+                    {/* The till, because the form refuses an amount it cannot cover and the
+                        operator should see that before typing, not after. */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16,
+                                  color: '#718096' }}>
+                      <span>{t('payment.availableNow')}</span>
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {formatDisplayAmount(getAvailableBalance('USD'), 'USD')}
+                        {' · '}
+                        {formatDisplayAmount(getAvailableBalance('UZS'), 'UZS')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
             {paymentForm.action !== 'receive' && (
               <div className="form-grid">
                 <div className="form-group">
@@ -439,14 +487,43 @@ const FixedAssets = () => {
                 />
               </div>
             )}
-            <div className="form-actions" style={{ marginTop: 12 }}>
-              <SubmitButton className="btn-primary">{t('payment.confirm')}</SubmitButton>
-              <button type="button" className="btn-secondary" onClick={closePaymentForm}>
+            {/* `btn-secondary` had no style outside a phone media query, so Cancel rendered as a
+                bare browser button beside a styled Confirm. `btn-dialog` gives the pair one box. */}
+            <div className="form-actions" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn-edit btn-dialog" onClick={closePaymentForm}>
                 {t('actions.cancel', { ns: 'common' })}
               </button>
+              <SubmitButton className="btn-primary btn-dialog">
+                {paymentForm.action === 'receive'
+                  ? t('payment.confirmReceive')
+                  : t('payment.confirm')}
+              </SubmitButton>
             </div>
           </BusyForm>
       </Modal>
+
+      <SimpleImportModal
+        open={showImport && isAdmin}
+        onClose={() => setShowImport(false)}
+        api={api}
+        t={t}
+        lang={language}
+        importApi={fixedAssetImportApi}
+        templateName="asosiy_vositalar_shablon.xlsx"
+        columns={[
+          { key: 'name', label: t('importExcel.colName') },
+          { key: 'purchase_date', label: t('importExcel.colDate'),
+            from: (r) => r.purchase_date },
+          { key: 'purchase_cost', label: t('importExcel.colCost'), align: 'right',
+            from: (r) => (r.cost ? `${r.cost} ${r.currency || ''}`.trim() : '') },
+        ]}
+        chips={[{
+          key: 'owed',
+          // What the shop will owe once these are in — not what leaves the till, which is nothing.
+          label: (sum) => (sum.owed ? t('importExcel.countOwed', sum.owed) : ''),
+        }]}
+        onImported={() => { fetchAssets(); fetchBalances(); }}
+      />
 
       <div className="table-card">
         <div className="table-card__toolbar">
@@ -455,6 +532,16 @@ const FixedAssets = () => {
             filename="asosiy-vositalar"
             rowCount={assets.length}
           />
+          {isAdmin ? (
+            <ActionButton
+              type="button"
+              className="btn-edit table-download-btn"
+              onClick={() => setShowImport(true)}
+              title={t('importExcel.buttonHint')}
+            >
+              {t('importExcel.button')}
+            </ActionButton>
+          ) : null}
         </div>
         <table className="data-table" ref={tableRef}>
           <thead>

@@ -37,13 +37,17 @@
     "written_off": "Written off"
   },
   "payment": {
-    "title": "Payment",
+    "availableNow": "In the till",
+    "confirm": "Confirm",
+    "confirmReceive": "Received",
+    "owed": "Owed",
     "payTitle": "Pay for asset #{{id}} — {{name}}",
+    "receiveExplain": "Confirm that \"{{name}}\" has arrived. The asset becomes active. No money moves here.",
     "receiveTitle": "Receive asset #{{id}} — {{name}}",
     "sellTitle": "Sell asset — {{name}}",
-    "uzsPayment": "UZS payment",
+    "title": "Payment",
     "usdPayment": "USD payment",
-    "confirm": "Confirm"
+    "uzsPayment": "UZS payment"
   },
   "table": {
     "name": "Name",
@@ -82,5 +86,35 @@
     "removed": "Purchase order removed.",
     "deleteFailed": "Delete failed",
     "enterPayment": "Enter at least one payment amount."
+  },
+  "importExcel": {
+    "button": "⬆ Import from Excel",
+    "buttonHint": "Add fixed assets from an Excel file",
+    "chooseFile": "Choose an Excel file",
+    "colCost": "Cost",
+    "colDate": "Date",
+    "colName": "Name",
+    "confirm": "Confirm",
+    "countAdd": "{{count}} to add",
+    "countError": "{{count}} with a problem",
+    "countOwed": "Owed: {{usd}} USD / {{uzs}} UZS",
+    "countSkip": "{{count}} skipped",
+    "detail": "Detail",
+    "done": "Done: {{created}} assets added.",
+    "downloadTemplate": "⬇ Download template",
+    "hasProblem": "Problem",
+    "imported": "Imported from Excel: {{created}} assets.",
+    "intro": "Download the template, fill it in and upload it here. Assets arrive as \"ordered, not paid\" — no cash leaves the till, and you pay for each one on this page afterwards.",
+    "noFileChosen": "No file chosen",
+    "readFailed": "The file could not be read.",
+    "rowColumn": "Row",
+    "rowLabel": "row {{row}}",
+    "saveFailed": "Saving failed, so nothing was saved.",
+    "startOver": "Another file",
+    "templateFailed": "The template could not be downloaded.",
+    "title": "Fixed assets — import from Excel",
+    "whatHappens": "What happens",
+    "willAdd": "Will be added",
+    "willSkip": "Will be skipped"
   }
 }

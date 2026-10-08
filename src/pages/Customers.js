@@ -14,6 +14,8 @@ import { formatAppDateTime } from '../utils/localeFormat';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
 import ActionButton from '../components/ActionButton';
 import TableDownloadButton from '../components/TableDownloadButton';
+import SimpleImportModal from '../components/SimpleImportModal';
+import { customerImportApi } from '../utils/simpleImportApi';
 
 function customerProductLine(detail, t) {
   if (!detail) return '';
@@ -87,9 +89,10 @@ const Customers = () => {
   // The rendered table, so the download button can read exactly what is on the screen —
   // current filters, current sort, current columns. See utils/tableCsv.
   const tableRef = useRef(null);
-  const { t, tStatus } = useAppTranslation(['customers', 'common', 'status', 'sales']);
+  const { t, tStatus, language } = useAppTranslation(['customers', 'common', 'status', 'sales']);
   const uzsLabel = t('currency.uzs', { ns: 'common' });
   const { hasPermission } = usePermissions();
+  const [showImport, setShowImport] = useState(false);
   const canCreate = hasPermission('customers.create');
   const canUpdate = hasPermission('customers.update');
   const canDelete = hasPermission('customers.delete');
@@ -415,6 +418,22 @@ const Customers = () => {
         </FilterPanel>
 
       <div style={{ display: 'flex', gap: '20px' }}>
+        <SimpleImportModal
+          open={showImport && canCreate}
+          onClose={() => setShowImport(false)}
+          api={api}
+          t={t}
+          lang={language}
+          importApi={customerImportApi}
+          templateName="mijozlar_shablon.xlsx"
+          columns={[
+            { key: 'name', label: t('importExcel.colName') },
+            { key: 'telephone', label: t('importExcel.colPhone') },
+            { key: 'region', label: t('importExcel.colRegion') },
+          ]}
+          onImported={() => fetchCustomers()}
+        />
+
         {/* Customers List */}
         <div className="table-card" style={{ flex: selectedCustomer ? '0 0 40%' : '1' }}>
           <div className="table-card__toolbar">
@@ -423,6 +442,17 @@ const Customers = () => {
               filename="mijozlar"
               rowCount={filteredCustomers.length}
             />
+            {/* Same permission and the same look as the download button it pairs with. */}
+            {canCreate ? (
+              <ActionButton
+                type="button"
+                className="btn-edit table-download-btn"
+                onClick={() => setShowImport(true)}
+                title={t('importExcel.buttonHint')}
+              >
+                {t('importExcel.button')}
+              </ActionButton>
+            ) : null}
           </div>
           <div className="data-table-scroll data-table-scroll--pane">
           <table className="data-table" ref={tableRef}>

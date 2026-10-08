@@ -37,13 +37,17 @@
     "written_off": "Hisobdan chiqarilgan"
   },
   "payment": {
-    "title": "To‘lov",
+    "availableNow": "Kassada bor",
+    "confirm": "Tasdiqlash",
+    "confirmReceive": "Qabul qilindi",
+    "owed": "To‘lanishi kerak",
     "payTitle": "Vosita #{{id}} uchun to‘lov — {{name}}",
+    "receiveExplain": "“{{name}}” qabul qilinganini tasdiqlaysiz. Vosita faol holatga o‘tadi. Bu yerda pul harakati yo‘q.",
     "receiveTitle": "Vosita #{{id}} qabul qilish — {{name}}",
     "sellTitle": "Vositani sotish — {{name}}",
-    "uzsPayment": "UZS to‘lov",
+    "title": "To‘lov",
     "usdPayment": "USD to‘lov",
-    "confirm": "Tasdiqlash"
+    "uzsPayment": "UZS to‘lov"
   },
   "table": {
     "name": "Nom",
@@ -82,5 +86,35 @@
     "removed": "Xarid buyurtmasi olib tashlandi.",
     "deleteFailed": "O‘chirib bo‘lmadi",
     "enterPayment": "Kamida bitta to‘lov summasini kiriting."
+  },
+  "importExcel": {
+    "button": "⬆ Excel'dan yuklash",
+    "buttonHint": "Excel fayldan asosiy vositalarni qo'shish",
+    "chooseFile": "Excel faylni tanlang",
+    "colCost": "Narxi",
+    "colDate": "Sana",
+    "colName": "Nomi",
+    "confirm": "Tasdiqlash",
+    "countAdd": "{{count}} ta qo‘shiladi",
+    "countError": "{{count}} ta xato",
+    "countOwed": "Qarz: {{usd}} y.e / {{uzs}} so‘m",
+    "countSkip": "{{count}} ta o‘tkazib yuboriladi",
+    "detail": "Izoh",
+    "done": "Tayyor: {{created}} ta aktiv qo‘shildi.",
+    "downloadTemplate": "⬇ Shablonni yuklab olish",
+    "hasProblem": "Xato",
+    "imported": "Excel'dan yuklandi: {{created}} ta aktiv.",
+    "intro": "Shablonni yuklab oling, to'ldiring va shu yerga yuklang. Aktivlar “buyurtma qilingan, to'lanmagan” holda qo'shiladi — kassadan pul chiqmaydi, to'lovni keyin shu sahifada qilasiz.",
+    "noFileChosen": "Fayl tanlanmagan",
+    "readFailed": "Faylni o'qib bo'lmadi.",
+    "rowColumn": "Qator",
+    "rowLabel": "{{row}}-qator",
+    "saveFailed": "Saqlashda xatolik, hech narsa saqlanmadi.",
+    "startOver": "Boshqa fayl",
+    "templateFailed": "Shablonni yuklab olishda xatolik.",
+    "title": "Asosiy vositalar — Excel'dan yuklash",
+    "whatHappens": "Nima bo‘ladi",
+    "willAdd": "Qo'shiladi",
+    "willSkip": "O'tkazib yuboriladi"
   }
 }
