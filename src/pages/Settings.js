@@ -96,6 +96,15 @@ const Settings = () => {
 
   const errorMessage = (err) => {
     const data = err.response?.data;
+    const status = err.response?.status;
+    // **A 500 is not something to try again.** The old message said "saving failed, try again",
+    // which is exactly the wrong advice when the server threw: the owner pressed Save four times
+    // in four seconds the first time this happened. A server that fails on a *valid* form -- a
+    // missing `cryptography`, an unapplied migration -- fails the same way every time, and the
+    // body it returns is an HTML error page rather than the JSON read below. So the status is
+    // checked before the body, and the message sends somebody to the logs instead of to the
+    // button.
+    if (status >= 500) return t('errors.serverError', { status });
     if (!data) return t('errors.saveFailed');
     // A plain message, however this endpoint chose to name it.
     const direct = data.detail || data.error;

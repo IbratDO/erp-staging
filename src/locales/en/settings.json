@@ -12,7 +12,8 @@
   },
   "errors": {
     "loadFailed": "Could not load the settings.",
-    "saveFailed": "Could not save. Please try again."
+    "saveFailed": "Could not save. Please try again.",
+    "serverError": "Server error ({{status}}). Retrying will not help — check the server logs."
   },
   "featuresTitle": "Features",
   "featuresIntro": "Which features this shop uses. A feature switched off disappears from the menu and from the forms.",

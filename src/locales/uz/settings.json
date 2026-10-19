@@ -12,7 +12,8 @@
   },
   "errors": {
     "loadFailed": "Sozlamalarni yuklab bo‘lmadi.",
-    "saveFailed": "Saqlanmadi. Qaytadan urinib ko‘ring."
+    "saveFailed": "Saqlanmadi. Qaytadan urinib ko‘ring.",
+    "serverError": "Server xatosi ({{status}}). Qayta urinish yordam bermaydi — server loglarini tekshiring."
   },
   "featuresTitle": "Imkoniyatlar",
   "featuresIntro": "Do‘kon qaysi imkoniyatlardan foydalanadi. O‘chirilgan imkoniyat menyudan va shakllardan yo‘qoladi.",

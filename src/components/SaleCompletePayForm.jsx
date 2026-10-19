@@ -8,9 +8,11 @@ import './GatewayUI.css';
 import gatewayApi from '../utils/gatewayPayApi';
 import {
   cashShare,
-  METHODS,
+  formatGrouped,
   methodsSettled,
   overAllocated,
+  parseGrouped,
+  ROW_METHODS,
   toAmount as methodAmount,
 } from '../utils/paymentMethods';
 import {
@@ -73,6 +75,8 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // A person saying they have the notes in hand. Nothing is written when it is pressed; the sale
   // still records money in one moment, when it is completed.
   const [cashConfirmed, setCashConfirmed] = useState(false);
+  // Counted separately from the soum, because that is how notes are counted in a drawer.
+  const [usdCashConfirmed, setUsdCashConfirmed] = useState(false);
 
   const loadGatewayPayments = useCallback(async () => {
     // Guarded rather than conditioned on by the caller: these hooks sit above the component's
@@ -94,6 +98,13 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   useEffect(() => {
     loadGatewayPayments();
   }, [loadGatewayPayments]);
+
+  // A tick given for one figure means nothing once that figure changes, so editing the dollars
+  // clears the dollar tick. The soum side does the same in `setMethodAmount`.
+  //
+  // Up here with the other hooks, not beside the handler it belongs to: this component returns
+  // early in places, and a hook below one of those returns runs on some renders and not others.
+  useEffect(() => { setUsdCashConfirmed(false); }, [paymentFormData.usd]);
 
 
   useEffect(() => {
@@ -435,14 +446,20 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // The soum the sale is taking, which is what the method row divides up. Read from the form's
   // own box rather than recomputed, so the two can never disagree about the total.
   const uzsPosted = methodAmount(paymentFormData.uzs);
+  // Dollars take no part in the soum split: they are only ever cash, so this column mirrors the
+  // box above rather than dividing anything.
+  const usdPosted = methodAmount(paymentFormData.usd);
   const cashDue = cashShare(uzsPosted, methodAmounts);
   const clickTakenUzs = totalUsable(gatewayPayments);
   const methodState = methodsSettled({
     uzsPosted, amounts: methodAmounts, cashConfirmed, clickTakenUzs,
+    usdPosted, usdCashConfirmed,
   });
 
   const setMethodAmount = (method, value) => {
-    setMethodAmounts((prev) => ({ ...prev, [method]: value }));
+    // Stored as a plain number string; `formatGrouped` decides how it is displayed. Keeping those
+    // apart is what lets the box show "400 000" without the amount that reaches Click changing.
+    setMethodAmounts((prev) => ({ ...prev, [method]: parseGrouped(value) }));
     // Any change to the split means the drawer figure has changed, so a tick given for the old
     // figure no longer means anything. Making the cashier look again is the point.
     setCashConfirmed(false);
@@ -882,38 +899,47 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
             <label>{t('gateway.methods')}</label>
             <div className="pay-methods">
-              {METHODS.map((method) => {
-                const live = method === 'cash' || method === 'click';
+              {ROW_METHODS.map((method) => {
+                const live = method === 'cash' || method === 'cash_usd' || method === 'click';
                 const isCash = method === 'cash';
-                const value = isCash
-                  ? Math.round(cashDue).toString()
-                  : (methodAmounts[method] ?? '');
-                const takenHere = isCash ? cashConfirmed : clickTakenUzs > 0;
+                const isUsd = method === 'cash_usd';
+                // Both cash columns are shown rather than asked for: soum is the remainder of the
+                // split, and dollars are only ever taken in cash so there is nothing to divide.
+                const shown = isCash
+                  ? formatGrouped(cashDue)
+                  : (isUsd ? formatGrouped(usdPosted, 2) : formatGrouped(methodAmounts[method]));
+                const takenHere = isCash
+                  ? cashConfirmed
+                  : (isUsd ? usdCashConfirmed : clickTakenUzs > 0);
                 return (
                   <div className="pay-method" key={method}>
                     <span className="pay-method__name">
                       {t(`gateway.method_${method}`)}
                       {live ? '' : ` · ${t('gateway.comingSoon')}`}
                     </span>
+                    {/* Text, not `type="number"`: a number input refuses to hold "400 000" and
+                        hands back an empty value, so the figure on screen and the figure that
+                        would be charged stop being the same thing. `inputMode` still brings up a
+                        numeric keypad on a phone. */}
                     <input
                       className="pay-method__amount"
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={value}
-                      // Cash is shown, not asked for: it is whatever the other methods have not
-                      // taken, so letting it be typed would invite a split that does not add up.
-                      readOnly={isCash}
+                      type="text"
+                      inputMode="numeric"
+                      value={shown}
+                      // Both cash columns are readings rather than fields -- see above.
+                      readOnly={isCash || isUsd}
                       disabled={!live}
                       onChange={(e) => setMethodAmount(method, e.target.value)}
                       aria-label={t(`gateway.method_${method}`)}
                     />
-                    {isCash ? (
+                    {isCash || isUsd ? (
                       <button
                         type="button"
                         className="btn-primary btn-dialog pay-method__button"
-                        disabled={cashDue <= 0 || cashConfirmed}
-                        onClick={() => setCashConfirmed(true)}
+                        disabled={isUsd
+                          ? (usdPosted <= 0 || usdCashConfirmed)
+                          : (cashDue <= 0 || cashConfirmed)}
+                        onClick={() => (isUsd ? setUsdCashConfirmed(true) : setCashConfirmed(true))}
                       >
                         {t('gateway.markPaid')}
                       </button>
@@ -934,7 +960,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                     )}
                     {takenHere ? (
                       <span className="pay-method__done">
-                        {isCash
+                        {isCash || isUsd
                           ? t('gateway.cashCollected')
                           : t('gateway.clickCollected', {
                             amount: clickTakenUzs.toLocaleString(

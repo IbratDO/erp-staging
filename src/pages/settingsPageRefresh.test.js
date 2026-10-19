@@ -292,3 +292,32 @@ describe('showing the server\'s reason', () => {
     expect(container.textContent).toContain('errors.saveFailed');
   });
 });
+
+describe('when the server itself fails', () => {
+  // A valid form the server cannot process -- a missing library, an unapplied migration -- answers
+  // 500 with an HTML error page, not JSON. The page used to read that as "saving failed, try
+  // again", which is the one piece of advice guaranteed not to work: the owner pressed Save four
+  // times in four seconds the first time it happened, and it happened again on a fresh staging
+  // deploy.
+  it('says it is a server problem rather than inviting a retry', async () => {
+    await mount();
+    api.patch.mockReset();
+    api.patch.mockRejectedValue({
+      response: { status: 500, data: '<!doctype html><title>Server Error (500)</title>' },
+    });
+    await submitForm(0);
+    expect(container.textContent).toContain('errors.serverError');
+    expect(container.textContent).not.toContain('errors.saveFailed');
+  });
+
+  it('still reads a normal validation failure', async () => {
+    // The status check must not swallow the 400s the page already explains well.
+    await mount();
+    api.patch.mockReset();
+    api.patch.mockRejectedValue({
+      response: { status: 400, data: { shop_name: ['This field may not be blank.'] } },
+    });
+    await submitForm(0);
+    expect(container.textContent).toContain('This field may not be blank.');
+  });
+});
