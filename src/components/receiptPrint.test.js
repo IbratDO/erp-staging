@@ -34,6 +34,11 @@ const labels = {
   refundPending: "to'lov kutilmoqda",
   refundedTotal: 'Qaytarildi',
   netTotal: 'Sof jami',
+  // Deliberately not "To'lov": that is already the totals line, and a heading repeating it would
+  // read as the total again rather than as a breakdown of it.
+  paidWith: "To'lov usuli",
+  changeGiven: 'Qaytim',
+  methods: { cash: 'Naqd', click: 'Click', card: 'Karta' },
 };
 
 const receipt = (over = {}) => ({
@@ -306,5 +311,75 @@ describe('an item that came back', () => {
     const html = buildReceiptHtml(twoItems({}, { returned_quantity: undefined }), labels);
     expect(html).toBeTruthy();
     expect(html).not.toContain('<div class="receipt__returned">');
+  });
+});
+
+describe('how the purchase was paid', () => {
+  // A receipt said what was bought and what it cost and nothing about how it was settled. With
+  // Click at the counter that gap matters: a customer holding a receipt for 1,000 soum had no way
+  // to tell from the paper that 400 of it came off their card.
+  const paid = (payments, change = []) => buildReceiptHtml(
+    receipt({ payments, change_given: change }), labels,
+  );
+
+  it('names each method and its amount', () => {
+    const html = paid([
+      { method: 'cash', currency: 'UZS', amount: '600' },
+      { method: 'click', currency: 'UZS', amount: '400' },
+    ]);
+    expect(html).toContain('Naqd');
+    expect(html).toContain('Click');
+    expect(html).toContain(labels.paidWith);
+  });
+
+  it('prints each amount in the currency it was paid in', () => {
+    // A dollar sale settled partly in soum. Converting would print figures the customer never
+    // handed over, which is the one thing a receipt must not do -- so two currencies on one chek
+    // is correct rather than untidy.
+    const html = paid([
+      { method: 'cash', currency: 'USD', amount: '40.00' },
+      { method: 'cash', currency: 'UZS', amount: '700000' },
+    ]);
+    expect(html).toContain('40.00 y.e');
+    expect(html).toMatch(/700[\s ,]?000/);
+  });
+
+  it('shows change as a deduction, not netted into the cash line', () => {
+    // The payment lines are what the shop kept; change is what went back across the counter.
+    // Netting them would make the cash line disagree with the notes the customer handed over.
+    const html = paid(
+      [{ method: 'cash', currency: 'UZS', amount: '1000' }],
+      [{ currency: 'UZS', amount: '250' }],
+    );
+    expect(html).toContain('Qaytim');
+    expect(html).toMatch(/-[^<]*250/);
+  });
+
+  it('prints nothing at all when nothing was collected', () => {
+    // A nasiya sale handed over with no money taken: the block has nothing to say, so it does not
+    // appear and the paper is unchanged.
+    const html = buildReceiptHtml(receipt({ payments: [], change_given: [] }), labels);
+    expect(html).not.toContain(labels.paidWith);
+  });
+
+  it('leaves an older receipt untouched', () => {
+    // Reprinting a sale from before this existed sends no `payments` key at all.
+    const html = buildReceiptHtml(receipt(), labels);
+    expect(html).not.toContain(labels.paidWith);
+  });
+
+  it('falls back to the code for a method it does not know', () => {
+    // A new provider added server-side before the printer learns its name. An unlabelled amount is
+    // still information; a blank line is a bug nobody can read.
+    const html = paid([{ method: 'payme', currency: 'UZS', amount: '500' }]);
+    expect(html).toContain('payme');
+  });
+
+  it('escapes what it prints', () => {
+    const html = buildReceiptHtml(
+      receipt({ payments: [{ method: 'cash', currency: 'UZS', amount: '1' }] }),
+      { ...labels, paidWith: '<script>x</script>' },
+    );
+    expect(html).not.toContain('<script>');
   });
 });

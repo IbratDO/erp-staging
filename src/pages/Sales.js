@@ -2320,6 +2320,13 @@ const Sales = () => {
         refundedTotal: t('receipt.refundedTotal', { ns: 'sales' }),
         netTotal: t('receipt.netTotal', { ns: 'sales' }),
         thanks: t('receipt.thanks', { ns: 'sales' }),
+        paidWith: t('receipt.paidWith', { ns: 'sales' }),
+        changeGiven: t('receipt.changeGiven', { ns: 'sales' }),
+        methods: {
+          cash: t('receipt.methodCash', { ns: 'sales' }),
+          click: t('receipt.methodClick', { ns: 'sales' }),
+          card: t('receipt.methodCard', { ns: 'sales' }),
+        },
       });
       if (html) printHtmlDocument(html);
     } catch (err) {

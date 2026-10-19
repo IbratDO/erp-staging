@@ -17,6 +17,7 @@ export const ROUTE_PERMISSIONS = {
   '/finance': 'finance.view',
   '/receivables-payables': 'receivables.view',
   '/credit-sales': 'credit_sales.view',
+  '/gateway-payments': 'gateway.view_pending',
   '/equity': 'equity.view',
   '/fixed-assets': 'fixed_assets.view',
   '/profit-loss': 'finance.profit_loss',
@@ -113,6 +114,10 @@ export const MENU_ITEMS = [
   { path: '/dispatchers', labelKey: 'nav.dispatchers', icon: '🚚', permission: 'dispatch.view' },
   { path: '/receivables-payables', labelKey: 'nav.receivablesPayables', icon: '📑', permission: 'receivables.view' },
   { path: '/credit-sales', labelKey: 'nav.creditSales', icon: '🤝', permission: 'credit_sales.view' },
+  // Next to Debitor / kreditor rather than near the till, because it is money to chase rather
+  // than money to take, and the people who hold `view_pending` are the ones who read those
+  // pages. A cashier never sees it.
+  { path: '/gateway-payments', labelKey: 'nav.gatewayPayments', icon: '📲', permission: 'gateway.view_pending' },
   { path: '/finance', labelKey: 'nav.finance', icon: '💵', permission: 'finance.view' },
   { path: '/equity', labelKey: 'nav.equity', icon: '🏛️', permission: 'equity.view' },
   { path: '/fixed-assets', labelKey: 'nav.fixedAssets', icon: '🏢', permission: 'fixed_assets.view' },

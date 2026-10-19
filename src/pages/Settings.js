@@ -6,6 +6,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../hooks/usePermissions';
 import ShopSettingsForm from './ShopSettingsForm';
 import ShopFeaturesForm from './ShopFeaturesForm';
+import PaymentProviderForm from './PaymentProviderForm';
 
 /**
  * Sozlamalar — what the shop is called, and what it does.
@@ -46,6 +47,16 @@ const Settings = () => {
   const [savingFeatures, setSavingFeatures] = useState(false);
   const [featuresError, setFeaturesError] = useState('');
   const [featuresSuccess, setFeaturesSuccess] = useState('');
+  // Its own set again, for the same reason: a failed credential save must not paint an error
+  // across the shop's name.
+  const [click, setClick] = useState(null);
+  const [clickLoading, setClickLoading] = useState(true);
+  const [savingClick, setSavingClick] = useState(false);
+  const [clickError, setClickError] = useState('');
+  const [clickSuccess, setClickSuccess] = useState('');
+  const [clickCheck, setClickCheck] = useState(null);
+  const [checkingClick, setCheckingClick] = useState(false);
+  const [clearingClick, setClearingClick] = useState(false);
 
   const applyRow = useCallback((data) => {
     setSavedName(data?.shop_name || '');
@@ -64,14 +75,44 @@ const Settings = () => {
     }
   }, [applyRow, t]);
 
+  // Separate from `load()` on purpose: only an Admin may read the credentials, so a 403 here is a
+  // normal answer for some roles and must not surface as "settings failed to load".
+  const loadClick = useCallback(async () => {
+    setClickLoading(true);
+    try {
+      const { data } = await api.get('/settings/payment-providers/click/');
+      setClick(data);
+    } catch {
+      setClick(null);
+    } finally {
+      setClickLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadClick();
+  }, [load, loadClick]);
 
   const errorMessage = (err) => {
     const data = err.response?.data;
-    const msg = data?.shop_name?.[0] || data?.detail || data?.error || t('errors.saveFailed');
-    return typeof msg === 'string' ? msg : t('errors.saveFailed');
+    if (!data) return t('errors.saveFailed');
+    // A plain message, however this endpoint chose to name it.
+    const direct = data.detail || data.error;
+    if (typeof direct === 'string') return direct;
+    // Then any field error, whatever key it arrived under. This used to name `shop_name` and
+    // nothing else, which was fine while the page had one form: the credentials card returns a
+    // perfectly clear sentence under `enabled` — "Fill Merchant User ID before switching this
+    // provider on." — and the screen showed the generic "saving failed" instead, so the owner had
+    // no idea which box to fill and simply pressed Save again.
+    if (typeof data === 'object') {
+      const found = Object.values(data).find(
+        (v) => typeof v === 'string' || (Array.isArray(v) && typeof v[0] === 'string'),
+      );
+      if (typeof found === 'string') return found;
+      if (Array.isArray(found)) return found[0];
+    }
+    return t('errors.saveFailed');
   };
 
   const handleSaveName = async (values) => {
@@ -111,6 +152,59 @@ const Settings = () => {
       setFeaturesError(errorMessage(err));
     } finally {
       setSavingFeatures(false);
+    }
+  };
+
+  const handleSaveClick = async (values) => {
+    setClickError('');
+    setClickSuccess('');
+    // A stale "ready to go" panel beside freshly changed credentials would be a lie.
+    setClickCheck(null);
+    setSavingClick(true);
+    try {
+      const { data } = await api.patch('/settings/payment-providers/click/', values);
+      // From the response: the secret is never echoed, so `secret_set` is the only way the form
+      // learns that what it just sent was stored.
+      setClick(data);
+      setClickSuccess(t('saved'));
+    } catch (err) {
+      setClickError(errorMessage(err));
+    } finally {
+      setSavingClick(false);
+    }
+  };
+
+  const handleCheckClick = async () => {
+    setClickError('');
+    setCheckingClick(true);
+    try {
+      const { data } = await api.post('/settings/payment-providers/click/', { action: 'check' });
+      setClickCheck(data);
+    } catch (err) {
+      setClickError(errorMessage(err));
+    } finally {
+      setCheckingClick(false);
+    }
+  };
+
+  const handleClearClickSecret = async () => {
+    // Confirmed, because it switches the provider off: the till stops taking Click payments the
+    // moment this succeeds, and there is no undo short of typing the secret in again.
+    if (!window.confirm(t('click.confirmClear'))) return;
+    setClickError('');
+    setClickSuccess('');
+    setClickCheck(null);
+    setClearingClick(true);
+    try {
+      const { data } = await api.post(
+        '/settings/payment-providers/click/', { action: 'clear_secret' },
+      );
+      setClickSuccess(data?.message || t('saved'));
+      await loadClick();
+    } catch (err) {
+      setClickError(errorMessage(err));
+    } finally {
+      setClearingClick(false);
     }
   };
 
@@ -154,6 +248,52 @@ const Settings = () => {
           saving: t('form.saving'),
         }}
       />
+
+      {/* Hidden rather than shown-and-refused when the role cannot read it: `loadClick` swallows
+          the 403 and leaves `click` null, so a CEO sees the page without a card they cannot use. */}
+      {click ? (
+        <PaymentProviderForm
+          provider="click"
+          initial={click}
+          loading={clickLoading}
+          saving={savingClick}
+          checking={checkingClick}
+          clearing={clearingClick}
+          error={clickError}
+          success={clickSuccess}
+          checkResult={clickCheck}
+          onSave={handleSaveClick}
+          onCheck={handleCheckClick}
+          onClearSecret={handleClearClickSecret}
+          labels={{
+            loading: t('actions.loadingPage', { ns: 'common' }),
+            title: t('click.title'),
+            intro: t('click.intro'),
+            serviceId: t('click.serviceId'),
+            merchantUserId: t('click.merchantUserId'),
+            secretKey: t('click.secretKey'),
+            secretStored: t('click.secretStored'),
+            secretMissing: t('click.secretMissing'),
+            secretKeepHint: t('click.secretKeepHint'),
+            secretNewHint: t('click.secretNewHint'),
+            clearSecret: t('click.clearSecret'),
+            clearing: t('click.clearing'),
+            cashboxCode: t('click.cashboxCode'),
+            cashboxHint: t('click.cashboxHint'),
+            enabledLabel: t('click.enabledLabel'),
+            enabledHint: t('click.enabledHint'),
+            check: t('click.check'),
+            checking: t('click.checking'),
+            checkOk: t('click.checkOk'),
+            checkNotReady: t('click.checkNotReady'),
+            checkNoCharge: t('click.checkNoCharge'),
+            checkChecksSaved: t('click.checkChecksSaved'),
+            checkNeedsSave: t('click.checkNeedsSave'),
+            save: t('form.save'),
+            saving: t('form.saving'),
+          }}
+        />
+      ) : null}
     </div>
   );
 };

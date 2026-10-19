@@ -108,6 +108,9 @@ const STYLES = `
   .receipt__line { display: flex; justify-content: space-between; gap: 2mm; }
   .receipt__line span:last-child { white-space: nowrap; }
   .receipt__total { font-size: 13.5pt; font-weight: 700; }
+  /* Quieter than the totals above it. This block answers a different question -- not what the
+     purchase came to, but what changed hands -- and shouting it would compete with the total. */
+  .receipt__paid-title { margin-top: 2mm; font-size: 10.5pt; font-weight: 700; }
   /* The returned mark has to survive a thermal printer with no colour, so it leans on weight
      and a bracket rather than a tint the paper cannot show. */
   .receipt__returned { font-size: 9pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4pt; }
@@ -206,6 +209,41 @@ function summaryMarkup(receipt, labels) {
   return rows.join('');
 }
 
+/**
+ * How the purchase was paid, one line per method and currency.
+ *
+ * **Each amount prints in the currency it was actually paid in.** A sale priced in dollars is
+ * routinely settled in soum, and converting would print figures the customer never handed over --
+ * which is the one thing a receipt must not do. So a split sale can show two currencies, and that
+ * is correct rather than untidy.
+ *
+ * The server sends `cash` / `click` / `card`; the word comes from `labels`, so this module holds no
+ * language of its own and the chek prints in whatever the shop's interface is set to. A method it
+ * does not recognise falls back to the code itself rather than printing an empty line -- an
+ * unlabelled amount is still information, a blank one is a bug nobody can read.
+ */
+function paymentsMarkup(receipt, labels) {
+  const rows = [];
+  (receipt.payments || []).forEach((p) => {
+    const name = (labels.methods && labels.methods[p.method]) || p.method;
+    rows.push(`<div class="receipt__line"><span>${esc(name)}</span>`
+      + `<span>${esc(formatReceiptMoney(p.amount, p.currency))}</span></div>`);
+  });
+
+  // Change moves the other way from a payment: the lines above are what the shop kept, this is
+  // what went back across the counter. Netting them would make the cash line disagree with the
+  // notes the customer remembers handing over.
+  (receipt.change_given || []).forEach((c) => {
+    rows.push(`<div class="receipt__line"><span>${esc(labels.changeGiven)}</span>`
+      + `<span>-${esc(formatReceiptMoney(c.amount, c.currency))}</span></div>`);
+  });
+
+  if (!rows.length) return '';
+  return `<div class="receipt__rule"></div>
+      <div class="receipt__paid-title">${esc(labels.paidWith)}</div>
+      ${rows.join('')}`;
+}
+
 function creditMarkup(receipt, labels) {
   const owed = Number(receipt.credit_amount) || 0;
   if (owed <= 0) return '';
@@ -244,6 +282,7 @@ export function buildReceiptHtml(receipt, labels) {
       ${items}
       <div class="receipt__rule"></div>
       ${summaryMarkup(receipt, labels)}
+      ${paymentsMarkup(receipt, labels)}
       ${creditMarkup(receipt, labels)}
       <div class="receipt__foot">
         ${barcode}

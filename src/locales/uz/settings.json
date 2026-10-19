@@ -15,5 +15,30 @@
     "saveFailed": "Saqlanmadi. Qaytadan urinib ko‘ring."
   },
   "featuresTitle": "Imkoniyatlar",
-  "featuresIntro": "Do‘kon qaysi imkoniyatlardan foydalanadi. O‘chirilgan imkoniyat menyudan va shakllardan yo‘qoladi."
+  "featuresIntro": "Do‘kon qaysi imkoniyatlardan foydalanadi. O‘chirilgan imkoniyat menyudan va shakllardan yo‘qoladi.",
+  "click": {
+    "cashboxCode": "Kassa kodi",
+    "cashboxHint": "Qaysi kassa ekanini bildiradi. Click talab qilmasa, bo‘sh qoldiring.",
+    "check": "Tekshirish",
+    "checkChecksSaved": "Tekshirish saqlangan ma’lumotlarni tekshiradi.",
+    "checkNeedsSave": "O‘zgarishlar saqlanmagan — avval saqlang, keyin tekshiring.",
+    "checkNoCharge": "Bu tekshiruv hech qanday to‘lov yaratmaydi va Click’ga murojaat qilmaydi.",
+    "checkNotReady": "Hali tayyor emas.",
+    "checkOk": "Ma’lumotlar to‘liq.",
+    "checking": "Tekshirilmoqda…",
+    "clearSecret": "Kalitni o‘chirish",
+    "clearing": "O‘chirilmoqda…",
+    "confirmClear": "Maxfiy kalit o‘chiriladi va Click o‘chib qoladi — kassada Click orqali to‘lov qabul qilinmaydi. Davom etasizmi?",
+    "enabledHint": "O‘chirilgan bo‘lsa, kassada Click tugmasi chiqmaydi. Ma’lumotlar to‘liq bo‘lmaguncha yoqib bo‘lmaydi.",
+    "enabledLabel": "Click Pass yoqilgan",
+    "intro": "Click merchant ma’lumotlari. Har bir do‘kon o‘zining ma’lumotini kiritadi. Maxfiy kalit shifrlangan holda saqlanadi va qayta ko‘rsatilmaydi.",
+    "merchantUserId": "Merchant User ID",
+    "secretKeepHint": "Kalit saqlangan. Bo‘sh qoldirsangiz o‘zgarmaydi; yangisini kiritsangiz almashtiriladi.",
+    "secretKey": "Maxfiy kalit (Secret Key)",
+    "secretMissing": "Kiritilmagan",
+    "secretNewHint": "Click kabinetidan olingan maxfiy kalitni kiriting.",
+    "secretStored": "Saqlangan — o‘zgartirmasangiz, bo‘sh qoldiring",
+    "serviceId": "Service ID",
+    "title": "Click Pass — to‘lov tizimi"
+  }
 }

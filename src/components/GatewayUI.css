@@ -1,0 +1,407 @@
+/*
+  The Click payment surfaces: the two summary panels in the payment window, and the per-row action
+  panels on Click to'lovlari.
+
+  These started as inline styles written while the behaviour was being worked out. They are classes
+  now for the reason the rest of this project keeps its CSS in files: an inline `style` cannot carry
+  a media query, so none of it adapted to a phone, and the action rows on the payments page are
+  exactly where a narrow screen hurts most -- a row can show four buttons and a text field.
+
+  Colour meanings are the ones already used across the app, so they read without a legend:
+  green is money that arrived, amber is something waiting on a person, red is destructive.
+*/
+
+/* -- the two summary panels in the payment window ----------------------------------------- */
+
+.gw-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 5px;
+  border-left: 3px solid transparent;
+}
+
+.gw-panel__title {
+  display: block;
+  font-size: 0.92em;
+  font-weight: 600;
+}
+
+.gw-panel__body {
+  margin: 4px 0 0;
+  font-size: 0.88em;
+  color: #444;
+}
+
+.gw-panel__list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 0.88em;
+}
+
+.gw-panel__list li + li {
+  margin-top: 2px;
+}
+
+/* Money that has actually arrived. */
+.gw-panel--paid {
+  background: #f0fdf4;
+  border-left-color: #15803d;
+}
+
+.gw-panel--paid .gw-panel__title {
+  color: #15803d;
+}
+
+/* Charges still waiting on an answer. **No total is ever shown here** -- nobody knows whether
+   that money exists, and a figure would imply it does. */
+.gw-panel--blocked {
+  background: #fffbeb;
+  border-left-color: #b45309;
+}
+
+.gw-panel--blocked .gw-panel__title {
+  color: #b45309;
+}
+
+/* A provider's own words, kept beside our translation rather than instead of it: the cashier may
+   have to read the exact wording back to the customer or to Click's support. */
+.gw-provider-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.85em;
+  color: #666;
+  font-style: italic;
+}
+
+/* -- the per-row action area on Click to'lovlari ------------------------------------------- */
+
+.gw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+/*
+  The panel that opens under a row for entering Click's id, or for closing a charge by hand.
+
+  Indented and ruled so it is unmistakably *about the row above it*. Both panels can be opened from
+  the same row, and in a wide table it is otherwise easy to type into one while reading the other.
+*/
+.gw-form {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid #ccc;
+  background: #fafafa;
+  border-radius: 0 5px 5px 0;
+  max-width: 560px;
+}
+
+.gw-form--danger {
+  border-left-color: #e74c3c;
+  background: #fdf2f2;
+}
+
+.gw-form__label {
+  display: block;
+  font-size: 0.88em;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.gw-form__hint {
+  margin: 0 0 8px;
+  font-size: 0.85em;
+  color: #555;
+  line-height: 1.45;
+}
+
+.gw-form__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.gw-form__input {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.gw-form__input:focus {
+  outline: 2px solid #2980b9;
+  outline-offset: 1px;
+  border-color: #2980b9;
+}
+
+.gw-form__input--id {
+  font-family: monospace;
+  flex: 0 1 180px;
+}
+
+/* Says why the confirm button is still disabled, instead of leaving the user to guess. */
+.gw-form__requirement {
+  margin: 6px 0 0;
+  font-size: 0.82em;
+  color: #b45309;
+}
+
+.gw-ref {
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.gw-num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The failure reason column: long enough to read, bounded so one Click message cannot push the
+   action buttons off the side of the table. */
+.gw-reason {
+  max-width: 260px;
+  font-size: 0.88em;
+  color: #555;
+}
+
+/* -- phones ------------------------------------------------------------------------------- */
+
+@media (max-width: 600px) {
+  .gw-form {
+    max-width: none;
+  }
+
+  .gw-form__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .gw-form__input,
+  .gw-form__input--id {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  /* Full-width targets, matching what the dialog buttons already do on a narrow screen. */
+  .gw-form__row .btn-dialog,
+  .gw-actions .btn-dialog {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
+/* -- the scan-first charge window ---------------------------------------------------------- */
+
+/*
+  The scan field, off-screen but **focusable**.
+
+  Not `display:none` and not `visibility:hidden`: both remove an element from the focus order, and
+  a field that cannot hold focus cannot receive what a keyboard-wedge scanner types. This is the
+  standard clipping technique -- the browser still treats it as a real focused input, so the QR
+  payload arrives exactly as the scanner sent it, with no timing heuristics guessing where a scan
+  begins and ends.
+*/
+.gw-scan-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.gw-scan-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 5px;
+  background: #eff6ff;
+  border: 1px dashed #93c5fd;
+}
+
+.gw-scan-status strong {
+  color: #1d4ed8;
+  font-size: 0.95em;
+}
+
+/* A quiet sign that the window is listening. Without it a waiting state and a frozen one look
+   identical, and the cashier's only recourse is to press something. */
+.gw-scan-status__dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #2563eb;
+  animation: gw-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes gw-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.75); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gw-scan-status__dot {
+    animation: none;
+  }
+}
+
+/* The way back to typing. Styled as a link because it is an escape hatch, not a step. */
+.gw-link-button {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: 0.85em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.gw-link-button:hover {
+  color: #1d4ed8;
+}
+
+.gw-link-button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/*
+  The charge window positions itself, instead of relying on the shared overlay to centre it.
+
+  **Why this one dialog opts out.** Every other dialog in the app is centred by `.modal-overlay`'s
+  flex layout plus `margin: auto`, and that works -- the sale window behind this one sits dead
+  centre. This dialog, rendered from inside that one, kept landing hard against the left edge with
+  its first few pixels off the screen. Same overlay class, same portal target, same stylesheet, so
+  the two should be laid out identically; I could not reproduce the difference away from the
+  owner's screen, and guessing at it twice had already wasted his time.
+
+  So it stops depending on that layout at all. `position: fixed` with a half-translate is centred
+  by its own geometry: it needs nothing from its parent, and there is no free space for a flex
+  calculation to put in the wrong place. The only thing that could still move it is a transformed
+  ancestor, and the overlay would be anchored to the same one.
+
+  Width still comes from `Modal`'s `width` prop, which it applies inline -- no class can override
+  that, which is what made an earlier `max-width` rule here dead code.
+*/
+.gw-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* Taller than the screen is possible once a decline message and a payment list are both
+     showing, so the dialog scrolls rather than running off the top where it cannot be reached. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  min-width: 0;
+}
+
+/* -- the price summary, read across ------------------------------------------------------- */
+
+/*
+  Four readings of the same price. Stacked, they took a quarter of the window to say so; read
+  across, the relationship between them is the obvious thing rather than something to assemble.
+  Wraps rather than shrinks, so a long line breaks where it runs out of room instead of squeezing
+  the figures together.
+*/
+.pay-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  align-items: baseline;
+}
+
+/* The figure the cashier is actually working to. */
+.pay-summary__due {
+  color: #1d4ed8;
+}
+
+/* -- how the soum is divided --------------------------------------------------------------- */
+
+/*
+  One column per method: name, amount, button, and the confirmation underneath it once that part
+  is collected. A grid rather than a flex row so every column is the same width and the buttons
+  line up across them -- a row of buttons at different heights reads as a row of different things.
+*/
+.pay-methods {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.pay-method {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pay-method__name {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: #334155;
+}
+
+.pay-method__amount {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Cash is shown rather than asked for -- it is whatever the other methods have not taken. Styled
+   as a reading, not a field, so nobody tries to type into it. */
+.pay-method__amount[readonly] {
+  background: #f1f5f9;
+  font-weight: 600;
+  cursor: default;
+}
+
+.pay-method__amount:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.pay-method__button {
+  width: 100%;
+}
+
+.pay-method__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Collected. Green because it is the one state the cashier is working towards, and it stays put
+   while the rest of the sale is settled rather than flashing past. */
+.pay-method__done {
+  font-size: 0.82em;
+  font-weight: 600;
+  color: #15803d;
+  line-height: 1.35;
+}
+
+@media (max-width: 600px) {
+  .pay-methods {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
+
+  .pay-method__button {
+    min-height: 44px;
+  }
+}

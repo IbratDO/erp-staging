@@ -401,6 +401,13 @@ export default function Pos() {
         refundPending: tr('receipt.refundPending'),
         refundedTotal: tr('receipt.refundedTotal'),
         netTotal: tr('receipt.netTotal'),
+        paidWith: tr('receipt.paidWith'),
+        changeGiven: tr('receipt.changeGiven'),
+        methods: {
+          cash: tr('receipt.methodCash'),
+          click: tr('receipt.methodClick'),
+          card: tr('receipt.methodCard'),
+        },
       });
       if (html) printHtmlDocument(html);
     } catch {

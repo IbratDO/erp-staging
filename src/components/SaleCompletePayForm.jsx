@@ -1,8 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import BusyForm, { SubmitButton } from './BusyForm';
 import Modal from './Modal';
 import usePermissions from '../hooks/usePermissions';
 import AmountInput from './AmountInput';
+import ClickChargeModal from './ClickChargeModal';
+import './GatewayUI.css';
+import gatewayApi from '../utils/gatewayPayApi';
+import {
+  cashShare,
+  METHODS,
+  methodsSettled,
+  overAllocated,
+  toAmount as methodAmount,
+} from '../utils/paymentMethods';
+import {
+  completionBlock,
+  failureText,
+  isPending,
+  totalUsable,
+  withGatewayRefs,
+  withGatewayRefsOnEveryLine,
+} from '../utils/gatewayPayHelpers';
 import SaleChangeFields from './SaleChangeFields';
 import api from '../utils/api';
 import { formatDisplayAmount } from '../utils/currencyFormat';
@@ -39,6 +57,44 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   const [paymentFormData, setPaymentFormData] = useState(() => emptyPaymentFormState());
   const [exchangeRate, setExchangeRate] = useState(null);
   const [exchangeRateError, setExchangeRateError] = useState(null);
+
+  // Gateway charges already taken for this sale. Loaded on open, which is the resume-after-a-crash
+  // path: the till creates its sale rows before this window opens, so a crash kills the browser and
+  // not the sale. Reopening it has to show what has already been paid, or the cashier charges the
+  // customer a second time for money sitting right there.
+  const [gatewayPayments, setGatewayPayments] = useState([]);
+  const [clickOpen, setClickOpen] = useState(false);
+  const [clickBusy, setClickBusy] = useState(false);
+  const [clickError, setClickError] = useState('');
+  const [lastClickPayment, setLastClickPayment] = useState(null);
+  // What the cashier intends to put on each method. Cash is absent on purpose -- it is the
+  // remainder of the soum, computed rather than typed.
+  const [methodAmounts, setMethodAmounts] = useState({});
+  // A person saying they have the notes in hand. Nothing is written when it is pressed; the sale
+  // still records money in one moment, when it is completed.
+  const [cashConfirmed, setCashConfirmed] = useState(false);
+
+  const loadGatewayPayments = useCallback(async () => {
+    // Guarded rather than conditioned on by the caller: these hooks sit above the component's
+    // `if (!sale) return null`, because hooks must run in the same order on every render.
+    if (!sale) return;
+    try {
+      const { data } = await gatewayApi.forSale(api, {
+        saleId: sale.id,
+        saleGroupId: groupSales?.length ? sale.sale_group : null,
+      });
+      setGatewayPayments(data?.results || []);
+    } catch {
+      // A role without the permission, or Click switched off. Not an error worth showing: the
+      // button simply will not appear, and a cash sale is unaffected.
+      setGatewayPayments([]);
+    }
+  }, [sale, groupSales?.length]);
+
+  useEffect(() => {
+    loadGatewayPayments();
+  }, [loadGatewayPayments]);
+
 
   useEffect(() => {
     if (!sale) {
@@ -268,9 +324,39 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         return;
       }
 
-      const requestData = buildCompleteSaleRequest(effForm, effMeta, exchangeRate);
+      // **Withheld while any Click charge is unresolved.** Completing against a charge that may not
+      // have succeeded credits the till with money the shop might not have, and every report
+      // downstream believes it. The opposite failure -- Click paid and the sale still open -- is
+      // visible, blocks nothing and is recoverable from the needs-check list.
+      // Every part of the soum has to have been collected, each by its own kind of evidence: the
+      // drawer by a person who looked in it, Click by Click. A sale completed short credits the
+      // till with money the shop does not have, and every report downstream believes it.
+      if (!methodState.ready) {
+        showNotification(
+          methodState.missing.includes('over')
+            ? t('gateway.overAllocated')
+            : t('gateway.errNotCollected'),
+          'error',
+        );
+        return;
+      }
+      const gatewayBlock = completionBlock(gatewayPayments);
+      if (gatewayBlock.blocked) {
+        showNotification(t('gateway.errUnresolved', { count: gatewayBlock.count }), 'error');
+        return;
+      }
+
+      // References only -- never an amount. The server moves the matching slice from the cash leg
+      // to the card leg itself, from charges it made and recorded; a `uzs_card` figure sent from
+      // here would be folded straight back into cash by its sanitiser.
+      const requestData = withGatewayRefs(
+        buildCompleteSaleRequest(effForm, effMeta, exchangeRate), gatewayPayments,
+      );
       if (groupSales?.length) {
-        const requests = buildGroupCompleteRequests(groupSales, effForm, effMeta, exchangeRate);
+        const requests = withGatewayRefsOnEveryLine(
+          buildGroupCompleteRequests(groupSales, effForm, effMeta, exchangeRate),
+          gatewayPayments,
+        );
         for (const req of requests) {
           await api.post(`/sales/${req.id}/update_status/`, req.data);
         }
@@ -287,9 +373,124 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
     }
   };
 
+  const handleClickCharge = async ({ otpData, amountUzs, idempotencyKey }) => {
+    setClickError('');
+    setClickBusy(true);
+    try {
+      const { data } = await gatewayApi.charge(api, {
+        otpData,
+        amountUzs,
+        idempotencyKey,
+        saleId: sale.id,
+        saleGroupId: groupSales?.length ? sale.sale_group : null,
+      });
+      setLastClickPayment(data);
+      await loadGatewayPayments();
+      if (data?.consumable) {
+        // Paid. The window closes and the cashier carries on with any cash -- but **only now that
+        // the payment window behind it states the amount in green**. Closing on its own was the
+        // whole of the feedback during the first live payment, and it read as nothing happening.
+        setClickOpen(false);
+        showNotification(
+          t('gateway.taken', {
+            amount: Number(data.amount_uzs).toLocaleString(
+              undefined, { maximumFractionDigits: 0 },
+            ),
+          }),
+          'success',
+        );
+      }
+    } catch (err) {
+      setClickError(
+        err.response?.data?.error
+        || err.response?.data?.otp_data?.[0]
+        || err.response?.data?.amount_uzs?.[0]
+        || err.response?.data?.detail
+        || t('gateway.errCharge'),
+      );
+    } finally {
+      setClickBusy(false);
+    }
+  };
+
+  const handleClickCheck = async (ref) => {
+    setClickError('');
+    setClickBusy(true);
+    try {
+      const { data } = await gatewayApi.refresh(api, ref);
+      setLastClickPayment(data);
+      await loadGatewayPayments();
+    } catch (err) {
+      setClickError(err.response?.data?.error || t('gateway.errCheck'));
+    } finally {
+      setClickBusy(false);
+    }
+  };
+
   const handleCancel = () => {
     setPaymentFormData(emptyPaymentFormState());
     onClose?.();
+  };
+
+  // The soum the sale is taking, which is what the method row divides up. Read from the form's
+  // own box rather than recomputed, so the two can never disagree about the total.
+  const uzsPosted = methodAmount(paymentFormData.uzs);
+  const cashDue = cashShare(uzsPosted, methodAmounts);
+  const clickTakenUzs = totalUsable(gatewayPayments);
+  const methodState = methodsSettled({
+    uzsPosted, amounts: methodAmounts, cashConfirmed, clickTakenUzs,
+  });
+
+  const setMethodAmount = (method, value) => {
+    setMethodAmounts((prev) => ({ ...prev, [method]: value }));
+    // Any change to the split means the drawer figure has changed, so a tick given for the old
+    // figure no longer means anything. Making the cashier look again is the point.
+    setCashConfirmed(false);
+  };
+
+  // What to suggest charging, in soum. The sale is usually priced in dollars, so this goes through
+  // the rate the form already holds rather than forming a second opinion about it.
+  const clickDueUzs = (() => {
+    const due = shortfallMeta?.due;
+    if (due == null || Number.isNaN(due)) return 0;
+    if (shortfallMeta.sc === 'UZS') return Math.round(due);
+    const rate = parseFloat(exchangeRate?.rate);
+    return Number.isFinite(rate) && rate > 0 ? Math.round(due * rate) : 0;
+  })();
+
+  const clickLabels = {
+    title: t('gateway.title'),
+    intro: t('gateway.intro'),
+    close: t('actions.close', { ns: 'common' }),
+    amount: t('gateway.amount'),
+    amountHint: t('gateway.amountHint'),
+    scan: t('gateway.scan'),
+    scanHint: t('gateway.scanHint'),
+    waitingForScan: t('gateway.waitingForScan'),
+    typeByHand: t('gateway.typeByHand'),
+    chargeButton: t('gateway.chargeButton'),
+    charging: t('gateway.charging'),
+    check: t('gateway.check'),
+    checking: t('gateway.checking'),
+    tryAgain: t('gateway.tryAgain'),
+    alreadyTaken: t('gateway.alreadyTaken'),
+    soum: t('currency.uzs', { ns: 'common' }),
+    unresolvedTitle: t('gateway.unresolvedTitle'),
+    unresolvedBody: t('gateway.unresolvedBody'),
+    declinedTitle: t('gateway.declinedTitle'),
+    declinedBody: t('gateway.declinedBody'),
+    // Resolved here rather than inside the dialog so the precedence between our wording and the
+    // provider's lives in one tested helper instead of in a component.
+    ...(() => {
+      const { text, note } = failureText(lastClickPayment, t);
+      return { failureText: text, failureNote: note };
+    })(),
+    statePaid: t('gateway.statePaid'),
+    stateFailed: t('gateway.stateFailed'),
+    statePending: t('gateway.statePending'),
+    stateOwed: t('gateway.stateOwed'),
+    stateReversed: t('gateway.stateReversed'),
+    stateUnknown: t('gateway.stateUnknown'),
   };
 
   // The caller only renders this component when there is a sale to settle, so it is open
@@ -320,24 +521,29 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           lineHeight: 1.5,
         }}
       >
-        <div>
-          <strong>{t('completePay.listPrice')}</strong> {formatDisplayAmount(listUnit, sc)}{' '}
-          {t('completePay.perUnit')}
-          {qty > 1 ? ` · ${formatDisplayAmount(listTotal, sc)} ${t('completePay.total')}` : ''}
-        </div>
-        <div>
-          <strong>{t('completePay.discount')}</strong> {formatDisplayAmount(discountAmountPerUnit, sc)}{' '}
-          {t('completePay.perUnit')}
-          {saleDiscountTotal > 0 && qty > 1
-            ? ` · ${formatDisplayAmount(saleDiscountTotal, sc)} ${t('completePay.total')}`
-            : ''}
-        </div>
-        <div>
-          <strong>{t('completePay.finalPrice')}</strong> {formatDisplayAmount(finalUnit, sc)}{' '}
-          {t('completePay.perUnit')}
-        </div>
-        <div>
-          <strong>{t('completePay.amountDue')}</strong> {formatDisplayAmount(finalDue, sc)}
+        {/* One line rather than four. These are four readings of the same price and they were
+            taking a quarter of the window to say so; read across, the relationship between them
+            is the obvious thing instead of something to assemble. */}
+        <div className="pay-summary">
+          <span>
+            <strong>{t('completePay.listPrice')}</strong> {formatDisplayAmount(listUnit, sc)}{' '}
+            {t('completePay.perUnit')}
+            {qty > 1 ? ` · ${formatDisplayAmount(listTotal, sc)} ${t('completePay.total')}` : ''}
+          </span>
+          <span>
+            <strong>{t('completePay.discount')}</strong>{' '}
+            {formatDisplayAmount(discountAmountPerUnit, sc)} {t('completePay.perUnit')}
+            {saleDiscountTotal > 0 && qty > 1
+              ? ` · ${formatDisplayAmount(saleDiscountTotal, sc)} ${t('completePay.total')}`
+              : ''}
+          </span>
+          <span>
+            <strong>{t('completePay.finalPrice')}</strong> {formatDisplayAmount(finalUnit, sc)}{' '}
+            {t('completePay.perUnit')}
+          </span>
+          <span className="pay-summary__due">
+            <strong>{t('completePay.amountDue')}</strong> {formatDisplayAmount(finalDue, sc)}
+          </span>
         </div>
       </div>
       <BusyForm onSubmit={handleSubmit}>
@@ -651,13 +857,116 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
             <label>{t('completePay.notes')}</label>
             <textarea
-              rows={3}
+              rows={2}
               value={paymentFormData.completion_notes ?? ''}
               onChange={(e) => setPaymentFormData({ ...paymentFormData, completion_notes: e.target.value })}
             />
             <small style={{ color: '#666', marginTop: '5px', display: 'block' }}>
               {shortfallMeta.needs ? t('completePay.notesDiscountHint') : t('completePay.notesOptional')}
             </small>
+          </div>
+
+          {/*
+            How the soum is divided, and how each part is confirmed.
+
+            **Cash is the remainder.** Every other method is entered deliberately and what is left
+            is what the drawer must receive, so the parts cannot fail to add up to the total --
+            there is no second number to disagree with.
+
+            **The two buttons mean different things.** `To'landi` is a person saying they looked in
+            the drawer: a tick, nothing written, and the sale still records money in one moment
+            when it is completed. `Qabul qilish` on Click opens the scanner and really takes money.
+            So what the cashier typed into the Click box counts for nothing on its own -- only
+            Click's own answer settles that part.
+          */}
+          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+            <label>{t('gateway.methods')}</label>
+            <div className="pay-methods">
+              {METHODS.map((method) => {
+                const live = method === 'cash' || method === 'click';
+                const isCash = method === 'cash';
+                const value = isCash
+                  ? Math.round(cashDue).toString()
+                  : (methodAmounts[method] ?? '');
+                const takenHere = isCash ? cashConfirmed : clickTakenUzs > 0;
+                return (
+                  <div className="pay-method" key={method}>
+                    <span className="pay-method__name">
+                      {t(`gateway.method_${method}`)}
+                      {live ? '' : ` · ${t('gateway.comingSoon')}`}
+                    </span>
+                    <input
+                      className="pay-method__amount"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={value}
+                      // Cash is shown, not asked for: it is whatever the other methods have not
+                      // taken, so letting it be typed would invite a split that does not add up.
+                      readOnly={isCash}
+                      disabled={!live}
+                      onChange={(e) => setMethodAmount(method, e.target.value)}
+                      aria-label={t(`gateway.method_${method}`)}
+                    />
+                    {isCash ? (
+                      <button
+                        type="button"
+                        className="btn-primary btn-dialog pay-method__button"
+                        disabled={cashDue <= 0 || cashConfirmed}
+                        onClick={() => setCashConfirmed(true)}
+                      >
+                        {t('gateway.markPaid')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-edit btn-dialog pay-method__button"
+                        disabled={!live || methodAmount(methodAmounts[method]) <= 0}
+                        title={live ? undefined : t('gateway.comingSoon')}
+                        onClick={() => {
+                          setClickError('');
+                          setLastClickPayment(null);
+                          setClickOpen(true);
+                        }}
+                      >
+                        {t('gateway.accept')}
+                      </button>
+                    )}
+                    {takenHere ? (
+                      <span className="pay-method__done">
+                        {isCash
+                          ? t('gateway.cashCollected')
+                          : t('gateway.clickCollected', {
+                            amount: clickTakenUzs.toLocaleString(
+                              undefined, { maximumFractionDigits: 0 },
+                            ),
+                          })}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            {overAllocated(uzsPosted, methodAmounts) ? (
+              <div className="error-message" style={{ marginTop: 8 }}>
+                {t('gateway.overAllocated')}
+              </div>
+            ) : null}
+
+            {/* The charges that stop Yakunlash. Stated separately from money in hand, with the
+                amount **not** added up: nobody knows whether that money exists, and showing a
+                total would imply it does. */}
+            {gatewayPayments.some(isPending) ? (
+              <div className="form-card gw-panel gw-panel--blocked">
+                <strong className="gw-panel__title">
+                  {t('gateway.blockingTitle', {
+                    count: gatewayPayments.filter(isPending).length,
+                  })}
+                </strong>
+                <p className="gw-panel__body">{t('gateway.blockingBody')}</p>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="form-actions">
@@ -669,6 +978,24 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           </button>
         </div>
       </BusyForm>
+
+      {/* Outside the completion form on purpose: a form nested in a form is invalid HTML, and the
+          inner submit would bubble up and complete the sale instead of charging the card. */}
+      <ClickChargeModal
+        open={clickOpen}
+        onClose={() => setClickOpen(false)}
+        // The amount typed into the Click box, when there is one: the cashier has already decided
+        // how much of this sale goes on Click, and re-suggesting the whole sale would invite
+        // charging the customer for the cash part as well.
+        dueUzs={methodAmount(methodAmounts.click) || clickDueUzs}
+        payments={gatewayPayments}
+        busy={clickBusy}
+        error={clickError}
+        lastPayment={lastClickPayment}
+        onCharge={handleClickCharge}
+        onCheck={handleClickCheck}
+        labels={clickLabels}
+      />
     </Modal>
   );
 }

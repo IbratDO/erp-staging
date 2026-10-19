@@ -15,5 +15,30 @@
     "saveFailed": "Could not save. Please try again."
   },
   "featuresTitle": "Features",
-  "featuresIntro": "Which features this shop uses. A feature switched off disappears from the menu and from the forms."
+  "featuresIntro": "Which features this shop uses. A feature switched off disappears from the menu and from the forms.",
+  "click": {
+    "cashboxCode": "Cashbox code",
+    "cashboxHint": "Says which till this is. Leave empty if Click does not ask for one.",
+    "check": "Check",
+    "checkChecksSaved": "The check looks at what is saved.",
+    "checkNeedsSave": "There are unsaved changes — save first, then check.",
+    "checkNoCharge": "This check creates no payment and does not contact Click.",
+    "checkNotReady": "Not ready yet.",
+    "checkOk": "The details look complete.",
+    "checking": "Checking…",
+    "clearSecret": "Delete the key",
+    "clearing": "Deleting…",
+    "confirmClear": "The secret key will be deleted and Click will be switched off — the till will stop taking Click payments. Continue?",
+    "enabledHint": "Off: no Click button appears at the till. It cannot be switched on until the details are filled in.",
+    "enabledLabel": "Click Pass is on",
+    "intro": "This shop's Click merchant details. Each installation has its own. The secret key is stored encrypted and is never shown back.",
+    "merchantUserId": "Merchant User ID",
+    "secretKeepHint": "A key is stored. Leaving this empty changes nothing; type a new one to replace it.",
+    "secretKey": "Secret key",
+    "secretMissing": "Not set",
+    "secretNewHint": "Paste the secret key from your Click cabinet.",
+    "secretStored": "Stored — leave empty to keep it",
+    "serviceId": "Service ID",
+    "title": "Click Pass — payment provider"
+  }
 }

@@ -20,6 +20,7 @@ import Returns from './pages/Returns';
 import Finance from './pages/Finance';
 import ReceivablesPayables from './pages/ReceivablesPayables';
 import CreditSales from './pages/CreditSales';
+import GatewayPayments from './pages/GatewayPayments';
 import Equity from './pages/Equity';
 import FixedAssets from './pages/FixedAssets';
 import ProfitLoss from './pages/ProfitLoss';
@@ -160,6 +161,14 @@ function App() {
                 element={
                   <ProtectedRoute permission="credit_sales.view">
                     <CreditSales />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="gateway-payments"
+                element={
+                  <ProtectedRoute permission="gateway.view_pending">
+                    <GatewayPayments />
                   </ProtectedRoute>
                 }
               />
