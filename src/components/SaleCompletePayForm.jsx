@@ -9,6 +9,7 @@ import gatewayApi from '../utils/gatewayPayApi';
 import {
   cashShare,
   formatGrouped,
+  LIVE_METHODS,
   methodsSettled,
   overAllocated,
   parseGrouped,
@@ -66,6 +67,9 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // customer a second time for money sitting right there.
   const [gatewayPayments, setGatewayPayments] = useState([]);
   const [clickOpen, setClickOpen] = useState(false);
+  // Which provider the scan window is charging. The gesture is the same for both, so one
+  // window serves both rather than a second copy that drifts.
+  const [scanProvider, setScanProvider] = useState('click');
   const [clickBusy, setClickBusy] = useState(false);
   const [clickError, setClickError] = useState('');
   const [lastClickPayment, setLastClickPayment] = useState(null);
@@ -392,6 +396,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         otpData,
         amountUzs,
         idempotencyKey,
+        provider: scanProvider,
         saleId: sale.id,
         saleGroupId: groupSales?.length ? sale.sale_group : null,
       });
@@ -432,7 +437,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
       setLastClickPayment(data);
       await loadGatewayPayments();
     } catch (err) {
-      setClickError(err.response?.data?.error || t('gateway.errCheck'));
+      setClickError(err.response?.data?.error || t('gateway.errCheck', { provider: providerName }));
     } finally {
       setClickBusy(false);
     }
@@ -475,27 +480,30 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
     return Number.isFinite(rate) && rate > 0 ? Math.round(due * rate) : 0;
   })();
 
+  // Named for the provider being charged, so a Payme window does not say Click. The scan
+  // instructions and the waiting state are identical for both, because the gesture is.
+  const providerName = t(`gateway.method_${scanProvider}`);
   const clickLabels = {
-    title: t('gateway.title'),
-    intro: t('gateway.intro'),
+    title: t('gateway.titleFor', { provider: providerName }),
+    intro: t('gateway.introFor', { provider: providerName }),
     close: t('actions.close', { ns: 'common' }),
     amount: t('gateway.amount'),
     amountHint: t('gateway.amountHint'),
     scan: t('gateway.scan'),
-    scanHint: t('gateway.scanHint'),
+    scanHint: t('gateway.scanHintFor', { provider: providerName }),
     waitingForScan: t('gateway.waitingForScan'),
     typeByHand: t('gateway.typeByHand'),
     chargeButton: t('gateway.chargeButton'),
     charging: t('gateway.charging'),
-    check: t('gateway.check'),
+    check: t('gateway.check', { provider: providerName }),
     checking: t('gateway.checking'),
     tryAgain: t('gateway.tryAgain'),
     alreadyTaken: t('gateway.alreadyTaken'),
     soum: t('currency.uzs', { ns: 'common' }),
     unresolvedTitle: t('gateway.unresolvedTitle'),
-    unresolvedBody: t('gateway.unresolvedBody'),
+    unresolvedBody: t('gateway.unresolvedBody', { provider: providerName }),
     declinedTitle: t('gateway.declinedTitle'),
-    declinedBody: t('gateway.declinedBody'),
+    declinedBody: t('gateway.declinedBody', { provider: providerName }),
     // Resolved here rather than inside the dialog so the precedence between our wording and the
     // provider's lives in one tested helper instead of in a component.
     ...(() => {
@@ -900,7 +908,10 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
             <label>{t('gateway.methods')}</label>
             <div className="pay-methods">
               {ROW_METHODS.map((method) => {
-                const live = method === 'cash' || method === 'cash_usd' || method === 'click';
+                // From the shared list, not restated here. Restating it is why adding Payme to
+                // `LIVE_METHODS` left the column greyed: the constant and the till disagreed, and
+                // only the till was visible.
+                const live = LIVE_METHODS.includes(method);
                 const isCash = method === 'cash';
                 const isUsd = method === 'cash_usd';
                 // Both cash columns are shown rather than asked for: soum is the remainder of the
@@ -952,6 +963,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                         onClick={() => {
                           setClickError('');
                           setLastClickPayment(null);
+                          setScanProvider(method);
                           setClickOpen(true);
                         }}
                       >
@@ -1013,7 +1025,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         // The amount typed into the Click box, when there is one: the cashier has already decided
         // how much of this sale goes on Click, and re-suggesting the whole sale would invite
         // charging the customer for the cash part as well.
-        dueUzs={methodAmount(methodAmounts.click) || clickDueUzs}
+        dueUzs={methodAmount(methodAmounts[scanProvider]) || clickDueUzs}
         payments={gatewayPayments}
         busy={clickBusy}
         error={clickError}

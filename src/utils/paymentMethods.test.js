@@ -139,10 +139,20 @@ describe('which methods are offered', () => {
     expect(METHODS).toEqual(['cash', 'click', 'payme', 'humo', 'uzcard']);
   });
 
-  it('only lets two of them be used', () => {
-    // The other three have no integration. The backend refuses them as well — a greyed button is
-    // a courtesy, not a control.
-    expect(LIVE_METHODS).toEqual(['cash', 'click']);
+  it('only lets the ones with an adapter behind them be used', () => {
+    // HUMO and UZCARD have no integration. The backend refuses them as well — a greyed button is
+    // a courtesy, not a control. Payme joined this list when its adapter landed, and is still
+    // gated behind the shop's own switch and `gateway.charge`.
+    expect(LIVE_METHODS).toEqual(['cash', 'cash_usd', 'click', 'payme']);
+    expect(LIVE_METHODS).not.toContain('humo');
+    expect(LIVE_METHODS).not.toContain('uzcard');
+  });
+
+  it('shows every live method as a column', () => {
+    // A provider that can be charged but has no column is one a cashier cannot reach.
+    LIVE_METHODS.filter((m) => m !== 'cash').forEach((method) => {
+      expect(ROW_METHODS).toContain(method);
+    });
   });
 });
 

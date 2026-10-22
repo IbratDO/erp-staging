@@ -6,7 +6,8 @@ import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../hooks/usePermissions';
 import ShopSettingsForm from './ShopSettingsForm';
 import ShopFeaturesForm from './ShopFeaturesForm';
-import PaymentProviderForm from './PaymentProviderForm';
+import PaymentProviderForm, { CLICK_FIELDS, PAYME_FIELDS } from './PaymentProviderForm';
+import useProviderCredentials from '../hooks/useProviderCredentials';
 
 /**
  * Sozlamalar — what the shop is called, and what it does.
@@ -49,14 +50,12 @@ const Settings = () => {
   const [featuresSuccess, setFeaturesSuccess] = useState('');
   // Its own set again, for the same reason: a failed credential save must not paint an error
   // across the shop's name.
-  const [click, setClick] = useState(null);
-  const [clickLoading, setClickLoading] = useState(true);
-  const [savingClick, setSavingClick] = useState(false);
-  const [clickError, setClickError] = useState('');
-  const [clickSuccess, setClickSuccess] = useState('');
-  const [clickCheck, setClickCheck] = useState(null);
-  const [checkingClick, setCheckingClick] = useState(false);
-  const [clearingClick, setClearingClick] = useState(false);
+  // One hook per provider, each with its own row, flags and messages. Click's version was nine
+  // `useState` calls and four handlers written out longhand here; Payme would have been a second
+  // copy of all of it, which is how two cards end up behaving differently after a fix lands in
+  // only one of them.
+  const click = useProviderCredentials('click');
+  const payme = useProviderCredentials('payme');
 
   const applyRow = useCallback((data) => {
     setSavedName(data?.shop_name || '');
@@ -75,24 +74,13 @@ const Settings = () => {
     }
   }, [applyRow, t]);
 
-  // Separate from `load()` on purpose: only an Admin may read the credentials, so a 403 here is a
-  // normal answer for some roles and must not surface as "settings failed to load".
-  const loadClick = useCallback(async () => {
-    setClickLoading(true);
-    try {
-      const { data } = await api.get('/settings/payment-providers/click/');
-      setClick(data);
-    } catch {
-      setClick(null);
-    } finally {
-      setClickLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     load();
-    loadClick();
-  }, [load, loadClick]);
+    // The provider cards load themselves -- see `useProviderCredentials`. Deliberately not here:
+    // only an Admin may read credentials, so a 403 on them is a normal answer for some roles and
+    // must never surface as "settings failed to load".
+  }, [load]);
+
 
   const errorMessage = (err) => {
     const data = err.response?.data;
@@ -164,58 +152,54 @@ const Settings = () => {
     }
   };
 
-  const handleSaveClick = async (values) => {
-    setClickError('');
-    setClickSuccess('');
-    // A stale "ready to go" panel beside freshly changed credentials would be a lie.
-    setClickCheck(null);
-    setSavingClick(true);
-    try {
-      const { data } = await api.patch('/settings/payment-providers/click/', values);
-      // From the response: the secret is never echoed, so `secret_set` is the only way the form
-      // learns that what it just sent was stored.
-      setClick(data);
-      setClickSuccess(t('saved'));
-    } catch (err) {
-      setClickError(errorMessage(err));
-    } finally {
-      setSavingClick(false);
-    }
-  };
+  /**
+   * Every string a credentials card needs, for one provider.
+   *
+   * Built from a prefix rather than written twice: the Click card had twenty-six label lines, and
+   * a second hand-written set is twenty-six chances for the two cards to disagree about a word.
+   * A provider that has no `cashboxId` string simply gets `undefined` for a field it never renders.
+   */
+  const providerLabels = (prefix) => ({
+    loading: t('actions.loadingPage', { ns: 'common' }),
+    title: t(`${prefix}.title`),
+    intro: t(`${prefix}.intro`),
+    serviceId: t(`${prefix}.serviceId`),
+    merchantUserId: t(`${prefix}.merchantUserId`),
+    cashboxId: t(`${prefix}.cashboxId`),
+    cashboxIdHint: t(`${prefix}.cashboxIdHint`),
+    secretKey: t(`${prefix}.secretKey`),
+    secretStored: t(`${prefix}.secretStored`),
+    secretMissing: t(`${prefix}.secretMissing`),
+    secretKeepHint: t(`${prefix}.secretKeepHint`),
+    secretNewHint: t(`${prefix}.secretNewHint`),
+    clearSecret: t(`${prefix}.clearSecret`),
+    clearing: t(`${prefix}.clearing`),
+    cashboxCode: t(`${prefix}.cashboxCode`),
+    cashboxHint: t(`${prefix}.cashboxHint`),
+    enabledLabel: t(`${prefix}.enabledLabel`),
+    enabledHint: t(`${prefix}.enabledHint`),
+    check: t(`${prefix}.check`),
+    checking: t(`${prefix}.checking`),
+    checkOk: t(`${prefix}.checkOk`),
+    checkNotReady: t(`${prefix}.checkNotReady`),
+    checkNoCharge: t(`${prefix}.checkNoCharge`),
+    checkChecksSaved: t(`${prefix}.checkChecksSaved`),
+    checkNeedsSave: t(`${prefix}.checkNeedsSave`),
+    save: t('form.save'),
+    saving: t('form.saving'),
+  });
 
-  const handleCheckClick = async () => {
-    setClickError('');
-    setCheckingClick(true);
-    try {
-      const { data } = await api.post('/settings/payment-providers/click/', { action: 'check' });
-      setClickCheck(data);
-    } catch (err) {
-      setClickError(errorMessage(err));
-    } finally {
-      setCheckingClick(false);
-    }
-  };
+  const saveProvider = (hook) => (values) => hook.save(values, {
+    errorMessage, savedMessage: t('saved'),
+  });
 
-  const handleClearClickSecret = async () => {
-    // Confirmed, because it switches the provider off: the till stops taking Click payments the
-    // moment this succeeds, and there is no undo short of typing the secret in again.
-    if (!window.confirm(t('click.confirmClear'))) return;
-    setClickError('');
-    setClickSuccess('');
-    setClickCheck(null);
-    setClearingClick(true);
-    try {
-      const { data } = await api.post(
-        '/settings/payment-providers/click/', { action: 'clear_secret' },
-      );
-      setClickSuccess(data?.message || t('saved'));
-      await loadClick();
-    } catch (err) {
-      setClickError(errorMessage(err));
-    } finally {
-      setClearingClick(false);
-    }
-  };
+  const checkProvider = (hook) => () => hook.runCheck({ errorMessage });
+
+  const clearProvider = (hook, prefix) => () => hook.clearSecret({
+    errorMessage,
+    savedMessage: t('saved'),
+    confirmMessage: t(`${prefix}.confirmClear`),
+  });
 
   return (
     <div className="page-container">
@@ -258,49 +242,43 @@ const Settings = () => {
         }}
       />
 
-      {/* Hidden rather than shown-and-refused when the role cannot read it: `loadClick` swallows
-          the 403 and leaves `click` null, so a CEO sees the page without a card they cannot use. */}
-      {click ? (
+      {/* Hidden rather than shown-and-refused when the role cannot read it: the hook swallows the
+          403 and leaves the row null, so a CEO sees the page without a card they cannot use. */}
+      {click.row ? (
         <PaymentProviderForm
           provider="click"
-          initial={click}
-          loading={clickLoading}
-          saving={savingClick}
-          checking={checkingClick}
-          clearing={clearingClick}
-          error={clickError}
-          success={clickSuccess}
-          checkResult={clickCheck}
-          onSave={handleSaveClick}
-          onCheck={handleCheckClick}
-          onClearSecret={handleClearClickSecret}
-          labels={{
-            loading: t('actions.loadingPage', { ns: 'common' }),
-            title: t('click.title'),
-            intro: t('click.intro'),
-            serviceId: t('click.serviceId'),
-            merchantUserId: t('click.merchantUserId'),
-            secretKey: t('click.secretKey'),
-            secretStored: t('click.secretStored'),
-            secretMissing: t('click.secretMissing'),
-            secretKeepHint: t('click.secretKeepHint'),
-            secretNewHint: t('click.secretNewHint'),
-            clearSecret: t('click.clearSecret'),
-            clearing: t('click.clearing'),
-            cashboxCode: t('click.cashboxCode'),
-            cashboxHint: t('click.cashboxHint'),
-            enabledLabel: t('click.enabledLabel'),
-            enabledHint: t('click.enabledHint'),
-            check: t('click.check'),
-            checking: t('click.checking'),
-            checkOk: t('click.checkOk'),
-            checkNotReady: t('click.checkNotReady'),
-            checkNoCharge: t('click.checkNoCharge'),
-            checkChecksSaved: t('click.checkChecksSaved'),
-            checkNeedsSave: t('click.checkNeedsSave'),
-            save: t('form.save'),
-            saving: t('form.saving'),
-          }}
+          fields={CLICK_FIELDS}
+          initial={click.row}
+          loading={click.loading}
+          saving={click.saving}
+          checking={click.checking}
+          clearing={click.clearing}
+          error={click.error}
+          success={click.success}
+          checkResult={click.check}
+          onSave={saveProvider(click)}
+          onCheck={checkProvider(click)}
+          onClearSecret={clearProvider(click, 'click')}
+          labels={providerLabels('click')}
+        />
+      ) : null}
+
+      {payme.row ? (
+        <PaymentProviderForm
+          provider="payme"
+          fields={PAYME_FIELDS}
+          initial={payme.row}
+          loading={payme.loading}
+          saving={payme.saving}
+          checking={payme.checking}
+          clearing={payme.clearing}
+          error={payme.error}
+          success={payme.success}
+          checkResult={payme.check}
+          onSave={saveProvider(payme)}
+          onCheck={checkProvider(payme)}
+          onClearSecret={clearProvider(payme, 'payme')}
+          labels={providerLabels('payme')}
         />
       ) : null}
     </div>

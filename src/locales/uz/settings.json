@@ -41,5 +41,32 @@
     "secretStored": "Saqlangan — o‘zgartirmasangiz, bo‘sh qoldiring",
     "serviceId": "Service ID",
     "title": "Click Pass — to‘lov tizimi"
+  },
+  "payme": {
+    "cashboxCode": "",
+    "cashboxHint": "",
+    "cashboxId": "Kassa ID",
+    "cashboxIdHint": "Payme kabinetidagi kassa identifikatori (24 ta belgi).",
+    "check": "Tekshirish",
+    "checkChecksSaved": "Tekshiruv saqlangan ma’lumotlarni ko’radi.",
+    "checkNeedsSave": "Avval saqlang, keyin tekshiring.",
+    "checkNoCharge": "Bu tekshiruv Payme'ga murojaat qilmaydi va hech qanday to'lov yaratmaydi.",
+    "checkNotReady": "Payme hali tayyor emas:",
+    "checkOk": "Payme sozlamalari to’liq va o’qilmoqda.",
+    "checking": "Tekshirilmoqda…",
+    "clearSecret": "Kalitni o'chirish",
+    "clearing": "O'chirilmoqda…",
+    "confirmClear": "Payme kaliti o'chiriladi va Payme o'chadi. Davom etasizmi?",
+    "enabledHint": "O'chiq bo'lsa, kassada Payme tugmasi chiqmaydi.",
+    "enabledLabel": "Payme yoqilgan",
+    "intro": "Payme kassasi ma'lumotlari. Kassir mijozning Payme QR kodini skaner qiladi.",
+    "merchantUserId": "",
+    "secretKeepHint": "Bo'sh qoldirsangiz, saqlangan kalit o'zgarmaydi.",
+    "secretKey": "Kassa kaliti",
+    "secretMissing": "Kiritilmagan",
+    "secretNewHint": "Payme kabinetidan olingan kalitni kiriting.",
+    "secretStored": "Saqlangan",
+    "serviceId": "",
+    "title": "Payme"
   }
 }

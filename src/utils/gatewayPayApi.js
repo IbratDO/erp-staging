@@ -8,10 +8,16 @@
  */
 
 /** Start a charge against a scanned code. The only call here that can take money. */
-export const charge = (api, { otpData, amountUzs, idempotencyKey, saleId, saleGroupId }) => {
+export const charge = (api, {
+  otpData, amountUzs, idempotencyKey, saleId, saleGroupId, provider = 'click',
+}) => {
   const body = {
     otp_data: otpData,
     amount_uzs: String(amountUzs),
+    // **Which provider is being charged.** Omitted once, and the server's default sent a scanned
+    // Payme QR to Click. The window said Payme, the request said nothing, and the row came back
+    // Click -- a provider's single-use code handed to the wrong provider.
+    provider,
     // Minted once per button press and held until a terminal reply - never per request, or a
     // retry would become a second charge.
     idempotency_key: idempotencyKey,

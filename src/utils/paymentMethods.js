@@ -20,11 +20,17 @@ export const METHODS = ['cash', 'click', 'payme', 'humo', 'uzcard'];
 /**
  * The ones that actually work.
  *
- * `payme`, `humo` and `uzcard` are shown so staff know they are coming and disabled so nobody
- * waits for one to work. The backend refuses them too — a greyed button is a courtesy, not a
- * control.
+ * `humo` and `uzcard` are shown so staff know they are coming and disabled so nobody waits for one
+ * to work. The backend refuses them too — a greyed button is a courtesy, not a control.
+ *
+ * Payme joined this list when its adapter landed. It is still gated twice behind that: the shop's
+ * Payme switch in Sozlamalar, and `gateway.charge`. A live button here is not a live provider.
+ *
+ * **This is the list the till reads.** It restated the same set inline for a while, so adding Payme
+ * here changed a constant nothing consulted — the column stayed greyed and a test asserting Payme
+ * was live passed anyway. One list, imported.
  */
-export const LIVE_METHODS = ['cash', 'click'];
+export const LIVE_METHODS = ['cash', 'cash_usd', 'click', 'payme'];
 
 /**
  * The columns the till shows, in order.

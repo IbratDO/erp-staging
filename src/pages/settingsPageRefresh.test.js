@@ -50,6 +50,17 @@ const CLICK_ROW = {
   version: 1,
 };
 
+// Payme identifies itself with a cashbox id and has neither of Click's two. The rows differ because
+// the providers differ -- a mock that returned Click's shape for both would hide a card asking for
+// fields its provider does not have.
+const PAYME_ROW = {
+  provider: 'payme',
+  enabled: false,
+  payme_merchant_id: '',
+  secret_set: false,
+  version: 1,
+};
+
 // `/settings/` and `/settings/payment-providers/click/` are different endpoints with different
 // permissions, so one blanket mock would have the page believing a cashier can read the merchant
 // credentials. The default here is the common case: a role that may manage the shop's name but not
@@ -57,9 +68,10 @@ const CLICK_ROW = {
 const mockGet = ({ clickAccess = false } = {}) => {
   api.get.mockImplementation((url) => {
     if (String(url).includes('payment-providers')) {
-      return clickAccess
-        ? Promise.resolve({ data: CLICK_ROW })
-        : Promise.reject({ response: { status: 403 } });
+      if (!clickAccess) return Promise.reject({ response: { status: 403 } });
+      return Promise.resolve({
+        data: String(url).includes('/payme/') ? PAYME_ROW : CLICK_ROW,
+      });
     }
     return Promise.resolve({ data: ROW });
   });
@@ -127,12 +139,26 @@ describe('the payment provider card', () => {
     expect(forms()).toHaveLength(2);
   });
 
-  it('appears for a role that may, as a third card with its own save', async () => {
+  it('appears for a role that may, one card per provider, each with its own save', async () => {
+    // Four forms now: the shop name, the features, and one credentials card per provider. Each
+    // provider has its own Save because each has its own row -- a failed Payme save must not paint
+    // an error across the Click card.
     mockGet({ clickAccess: true });
     await mount();
     expect(container.querySelector('#click-service-id')).not.toBeNull();
-    expect(forms()).toHaveLength(3);
-    expect(container.querySelectorAll('button[type="submit"]')).toHaveLength(3);
+    expect(container.querySelector('#payme-cashbox-id')).not.toBeNull();
+    expect(forms()).toHaveLength(4);
+    expect(container.querySelectorAll('button[type="submit"]')).toHaveLength(4);
+  });
+
+  it('asks each provider only for the fields it actually has', async () => {
+    // Payme has no service id and no merchant user id. Rendering Click's fields on the Payme card
+    // would be a form asking for credentials that do not exist.
+    mockGet({ clickAccess: true });
+    await mount();
+    expect(container.querySelector('#payme-service-id')).toBeNull();
+    expect(container.querySelector('#payme-merchant-user')).toBeNull();
+    expect(container.querySelector('#click-cashbox-id')).toBeNull();
   });
 
   it('sends only the credentials, so it cannot clobber the name', async () => {

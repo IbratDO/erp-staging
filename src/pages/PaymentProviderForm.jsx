@@ -25,8 +25,27 @@ import BusyForm, { SubmitButton } from '../components/BusyForm';
  * Prop-driven like its siblings: nothing in this repo is rendered inside its providers in a test, so
  * a form reaching for a context would be a form no test could drive.
  */
+/**
+ * Click's fields, and the default so nothing that renders this without a `fields` prop changes.
+ *
+ * `id` is spelled out rather than derived from `key`: the existing ids are not a clean derivation
+ * (`merchant_user_id` renders as `merchant-user`), and keeping them byte-identical is what lets
+ * Click's own tests drive this form unchanged after the refactor.
+ */
+export const CLICK_FIELDS = [
+  { key: 'service_id', id: 'service-id', labelKey: 'serviceId' },
+  { key: 'merchant_user_id', id: 'merchant-user', labelKey: 'merchantUserId' },
+  { key: 'cashbox_code', id: 'cashbox', labelKey: 'cashboxCode', hintKey: 'cashboxHint' },
+];
+
+/** Payme's. One field: the cashbox id, which is also half of its `X-Auth` header. */
+export const PAYME_FIELDS = [
+  { key: 'payme_merchant_id', id: 'cashbox-id', labelKey: 'cashboxId', hintKey: 'cashboxIdHint' },
+];
+
 const PaymentProviderForm = ({
   provider = 'click',
+  fields = CLICK_FIELDS,
   initial = null,
   loading = false,
   saving = false,
@@ -40,34 +59,37 @@ const PaymentProviderForm = ({
   onClearSecret,
   labels,
 }) => {
-  const [serviceId, setServiceId] = useState('');
-  const [merchantUserId, setMerchantUserId] = useState('');
-  const [cashboxCode, setCashboxCode] = useState('');
+  // Keyed by the API field name, so what is typed and what is sent cannot drift apart.
+  const [values, setValues] = useState({});
   const [secret, setSecret] = useState('');
   const [enabled, setEnabled] = useState(false);
+
+  const valueOf = (field) => values[field.key] ?? '';
+  const savedValue = (field) => initial?.[field.key] || '';
+  const setValue = (field, next) => setValues((prev) => ({ ...prev, [field.key]: next }));
 
   const secretStored = !!initial?.secret_set;
 
   // The row arrives after the first paint, so the fields catch up once. Keyed on the saved values
   // only, so a re-render cannot throw away something typed but not yet saved.
   useEffect(() => {
-    setServiceId(initial?.service_id || '');
-    setMerchantUserId(initial?.merchant_user_id || '');
-    setCashboxCode(initial?.cashbox_code || '');
+    const next = {};
+    fields.forEach((field) => { next[field.key] = initial?.[field.key] || ''; });
+    setValues(next);
     setEnabled(!!initial?.enabled);
     // Deliberately not reset from `initial`: there is nothing to reset it *to*, and wiping what the
     // owner has typed on every refresh would be its own bug.
     setSecret('');
-  }, [initial]);
+    // `fields` is a module constant in every caller, so this runs when the row arrives and not
+    // on every render.
+  }, [initial, fields]);
 
   // Tekshirish asks the **server** about the **saved** row, so pressing it over a form full of
   // freshly typed values reports everything as empty - which is exactly what happened: the fields
   // were filled, the button was pressed before Save, and it answered "Service ID is empty".
   // Knowing whether anything is unsaved is the only way the button can avoid lying.
   const dirty = (
-    serviceId.trim() !== (initial?.service_id || '')
-    || merchantUserId.trim() !== (initial?.merchant_user_id || '')
-    || cashboxCode.trim() !== (initial?.cashbox_code || '')
+    fields.some((field) => valueOf(field).trim() !== savedValue(field))
     || enabled !== !!initial?.enabled
     || !!secret.trim()
   );
@@ -79,12 +101,8 @@ const PaymentProviderForm = ({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (saving) return undefined;
-    const body = {
-      service_id: serviceId.trim(),
-      merchant_user_id: merchantUserId.trim(),
-      cashbox_code: cashboxCode.trim(),
-      enabled,
-    };
+    const body = { enabled };
+    fields.forEach((field) => { body[field.key] = valueOf(field).trim(); });
     // Sent only when something was typed. An empty string would be a request to change the secret
     // to nothing, which is what the Clear button is for.
     if (secret.trim()) body.secret_key = secret.trim();
@@ -104,27 +122,21 @@ const PaymentProviderForm = ({
       <h2 style={{ fontSize: '1.05rem', margin: '0 0 0.25rem' }}>{labels.title}</h2>
       <p className="form-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>{labels.intro}</p>
 
-      <div className="form-group">
-        <label htmlFor={`${provider}-service-id`}>{labels.serviceId}</label>
-        <input
-          id={`${provider}-service-id`}
-          type="text"
-          value={serviceId}
-          onChange={(e) => setServiceId(e.target.value)}
-          autoComplete="off"
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor={`${provider}-merchant-user`}>{labels.merchantUserId}</label>
-        <input
-          id={`${provider}-merchant-user`}
-          type="text"
-          value={merchantUserId}
-          onChange={(e) => setMerchantUserId(e.target.value)}
-          autoComplete="off"
-        />
-      </div>
+      {fields.map((field) => (
+        <div className="form-group" key={field.key}>
+          <label htmlFor={`${provider}-${field.id}`}>{labels[field.labelKey]}</label>
+          <input
+            id={`${provider}-${field.id}`}
+            type="text"
+            value={valueOf(field)}
+            onChange={(e) => setValue(field, e.target.value)}
+            autoComplete="off"
+          />
+          {field.hintKey ? (
+            <small className="form-hint">{labels[field.hintKey]}</small>
+          ) : null}
+        </div>
+      ))}
 
       <div className="form-group">
         <label htmlFor={`${provider}-secret`}>{labels.secretKey}</label>
@@ -150,18 +162,6 @@ const PaymentProviderForm = ({
             {clearing ? labels.clearing : labels.clearSecret}
           </button>
         ) : null}
-      </div>
-
-      <div className="form-group">
-        <label htmlFor={`${provider}-cashbox`}>{labels.cashboxCode}</label>
-        <input
-          id={`${provider}-cashbox`}
-          type="text"
-          value={cashboxCode}
-          onChange={(e) => setCashboxCode(e.target.value)}
-          autoComplete="off"
-        />
-        <small className="form-hint">{labels.cashboxHint}</small>
       </div>
 
       <div className="form-group">

@@ -41,5 +41,32 @@
     "secretStored": "Сохранён — оставьте пустым, чтобы не менять",
     "serviceId": "Service ID",
     "title": "Click Pass — платёжная система"
+  },
+  "payme": {
+    "cashboxCode": "",
+    "cashboxHint": "",
+    "cashboxId": "ID кассы",
+    "cashboxIdHint": "Идентификатор кассы из кабинета Payme (24 символа).",
+    "check": "Проверить",
+    "checkChecksSaved": "Проверка смотрит на сохранённые данные.",
+    "checkNeedsSave": "Сначала сохраните, потом проверяйте.",
+    "checkNoCharge": "Эта проверка не обращается в Payme и не создаёт платёж.",
+    "checkNotReady": "Payme ещё не готов:",
+    "checkOk": "Настройки Payme полны и читаются.",
+    "checking": "Проверка…",
+    "clearSecret": "Удалить ключ",
+    "clearing": "Удаление…",
+    "confirmClear": "Ключ Payme будет удалён, и Payme отключится. Продолжить?",
+    "enabledHint": "Если выключено, кнопка Payme на кассе не появится.",
+    "enabledLabel": "Payme включён",
+    "intro": "Данные кассы Payme. Кассир сканирует QR-код клиента.",
+    "merchantUserId": "",
+    "secretKeepHint": "Оставьте пустым — сохранённый ключ не изменится.",
+    "secretKey": "Ключ кассы",
+    "secretMissing": "Не задан",
+    "secretNewHint": "Введите ключ из кабинета Payme.",
+    "secretStored": "Сохранён",
+    "serviceId": "",
+    "title": "Payme"
   }
 }

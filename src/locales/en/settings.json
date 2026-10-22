@@ -41,5 +41,32 @@
     "secretStored": "Stored — leave empty to keep it",
     "serviceId": "Service ID",
     "title": "Click Pass — payment provider"
+  },
+  "payme": {
+    "cashboxCode": "",
+    "cashboxHint": "",
+    "cashboxId": "Cashbox ID",
+    "cashboxIdHint": "The cashbox identifier from the Payme cabinet (24 characters).",
+    "check": "Check",
+    "checkChecksSaved": "The check looks at what was saved.",
+    "checkNeedsSave": "Save first, then check.",
+    "checkNoCharge": "This check does not contact Payme and creates no payment.",
+    "checkNotReady": "Payme is not ready yet:",
+    "checkOk": "The Payme settings are complete and readable.",
+    "checking": "Checking…",
+    "clearSecret": "Clear the key",
+    "clearing": "Clearing…",
+    "confirmClear": "The Payme key will be removed and Payme switched off. Continue?",
+    "enabledHint": "While off, no Payme button appears at the till.",
+    "enabledLabel": "Payme switched on",
+    "intro": "Payme cashbox details. The cashier scans the customer's Payme QR code.",
+    "merchantUserId": "",
+    "secretKeepHint": "Leave empty to keep the stored key unchanged.",
+    "secretKey": "Cashbox key",
+    "secretMissing": "Not set",
+    "secretNewHint": "Enter the key from the Payme cabinet.",
+    "secretStored": "Stored",
+    "serviceId": "",
+    "title": "Payme"
   }
 }

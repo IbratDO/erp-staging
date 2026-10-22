@@ -60,6 +60,11 @@ const GatewayPayments = () => {
   const [closingRef, setClosingRef] = useState('');
   const [closeReason, setCloseReason] = useState('');
 
+  // The provider's name, as a cashier reads it, for whichever row is being talked about. Falls
+  // back to Click only because every row that predates Payme is one.
+  const nameOf = (row) => t(`gateway.method_${row?.provider || 'click'}`);
+  const nameFor = (ref) => nameOf(rows.find((r) => r.merchant_trans_id === ref));
+
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -85,12 +90,12 @@ const GatewayPayments = () => {
     try {
       const { data } = await gatewayApi.refresh(api, ref);
       setMessage(t('gatewayPage.asked', {
-        ref,
+        ref, provider: nameFor(ref),
         state: t(statusKey(data).replace('gateway.', 'gateway.')),
       }));
       await load();
     } catch (err) {
-      setError(err.response?.data?.error || t('gatewayPage.errAsk'));
+      setError(err.response?.data?.error || t('gatewayPage.errAsk', { provider: nameFor(ref) }));
     } finally {
       setBusyRef('');
     }
@@ -125,7 +130,7 @@ const GatewayPayments = () => {
       const { data } = await gatewayApi.resolve(api, ref, typedId);
       // Says what Click answered, not that it worked: this endpoint settles a row as failed just
       // as readily as paid, and a message implying success would be a lie half the time.
-      setMessage(t('gatewayPage.resolved', { ref, state: t(statusKey(data)) }));
+      setMessage(t('gatewayPage.resolved', { ref, provider: nameFor(ref), state: t(statusKey(data)) }));
       setResolvingRef('');
       setTypedId('');
       await load();
@@ -134,7 +139,7 @@ const GatewayPayments = () => {
         err.response?.data?.error
         || err.response?.data?.provider_payment_id?.[0]
         || err.response?.data?.detail
-        || t('gatewayPage.errResolve'),
+        || t('gatewayPage.errResolve', { provider: nameFor(ref) }),
       );
     } finally {
       setBusyRef('');
@@ -142,13 +147,13 @@ const GatewayPayments = () => {
   };
 
   const closeAsMissing = async (ref) => {
-    if (!window.confirm(t('gatewayPage.confirmNoRecord', { ref }))) return;
+    if (!window.confirm(t('gatewayPage.confirmNoRecord', { ref, provider: nameFor(ref) }))) return;
     setBusyRef(ref);
     setError('');
     setMessage('');
     try {
       await gatewayApi.declareNoRecord(api, ref, closeReason);
-      setMessage(t('gatewayPage.closedNoRecord', { ref }));
+      setMessage(t('gatewayPage.closedNoRecord', { ref, provider: nameFor(ref) }));
       setClosingRef('');
       setCloseReason('');
       await load();
@@ -157,7 +162,7 @@ const GatewayPayments = () => {
         err.response?.data?.error
         || err.response?.data?.reason?.[0]
         || err.response?.data?.detail
-        || t('gatewayPage.errNoRecord'),
+        || t('gatewayPage.errNoRecord', { provider: nameFor(ref) }),
       );
     } finally {
       setBusyRef('');
@@ -209,13 +214,14 @@ const GatewayPayments = () => {
           <table className="data-table">
             <thead>
               <tr>
+                <th>{t('gatewayPage.colProvider')}</th>
                 <th>{t('gatewayPage.colRef')}</th>
                 <th>{t('gatewayPage.colAmount')}</th>
                 <th>{t('gatewayPage.colUnapplied')}</th>
                 <th>{t('gatewayPage.colState')}</th>
                 <th>{t('gatewayPage.colReason')}</th>
                 <th>{t('gatewayPage.colSale')}</th>
-                <th>{t('gatewayPage.colClickId')}</th>
+                <th>{t('gatewayPage.colProviderId')}</th>
                 <th>{t('gatewayPage.colTaken')}</th>
                 <th>{t('gatewayPage.colActions')}</th>
               </tr>
@@ -236,6 +242,7 @@ const GatewayPayments = () => {
                   : { text: '\u2014', note: '' };
                 return (
                   <tr key={ref}>
+                    <td>{nameOf(row)}</td>
                     <td className="gw-ref">{ref}</td>
                     <td className="gw-num">{formatPlainAmount(row.amount_uzs)}</td>
                     <td className="gw-num">{formatPlainAmount(unapplied(row))}</td>
@@ -285,7 +292,7 @@ const GatewayPayments = () => {
                             onClick={() => { setResolvingRef(ref); setTypedId(''); setClosingRef(''); }}
                             disabled={busy}
                           >
-                            {t('gatewayPage.enterId')}
+                            {t('gatewayPage.enterId', { provider: nameOf(row) })}
                           </button>
                         ) : null}
                         {mayResolve && closingRef !== ref ? (
@@ -295,7 +302,7 @@ const GatewayPayments = () => {
                             onClick={() => { setClosingRef(ref); setCloseReason(''); setResolvingRef(''); }}
                             disabled={busy}
                           >
-                            {t('gatewayPage.noRecord')}
+                            {t('gatewayPage.noRecord', { provider: nameOf(row) })}
                           </button>
                         ) : null}
                       </div>
@@ -304,7 +311,7 @@ const GatewayPayments = () => {
                           <label className="gw-form__label" htmlFor={`gw-reason-${ref}`}>
                             {t('gatewayPage.noRecordReason')}
                           </label>
-                          <p className="gw-form__hint">{t('gatewayPage.noRecordHint')}</p>
+                          <p className="gw-form__hint">{t('gatewayPage.noRecordHint', { provider: nameOf(row) })}</p>
                           <div className="gw-form__row">
                             <input
                               id={`gw-reason-${ref}`}
@@ -342,9 +349,9 @@ const GatewayPayments = () => {
                       {mayResolve && resolvingRef === ref ? (
                         <div className="gw-form">
                           <label className="gw-form__label" htmlFor={`gw-id-${ref}`}>
-                            {t('gatewayPage.colClickId')}
+                            {t('gatewayPage.colProviderId')}
                           </label>
-                          <p className="gw-form__hint">{t('gatewayPage.enterIdHint')}</p>
+                          <p className="gw-form__hint">{t('gatewayPage.enterIdHint', { provider: nameOf(row) })}</p>
                           <div className="gw-form__row">
                             <input
                               id={`gw-id-${ref}`}
@@ -371,7 +378,7 @@ const GatewayPayments = () => {
                               onClick={() => resolveWithId(ref)}
                               disabled={busy || !typedId.trim()}
                             >
-                              {busy ? t('gateway.checking') : t('gatewayPage.askAboutId')}
+                              {busy ? t('gateway.checking') : t('gatewayPage.askAboutId', { provider: nameOf(row) })}
                             </button>
                             <button
                               type="button"
