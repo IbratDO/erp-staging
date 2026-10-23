@@ -273,7 +273,7 @@ const GatewayPayments = () => {
                           onClick={() => ask(ref)}
                           disabled={busy}
                         >
-                          {busy ? t('gateway.checking') : t('gateway.check')}
+                          {busy ? t('gateway.checking') : t('gateway.check', { provider: nameOf(row) })}
                         </button>
                         {mayGiveBack ? (
                           <button
