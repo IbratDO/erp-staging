@@ -210,8 +210,16 @@ const GatewayPayments = () => {
       ) : rows.length === 0 ? (
         <p className="form-hint">{t('gatewayPage.empty')}</p>
       ) : (
-        <div className="table-wrapper">
-          <table className="data-table">
+        <div className="data-table-scroll">
+          {/* `data-table-scroll` is the app's scroll container. This said `table-wrapper`, which
+              is defined in no stylesheet, so the table had no horizontal scroll at all -- with ten
+              columns and action buttons in the last one, it pushed the page sideways on anything
+              narrower than a desktop.
+
+              `data-table--wide` sets the 72rem floor the other many-column tables use: without it
+              the table shrinks to the viewport instead of overflowing, the columns squash, and the
+              Amal cell loses its buttons. */}
+          <table className="data-table data-table--wide">
             <thead>
               <tr>
                 <th>{t('gatewayPage.colProvider')}</th>

@@ -339,6 +339,10 @@
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
   align-items: start;
+  /* It sits in a grid cell spanning the payment form, and a grid item defaults to `min-width:
+     auto` -- meaning it refuses to shrink below its contents and pushes the form sideways instead.
+     The columns inside already shrink; this lets the row itself. */
+  min-width: 0;
 }
 
 .pay-method {
@@ -403,5 +407,23 @@
 
   .pay-method__button {
     min-height: 44px;
+  }
+}
+
+/*
+  The charge window on a phone.
+
+  `Modal` sets both `width: 100%` and `max-width` as **inline** styles, and an inline style can only
+  be beaten with `!important`. That is not a flourish here: without it the 460px cap simply does not
+  bind below 460px, the window renders edge to edge, and the card's own padding is the only thing
+  between the fields and the screen edge.
+
+  Capped against `100vw` rather than a fixed number so the gutter is the same on any handset.
+*/
+@media (max-width: 600px) {
+  .gw-dialog {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: calc(100vh - 24px);
   }
 }
