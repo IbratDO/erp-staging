@@ -1413,6 +1413,15 @@
 .batch-order-lines col.batch-col-product {
   width: 20%;
 }
+/* Inventory's table carries two category columns, so the shared percentages add up past the
+   table's own width and `table-layout: fixed` answers by squeezing every column proportionally
+   -- the narrow ones worst. Trimmed here so the declared widths fit the budget instead. */
+.batch-inventory-lines col.batch-col-category {
+  width: 10%;
+}
+.batch-inventory-lines col.batch-col-product {
+  width: 22%;
+}
 .batch-order-lines-advance-cell {
   display: flex;
   gap: 4px;
@@ -1552,6 +1561,115 @@ input.batch-sale-lines__control[type='number']::-webkit-outer-spin-button {
   background: #ffe8cc;
   border-color: #f39c12;
   color: #7d4a00;
+}
+
+/*
+  The line tables on a phone.
+
+  These tables already scroll sideways -- `.batch-sale-lines-wrap--scroll` -- so the constraint is
+  not the screen, it is the table's own `min-width`. Every column width above is a *share* of that
+  floor, so on a handset the product select and the price box end up a few characters wide and the
+  text in them is unreadable. More swiping is an acceptable price; unreadable fields are not.
+
+  **Widths become rem here, not percentages.** The percentages are the reason the squeeze is
+  invisible to read: with `table-layout: fixed`, declared widths that add up past the table's
+  width are all scaled down together, so a column that looks like it asks for 28% quietly gets
+  21%. Absolute widths plus a `min-width` that covers their sum cannot do that -- what a column
+  declares is what it gets, and the table scrolls by exactly the amount it is short.
+
+  Sized for the 16px controls below, so the two tiers share one set of widths.
+*/
+@media (max-width: 900px) {
+  /*
+    Raised per table, never on `.batch-sale-lines` itself. Four other tables share that class
+    without a colgroup -- the order summaries, five to seven columns each -- and under
+    `table-layout: fixed` with no declared widths their columns are simply the floor divided by
+    their count. Lifting the shared floor would have widened those too and bought several screens
+    of sideways swiping on tables that already fitted. Each table pays for its own columns: the
+    sum of the widths below, plus a little slack.
+  */
+  .batch-sale-form-lines {
+    min-width: 70rem;
+  }
+  .batch-inventory-lines {
+    min-width: 75rem;
+  }
+  .batch-order-lines {
+    min-width: 98rem;
+  }
+
+  .batch-sale-lines col.batch-col-category,
+  .batch-inventory-lines col.batch-col-category {
+    width: 9.5rem;
+  }
+  /* Also beats the two scoped product overrides above, on source order at equal specificity. */
+  .batch-sale-lines col.batch-col-product,
+  .batch-order-lines col.batch-col-product,
+  .batch-inventory-lines col.batch-col-product {
+    width: 18rem;
+  }
+  .batch-sale-lines col.batch-col-stock {
+    width: 4.75rem;
+  }
+  .batch-sale-lines col.batch-col-qty {
+    width: 5rem;
+  }
+  .batch-sale-lines col.batch-col-price {
+    width: 7.5rem;
+  }
+  .batch-sale-lines col.batch-col-package {
+    width: 13.5rem;
+  }
+  .batch-sale-lines col.batch-col-pkgs {
+    width: 4.75rem;
+  }
+  .batch-sale-lines col.batch-col-eshop {
+    width: 10rem;
+  }
+  .batch-sale-lines col.batch-col-advance {
+    width: 10.5rem;
+  }
+  /* Room for the 44px remove button plus the cell's own padding. */
+  .batch-sale-lines col.batch-col-row {
+    width: 3.6rem;
+  }
+  .batch-sale-lines th.batch-sale-lines__th--action,
+  .batch-sale-lines td.batch-sale-lines__td--action {
+    width: 3.6rem;
+  }
+}
+
+/*
+  Touch sizing, for handsets only.
+
+  **16px is not a style choice.** Mobile Safari zooms the whole page in when a field under 16px
+  takes focus, and it does not zoom back out -- so on every one of these forms the first tap threw
+  the layout sideways and the cashier had to pinch back. The fields were 14px. Raising them is the
+  documented way to stop it, and it is why the widths above are sized for 16px text.
+
+  40px controls go to 44px at the same time, which is the smallest comfortable touch target.
+*/
+@media (max-width: 600px) {
+  .batch-sale-lines__control {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .batch-sale-lines__empty {
+    line-height: 44px;
+    min-height: 44px;
+  }
+
+  .batch-sale-lines__remove {
+    min-height: 44px;
+    height: 44px;
+    width: 44px;
+  }
+
+  .batch-sale-lines-actions .btn-edit,
+  .batch-sale-lines-actions .btn-primary {
+    min-height: 44px;
+  }
 }
 
 /* Footer actions: match primary button size (btn-edit is smaller elsewhere in tables) */

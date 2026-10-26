@@ -638,7 +638,22 @@ const Inventory = () => {
             */}
             <div className="batch-sale-lines-block">
               <div className="batch-sale-lines-wrap batch-sale-lines-wrap--scroll">
-                <table className="batch-sale-lines">
+                <table className="batch-sale-lines batch-inventory-lines">
+                  {/*
+                    Without a colgroup, `table-layout: fixed` gives all eight columns an equal
+                    eighth -- so the product name got exactly as much room as the delete button,
+                    and nothing in the row fit. Declared here in the shape Sales and Orders use.
+                  */}
+                  <colgroup>
+                    <col className="batch-col-category" />
+                    <col className="batch-col-category" />
+                    <col className="batch-col-product" />
+                    <col className="batch-col-qty" />
+                    <col className="batch-col-price" />
+                    <col className="batch-col-price" />
+                    <col className="batch-col-package" />
+                    <col className="batch-col-row" />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th scope="col">{t('form.categoryType')}</th>

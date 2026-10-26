@@ -3543,7 +3543,7 @@ const Sales = () => {
               </div>
               <div className="batch-sale-lines-wrap batch-sale-lines-wrap--scroll">
                 <table
-                  className="batch-sale-lines"
+                  className="batch-sale-lines batch-sale-form-lines"
                   role="table"
                   aria-labelledby="batch-line-items-label"
                 >
