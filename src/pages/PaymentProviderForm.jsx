@@ -117,7 +117,6 @@ const PaymentProviderForm = ({
     <BusyForm
       className="form-card"
       onSubmit={handleSubmit}
-      style={{ maxWidth: 480, marginTop: '1.5rem' }}
     >
       <h2 style={{ fontSize: '1.05rem', margin: '0 0 0.25rem' }}>{labels.title}</h2>
       <p className="form-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>{labels.intro}</p>

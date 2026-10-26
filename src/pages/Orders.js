@@ -308,7 +308,18 @@ function productOrderPickerLabel(p, t) {
   return bits.join(' · ');
 }
 
+/**
+ * Where most orders come from, so it is what a new line starts on.
+ *
+ * A constant rather than the string typed into `newBatchLine`, because the default has to be a slug
+ * the dropdown actually offers. Typed in by hand it would be one edit away from a line that opens
+ * showing a value absent from its own option list -- which renders as free text and submits
+ * perfectly happily, so nothing would complain.
+ */
+const DEFAULT_ESHOP_SLUG = 'bozor';
+
 const BUILTIN_ESHOP_SLUGS = new Set([
+  DEFAULT_ESHOP_SLUG,
   'zalando',
   'best_secret',
   'adidas',
@@ -325,6 +336,7 @@ function isClientEshopSlug(eshop) {
 
 /** Built-in slug → table / display label */
 const KNOWN_ESHOP_LABELS = {
+  bozor: 'Bozor',
   zalando: 'Zalando',
   best_secret: 'Best Secret',
   adidas: 'Adidas',
@@ -422,6 +434,7 @@ const Orders = () => {
   const tableRef = useRef(null);
   const { t, tStatus, monthOptions } = useAppTranslation(['orders', 'common', 'status', 'sales']);
   const uzsLabel = t('currency.uzs', { ns: 'common' });
+
 
 
   const regionChoices = useMemo(
@@ -567,7 +580,10 @@ const Orders = () => {
     cost_uzs_per_unit: '',
     selling_usd_per_unit: '',
     selling_uzs_per_unit: '',
-    eshop: '',
+    // Prefilled, not blank. Every other eShop is still selectable, including Mijoz; this only
+    // saves the pick on the common case. The field stays required, so a line can never be
+    // submitted with no eShop at all.
+    eshop: DEFAULT_ESHOP_SLUG,
     client_eshop_notes: '',
     // Two amounts, no currency: the label is derived server-side from which boxes were used.
     advance_payment_amount: '',
@@ -770,6 +786,9 @@ const Orders = () => {
 
 
   const eshopOptions = useMemo(() => [
+    // First, because it is the default: the value a line opens on should be the one at the top of
+    // the list it came from, or the list reads as though something else was expected.
+    { value: DEFAULT_ESHOP_SLUG, label: t('eshops.bozor', { ns: 'orders' }) },
     { value: 'zalando', label: t('eshops.zalando', { ns: 'orders' }) },
     { value: 'best_secret', label: t('eshops.best_secret', { ns: 'orders' }) },
     { value: 'adidas', label: t('eshops.adidas', { ns: 'orders' }) },

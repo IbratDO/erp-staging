@@ -68,5 +68,9 @@
     "secretStored": "Сохранён",
     "serviceId": "",
     "title": "Payme"
+  },
+  "groups": {
+    "shop": "Магазин",
+    "payments": "Платёжные системы"
   }
 }

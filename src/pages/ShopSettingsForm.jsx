@@ -50,7 +50,7 @@ const ShopSettingsForm = ({
   }
 
   return (
-    <BusyForm className="form-card" onSubmit={handleSubmit} style={{ maxWidth: 480 }}>
+    <BusyForm className="form-card" onSubmit={handleSubmit}>
       <div className="form-group">
         <label htmlFor="shop-name">{labels.shopNameLabel}</label>
         <input

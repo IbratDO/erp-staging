@@ -68,5 +68,9 @@
     "secretStored": "Saqlangan",
     "serviceId": "",
     "title": "Payme"
+  },
+  "groups": {
+    "shop": "Do‘kon",
+    "payments": "To‘lov tizimlari"
   }
 }

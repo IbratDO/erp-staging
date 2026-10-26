@@ -68,5 +68,9 @@
     "secretStored": "Stored",
     "serviceId": "",
     "title": "Payme"
+  },
+  "groups": {
+    "shop": "Shop",
+    "payments": "Payment providers"
   }
 }

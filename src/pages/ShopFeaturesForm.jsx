@@ -15,6 +15,9 @@ import BusyForm, { SubmitButton } from '../components/BusyForm';
  *
  * The list will grow — delivery, packaging, giveaway — which is the other reason this is a component
  * rather than a block inside the name form.
+ *
+ * Its width and its place on the page come from `.settings-group__cards` in TablePage.css. They used
+ * to be an inline `maxWidth`, which no stylesheet could override and so no grid could arrange.
  */
 const ShopFeaturesForm = ({
   initialNasiya = true,
@@ -45,11 +48,7 @@ const ShopFeaturesForm = ({
   }
 
   return (
-    <BusyForm
-      className="form-card"
-      onSubmit={handleSubmit}
-      style={{ maxWidth: 480, marginTop: '1.5rem' }}
-    >
+    <BusyForm className="form-card" onSubmit={handleSubmit}>
       <h2 style={{ fontSize: '1.05rem', margin: '0 0 0.25rem' }}>{labels.featuresTitle}</h2>
       <p className="form-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
         {labels.featuresIntro}

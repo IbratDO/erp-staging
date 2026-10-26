@@ -208,78 +208,102 @@ const Settings = () => {
       </div>
       <p className="page-intro">{t('intro')}</p>
 
-      <ShopSettingsForm
-        initialName={savedName}
-        loading={loading}
-        saving={savingName}
-        error={nameError}
-        success={nameSuccess}
-        onSave={handleSaveName}
-        labels={{
-          loading: t('actions.loadingPage', { ns: 'common' }),
-          shopNameLabel: t('form.shopName'),
-          shopNameHint: t('form.shopNameHint'),
-          save: t('form.save'),
-          saving: t('form.saving'),
-        }}
-      />
+      {/*
+        Grouped by the question each card answers, rather than listed. The two payment providers
+        belong together and read as a pair under one heading; the shop's name and its feature
+        switches are both "about this shop" but do very different things, so they sit side by side
+        under one heading and keep their separate Saves.
 
-      <ShopFeaturesForm
-        initialNasiya={savedNasiya}
-        loading={loading}
-        saving={savingFeatures}
-        error={featuresError}
-        success={featuresSuccess}
-        onSave={handleSaveFeatures}
-        labels={{
-          loading: t('actions.loadingPage', { ns: 'common' }),
-          featuresTitle: t('featuresTitle'),
-          featuresIntro: t('featuresIntro'),
-          nasiyaLabel: t('form.nasiya'),
-          nasiyaHint: t('form.nasiyaHint'),
-          save: t('form.save'),
-          saving: t('form.saving'),
-        }}
-      />
+        Widths and columns come from `.settings-group__cards` in TablePage.css -- see the note
+        there on why they could not stay as inline styles on the cards.
+      */}
+      <section className="settings-group">
+        <h2 className="settings-group__title">{t('groups.shop')}</h2>
+        <div className="settings-group__cards">
+          <ShopSettingsForm
+            initialName={savedName}
+            loading={loading}
+            saving={savingName}
+            error={nameError}
+            success={nameSuccess}
+            onSave={handleSaveName}
+            labels={{
+              loading: t('actions.loadingPage', { ns: 'common' }),
+              shopNameLabel: t('form.shopName'),
+              shopNameHint: t('form.shopNameHint'),
+              save: t('form.save'),
+              saving: t('form.saving'),
+            }}
+          />
 
-      {/* Hidden rather than shown-and-refused when the role cannot read it: the hook swallows the
-          403 and leaves the row null, so a CEO sees the page without a card they cannot use. */}
-      {click.row ? (
-        <PaymentProviderForm
-          provider="click"
-          fields={CLICK_FIELDS}
-          initial={click.row}
-          loading={click.loading}
-          saving={click.saving}
-          checking={click.checking}
-          clearing={click.clearing}
-          error={click.error}
-          success={click.success}
-          checkResult={click.check}
-          onSave={saveProvider(click)}
-          onCheck={checkProvider(click)}
-          onClearSecret={clearProvider(click, 'click')}
-          labels={providerLabels('click')}
-        />
-      ) : null}
+          <ShopFeaturesForm
+            initialNasiya={savedNasiya}
+            loading={loading}
+            saving={savingFeatures}
+            error={featuresError}
+            success={featuresSuccess}
+            onSave={handleSaveFeatures}
+            labels={{
+              loading: t('actions.loadingPage', { ns: 'common' }),
+              featuresTitle: t('featuresTitle'),
+              featuresIntro: t('featuresIntro'),
+              nasiyaLabel: t('form.nasiya'),
+              nasiyaHint: t('form.nasiyaHint'),
+              save: t('form.save'),
+              saving: t('form.saving'),
+            }}
+          />
+        </div>
+      </section>
 
-      {payme.row ? (
-        <PaymentProviderForm
-          provider="payme"
-          fields={PAYME_FIELDS}
-          initial={payme.row}
-          loading={payme.loading}
-          saving={payme.saving}
-          checking={payme.checking}
-          clearing={payme.clearing}
-          error={payme.error}
-          success={payme.success}
-          checkResult={payme.check}
-          onSave={saveProvider(payme)}
-          onCheck={checkProvider(payme)}
-          onClearSecret={clearProvider(payme, 'payme')}
-          labels={providerLabels('payme')}
-        />
+      {/* Hidden rather than shown-and-refused when the role cannot read them: the hook swallows
+          the 403 and leaves the row null, so a CEO sees the page without a card they cannot use.
+
+          The heading goes with them. A group title over an empty grid reads as a card that failed
+          to load, which is the one thing this page must not imply about payment credentials. */}
+      {click.row || payme.row ? (
+        <section className="settings-group">
+          <h2 className="settings-group__title">{t('groups.payments')}</h2>
+          <div className="settings-group__cards">
+            {click.row ? (
+              <PaymentProviderForm
+                provider="click"
+                fields={CLICK_FIELDS}
+                initial={click.row}
+                loading={click.loading}
+                saving={click.saving}
+                checking={click.checking}
+                clearing={click.clearing}
+                error={click.error}
+                success={click.success}
+                checkResult={click.check}
+                onSave={saveProvider(click)}
+                onCheck={checkProvider(click)}
+                onClearSecret={clearProvider(click, 'click')}
+                labels={providerLabels('click')}
+              />
+            ) : null}
+
+            {payme.row ? (
+              <PaymentProviderForm
+                provider="payme"
+                fields={PAYME_FIELDS}
+                initial={payme.row}
+                loading={payme.loading}
+                saving={payme.saving}
+                checking={payme.checking}
+                clearing={payme.clearing}
+                error={payme.error}
+                success={payme.success}
+                checkResult={payme.check}
+                onSave={saveProvider(payme)}
+                onCheck={checkProvider(payme)}
+                onClearSecret={clearProvider(payme, 'payme')}
+                labels={providerLabels('payme')}
+              />
+            ) : null}
+          </div>
+        </section>
       ) : null}
     </div>
   );
