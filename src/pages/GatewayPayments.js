@@ -6,6 +6,7 @@ import gatewayApi from '../utils/gatewayPayApi';
 import { formatPlainAmount } from '../utils/currencyFormat';
 import {
   canGiveBack,
+  errorText,
   failureText,
   heldWithNoSale as sumHeldWithNoSale,
   isPending,
@@ -73,7 +74,7 @@ const GatewayPayments = () => {
       setRows(data?.results || []);
       setStaleCount(data?.stale_count || 0);
     } catch (err) {
-      setError(err.response?.data?.detail || t('gatewayPage.errLoad'));
+      setError(errorText(err, t('gatewayPage.errLoad')));
     } finally {
       setLoading(false);
     }
@@ -95,7 +96,7 @@ const GatewayPayments = () => {
       }));
       await load();
     } catch (err) {
-      setError(err.response?.data?.error || t('gatewayPage.errAsk', { provider: nameFor(ref) }));
+      setError(errorText(err, t('gatewayPage.errAsk', { provider: nameFor(ref) })));
     } finally {
       setBusyRef('');
     }
@@ -112,11 +113,7 @@ const GatewayPayments = () => {
       setMessage(t('gatewayPage.reversed', { ref }));
       await load();
     } catch (err) {
-      setError(
-        err.response?.data?.error
-        || err.response?.data?.gateway_payment_refs?.[0]
-        || t('gatewayPage.errReverse'),
-      );
+      setError(errorText(err, t('gatewayPage.errReverse')));
     } finally {
       setBusyRef('');
     }
@@ -135,12 +132,7 @@ const GatewayPayments = () => {
       setTypedId('');
       await load();
     } catch (err) {
-      setError(
-        err.response?.data?.error
-        || err.response?.data?.provider_payment_id?.[0]
-        || err.response?.data?.detail
-        || t('gatewayPage.errResolve', { provider: nameFor(ref) }),
-      );
+      setError(errorText(err, t('gatewayPage.errResolve', { provider: nameFor(ref) })));
     } finally {
       setBusyRef('');
     }
@@ -158,12 +150,7 @@ const GatewayPayments = () => {
       setCloseReason('');
       await load();
     } catch (err) {
-      setError(
-        err.response?.data?.error
-        || err.response?.data?.reason?.[0]
-        || err.response?.data?.detail
-        || t('gatewayPage.errNoRecord', { provider: nameFor(ref) }),
-      );
+      setError(errorText(err, t('gatewayPage.errNoRecord', { provider: nameFor(ref) })));
     } finally {
       setBusyRef('');
     }

@@ -7,6 +7,7 @@
  */
 import {
   canGiveBack,
+  errorText,
   completionBlock,
   failureText,
   heldWithNoSale,
@@ -367,5 +368,48 @@ describe('money held with no sale', () => {
   it('does not count an unresolved charge as money in hand', () => {
     // It may not have been taken at all. Counting it would overstate what the shop holds.
     expect(heldWithNoSale([lost({ unapplied_uzs: '500000' })])).toBe(0);
+  });
+});
+
+describe('showing the server s own refusal', () => {
+  /**
+   * The bug this covers reached the owner. Pressing **Payme'da yo'q** on a row the provider
+   * demonstrably knows about is refused with a written explanation -- and he saw only "something
+   * went wrong", because DRF renders a bare `ValidationError` as a **list** and the page was
+   * reading `data.error` and `data.detail`.
+   *
+   * These refusals are the system explaining why it will not touch money. A cashier who cannot
+   * read them is left pressing the button again.
+   */
+  const err = (status, data) => ({ response: { status, data } });
+
+  it('reads a bare list, which is how most of these arrive', () => {
+    expect(errorText(err(400, ['This payment is "Authorized", which is an answer.']), 'fallback'))
+      .toBe('This payment is "Authorized", which is an answer.');
+  });
+
+  it('reads a plain detail or error', () => {
+    expect(errorText(err(400, { detail: 'Nope.' }), 'f')).toBe('Nope.');
+    expect(errorText(err(400, { error: 'Nope.' }), 'f')).toBe('Nope.');
+  });
+
+  it('reads a field error whatever key it arrived under', () => {
+    expect(errorText(err(400, { reason: ['Write down what you checked.'] }), 'f'))
+      .toBe('Write down what you checked.');
+    expect(errorText(err(400, { provider_payment_id: ['Not a number.'] }), 'f'))
+      .toBe('Not a number.');
+  });
+
+  it('never shows a server error page', () => {
+    // A 500 body is HTML, and "try again" is the wrong advice for a server that threw.
+    expect(errorText(err(500, '<!doctype html><title>Server Error</title>'), 'fallback'))
+      .toBe('fallback');
+  });
+
+  it('falls back when there is nothing readable', () => {
+    expect(errorText(err(400, {}), 'fallback')).toBe('fallback');
+    expect(errorText(err(400, [{ nested: 'object' }]), 'fallback')).toBe('fallback');
+    expect(errorText({}, 'fallback')).toBe('fallback');
+    expect(errorText(undefined, 'fallback')).toBe('fallback');
   });
 });

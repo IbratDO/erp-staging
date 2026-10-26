@@ -227,3 +227,43 @@ export const failureText = (payment, t, fallbackKey = 'gateway.declinedBody') =>
   }
   return { text: note || t(fallbackKey), note: '' };
 };
+
+/**
+ * The server's own sentence about a refusal, whatever shape it arrived in.
+ *
+ * **Every refusal on the gateway path is a written explanation, and they were all invisible.** The
+ * service layer raises `ValidationError('This payment is "Authorized", which is an answer...')`,
+ * and DRF renders a bare `ValidationError` as a **list** -- `["This payment is ..."]`. The page
+ * read `data.error`, `data.detail` and a couple of named fields, none of which match a list, so
+ * every one of those sentences fell through to "something went wrong".
+ *
+ * That matters more here than on an ordinary screen: these refusals are the system explaining why
+ * it will not touch money, and a cashier who cannot read them is left pressing the button again.
+ *
+ * A 5xx is deliberately **not** shown. That body is an HTML error page, and "try again" is the
+ * wrong advice for a server that threw.
+ */
+export const errorText = (err, fallback) => {
+  const response = err?.response;
+  const data = response?.data;
+  if (!data || (response?.status || 0) >= 500) return fallback;
+
+  // A bare `ValidationError` -- the commonest shape on this path.
+  if (Array.isArray(data)) {
+    const first = data.find((v) => typeof v === 'string');
+    if (first) return first;
+    return fallback;
+  }
+  if (typeof data === 'string') return data;
+
+  const direct = data.detail || data.error;
+  if (typeof direct === 'string') return direct;
+
+  // Then any field error, whatever key it arrived under.
+  const found = Object.values(data).find(
+    (v) => typeof v === 'string' || (Array.isArray(v) && typeof v[0] === 'string'),
+  );
+  if (typeof found === 'string') return found;
+  if (Array.isArray(found)) return found[0];
+  return fallback;
+};
