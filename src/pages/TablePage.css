@@ -1425,8 +1425,16 @@
 .batch-sale-lines col.batch-col-eshop {
   width: 10rem;
 }
+/*
+  Wide enough for **two** money boxes side by side, which is what this one cell holds -- an Avans
+  USD and an Avans so'm, since a customer can hand over both.
+  At the old 10.5rem each box got about 5rem, and neither its own placeholder ("Avans so'm" needs
+  roughly 5.9rem) nor a grouped seven-figure amount fitted. Both were being clipped, and a grouped
+  number with its left half cut off is exactly what "the separators aren't working" looks like --
+  `AmountInput` had been inserting them all along.
+*/
 .batch-sale-lines col.batch-col-advance {
-  width: 10.5rem;
+  width: 14rem;
 }
 
 /*
@@ -1446,16 +1454,24 @@
   min-width: 75rem;
 }
 .batch-order-lines {
-  min-width: 98rem;
+  min-width: 101rem;
 }
 .batch-order-lines-advance-cell {
   display: flex;
   gap: 4px;
   align-items: stretch;
 }
-.batch-order-lines-advance-cell select {
-  flex: 0 0 auto;
-  width: 4.5rem;
+
+/* An even split, stated rather than inferred. Both boxes carry `width: 100%` from
+   `.batch-sale-lines__control`, so without a flex basis they each ask for the whole cell and the
+   browser settles it by shrinking them -- which happens to come out even here, but only because
+   they are the same kind of box. `flex: 1 1 0` is the behaviour that was actually wanted.
+
+   (The rule that used to sit here sized a currency `select`. There is no select in this cell any
+   more -- it became one box per currency, both always shown -- so it was styling nothing.) */
+.batch-order-lines-advance-cell > .amount-input {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .batch-sale-lines thead th {
