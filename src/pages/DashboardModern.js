@@ -29,6 +29,9 @@ import {
 import {
   CategoryTopSlotsChart,
   ChartPanel,
+  chartSizing,
+  round1,
+  useNarrowCharts,
 } from '../components/dashboardCharts';
 import {
   MoneyBalanceCards,
@@ -78,14 +81,21 @@ function KpiCard({ label, value, sub }) {
 function OnDemandMonthlyChart({ title, hint, data, keys, totalLabel }) {
   // Sold green, still working amber, cancelled red — read bottom-up as the stack is drawn.
   const fills = ['#10b981', '#f59e0b', '#ef4444'];
+  // Its own desktop numbers, so the only screen this change touches is the phone.
+  const size = chartSizing(useNarrowCharts(), { height: 240, margin: undefined });
   return (
     <MgmtChart title={title}>
       {hint ? <p className="dash-section-hint">{hint}</p> : null}
-      <ResponsiveContainer width="100%" height={240}>
-        <BarChart data={data}>
+      <ResponsiveContainer width="100%" height={size.height}>
+        <BarChart data={data} margin={size.margin}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="monthLabel" tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+          <XAxis dataKey="monthLabel" tick={{ fontSize: size.tick }} />
+          <YAxis
+            tick={{ fontSize: size.tick }}
+            width={size.yWidth}
+            allowDecimals={false}
+            tickFormatter={round1}
+          />
           <Tooltip
             contentStyle={mgmtTooltipStyle}
             content={({ active, payload, label }) => {
@@ -95,17 +105,17 @@ function OnDemandMonthlyChart({ title, hint, data, keys, totalLabel }) {
                   <div><strong>{label}</strong></div>
                   {payload.map((entry) => (
                     <div key={entry.dataKey} style={{ color: entry.color }}>
-                      {entry.name}: {entry.value}
+                      {entry.name}: {round1(entry.value)}
                     </div>
                   ))}
                   <div style={{ marginTop: 4, borderTop: '1px solid #e2e8f0', paddingTop: 4 }}>
-                    <strong>{totalLabel}: {payload[0]?.payload?.total ?? 0}</strong>
+                    <strong>{totalLabel}: {round1(payload[0]?.payload?.total ?? 0)}</strong>
                   </div>
                 </div>
               );
             }}
           />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Legend wrapperStyle={{ fontSize: size.legendFont }} />
           {keys.map((key, i) => (
             <Bar
               key={key}
@@ -128,6 +138,9 @@ function OnDemandMonthlyChart({ title, hint, data, keys, totalLabel }) {
  * is 1 here and 5 there. A single line on a whole-number axis, since there is one measure.
  */
 function SalesCountChart({ title, data, granularity, onGranularityChange, labels }) {
+  const size = chartSizing(useNarrowCharts(), {
+    height: 240, tick: 11, yWidth: 44, legendFont: 11, margin: undefined,
+  });
   return (
     <MgmtChart
       title={title}
@@ -142,11 +155,16 @@ function SalesCountChart({ title, data, granularity, onGranularityChange, labels
         />
       }
     >
-      <ResponsiveContainer width="100%" height={240}>
-        <LineChart data={data}>
+      <ResponsiveContainer width="100%" height={size.height}>
+        <LineChart data={data} margin={size.margin}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} allowDecimals={false} width={44} />
+          <XAxis dataKey="period" tick={{ fontSize: size.tick }} />
+          <YAxis
+            tick={{ fontSize: size.tick }}
+            allowDecimals={false}
+            width={size.yWidth}
+            tickFormatter={round1}
+          />
           <Tooltip
             contentStyle={mgmtTooltipStyle}
             content={({ active, payload, label }) => {
@@ -154,12 +172,12 @@ function SalesCountChart({ title, data, granularity, onGranularityChange, labels
               return (
                 <div style={mgmtTooltipStyle} className="mgmt-tooltip">
                   <div><strong>{label}</strong></div>
-                  <div>{labels.sales}: {payload[0]?.payload?.sales ?? 0}</div>
+                  <div>{labels.sales}: {round1(payload[0]?.payload?.sales ?? 0)}</div>
                 </div>
               );
             }}
           />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Legend wrapperStyle={{ fontSize: size.legendFont }} />
           <Line
             type="monotone"
             dataKey="sales"

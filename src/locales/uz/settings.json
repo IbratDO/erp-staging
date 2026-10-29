@@ -8,7 +8,9 @@
     "save": "Saqlash",
     "saving": "Saqlanmoqda…",
     "nasiya": "Nasiya savdo",
-    "nasiyaHint": "O‘chirilsa, yangi nasiya ochilmaydi va Qarzdorlik bo‘limi barcha qarzlar to‘langach yo‘qoladi. Mavjud qarzlar ko‘rinib turadi va ularni yig‘ish mumkin."
+    "nasiyaHint": "O‘chirilsa, yangi nasiya ochilmaydi va Qarzdorlik bo‘limi barcha qarzlar to‘langach yo‘qoladi. Mavjud qarzlar ko‘rinib turadi va ularni yig‘ish mumkin.",
+    "posCustomer": "Kassada mijoz majburiy",
+    "posCustomerHint": "Yoqilgan bo'lsa, Kassada mijoz tanlanmaguncha savdoni boshlab bo'lmaydi. O'chirilsa, savdo mijozsiz ham yozilishi mumkin. Nasiya savdo uchun mijoz har holda shart — egasi noma'lum qarzni undirib bo'lmaydi."
   },
   "errors": {
     "loadFailed": "Sozlamalarni yuklab bo‘lmadi.",

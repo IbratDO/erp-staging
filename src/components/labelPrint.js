@@ -98,7 +98,11 @@ function labelMarkup(label, barcodeSvg) {
   // two words ("On" + "club T" reads as three words with no way to tell where the brand ends).
   // `filter(Boolean)` first, so a product missing one of the two does not print a stray bar.
   const title = [label.brand, label.model].filter(Boolean).join(' | ');
-  const attrs = [label.size, label.color].filter(Boolean).join(' · ');
+  // Category type joins this line rather than taking one of its own. The sticker is 40x30mm and
+  // already full: a fifth line is the thing most likely to push content past 30mm, and one pixel
+  // of overflow prints EVERY label on two pages — see the note on `.label__attrs` above. This row
+  // already truncates with an ellipsis, so a long type costs characters, never a page.
+  const attrs = [label.size, label.color, label.categoryType].filter(Boolean).join(' · ');
   return `
     <div class="label">
       <div class="label__title">${esc(title)}</div>

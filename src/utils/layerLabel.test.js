@@ -56,6 +56,43 @@ describe('the title line', () => {
   });
 });
 
+/**
+ * The category type on the sticker.
+ *
+ * Most types are invented by the shop and are in no locale file, so the fallback is the normal
+ * case rather than the edge one — see `productCategoryTypes`. The sticker is a physical object
+ * printed from a page that has a translator, so it gets one; what is pinned here is that it
+ * prints something sensible when it does not.
+ */
+describe('category type', () => {
+  const t = (key, opts) => (key === 'categoryTypes.sports'
+    ? 'Sport'
+    : (opts && 'defaultValue' in opts ? opts.defaultValue : key));
+
+  it('is translated when the locale files know it', () => {
+    const l = layer({ product_detail: { ...layer().product_detail, category_type: 'sports' } });
+    expect(layerToLabelData(l, t).categoryType).toBe('Sport');
+  });
+
+  it("is printed as the shop typed it when they invented it", () => {
+    // The mutation: a bare `t()`, which answers a missing key with the key — the sticker would
+    // read `categoryTypes.Klassika`.
+    const l = layer({ product_detail: { ...layer().product_detail, category_type: 'Klassika' } });
+    expect(layerToLabelData(l, t).categoryType).toBe('Klassika');
+  });
+
+  it('degrades to the typed value rather than throwing when there is no translator', () => {
+    const l = layer({ product_detail: { ...layer().product_detail, category_type: 'Klassika' } });
+    expect(layerToLabelData(l).categoryType).toBe('Klassika');
+  });
+
+  it('is an empty string when the product has none, never undefined', () => {
+    // The markup joins it with `filter(Boolean)`, so a blank costs nothing — but `undefined`
+    // reaching `esc()` would print the word "undefined" on a customer-facing sticker.
+    expect(layerToLabelData(layer(), t).categoryType).toBe('');
+  });
+});
+
 describe('label and table never disagree about the figure', () => {
   it('reads the same price the table shows, formatted differently', () => {
     const l = layer();

@@ -207,7 +207,12 @@ describe('saving a feature switch', () => {
   it('sends only the switch, so it cannot clobber the name', async () => {
     await mount();
     await submitForm(1);
-    expect(api.patch).toHaveBeenCalledWith('/settings/', { nasiya_enabled: true });
+    expect(api.patch).toHaveBeenCalledWith('/settings/', {
+      nasiya_enabled: true, pos_customer_required: true,
+    });
+    // Still only the switches. The name is on its own card with its own PATCH, which is what
+    // stops one Save overwriting the other.
+    expect(api.patch.mock.calls[0][1]).not.toHaveProperty('shop_name');
   });
 
   it('refreshes the settings AND the user', async () => {
@@ -225,7 +230,20 @@ describe('saving a feature switch', () => {
       container.querySelector('#nasiya-enabled').click();
     });
     await submitForm(1);
-    expect(api.patch).toHaveBeenCalledWith('/settings/', { nasiya_enabled: false });
+    expect(api.patch).toHaveBeenCalledWith('/settings/', {
+      nasiya_enabled: false, pos_customer_required: true,
+    });
+  });
+
+  it('carries the till-customer switch through too', async () => {
+    await mount();
+    await act(async () => {
+      container.querySelector('#pos-customer-required').click();
+    });
+    await submitForm(1);
+    expect(api.patch).toHaveBeenCalledWith('/settings/', {
+      nasiya_enabled: true, pos_customer_required: false,
+    });
   });
 
   it('does not refresh the user when the save failed', async () => {

@@ -167,8 +167,20 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // The permission is folded in here rather than at the checkbox so everything downstream follows:
   // the shortfall hint stops mentioning nasiya, and `staleCredit` clears an `apply_credit` that a
   // stale form still carries — which matters the moment an Admin switches the feature off mid-shift.
+  // A debt has to be owed by somebody, so a sale with no customer cannot go on nasiya. The till
+  // can now ring a basket up anonymously (`ShopSettings.pos_customer_required`), and a
+  // `CreditSale` reads its debtor off the sale rather than storing one — so the receivable would
+  // sit on Qarzdorlik for ever with a blank name and nobody to ask.
+  //
+  // `=== null` and not `!= null`: only an **explicitly** absent customer hides the box. A sale
+  // serialized without the field at all is a shape this form has never had to think about, and
+  // silently hiding nasiya from every one of them would be a far worse failure than the server
+  // refusing the odd request. The server carries the same check and is the real guard.
+  const customerUnknown = sale?.customer === null;
   const creditAvailable =
-    canMarkCredit && shortfallMeta.short != null && shortfallMeta.short > changeTol;
+    canMarkCredit
+    && !customerUnknown
+    && shortfallMeta.short != null && shortfallMeta.short > changeTol;
   const onCredit = !!paymentFormData.apply_credit;
   // Bepul is offered only when the sale really is free: nothing typed in either currency, and
   // something actually owing. Part-paid is a discount on a real sale, and the server refuses

@@ -482,6 +482,7 @@
     "currencyUsd": "USD (доллар)",
     "currencyUzs": "UZS (сум)",
     "required": "*",
+    "optional": "Необязательно",
     "emptyHint": "Отсканируйте штрих-код или выберите в поиске выше.",
     "colItem": "Товар",
     "colQty": "Кол-во",

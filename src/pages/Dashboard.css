@@ -629,3 +629,58 @@
   padding-top: 6px;
   border-top: 1px solid #e2e8f0;
 }
+
+/*
+ * ---------------------------------------------------------------------------------------------
+ * Phones.
+ *
+ * The grids above already collapse to one column by 1100-1200px, so on a handset each chart was
+ * full width — and still unreadable. Width was never the problem; **padding and furniture** were.
+ * A 390px screen loses 48px to the page gutter and another 32px to the card, leaving about 310px,
+ * of which Recharts reserved 60px for the Y axis before a single bar was drawn. A fifth of the
+ * chart went to four numbers.
+ *
+ * So this block buys the plot its width back, and `chartSizing` in `dashboardCharts.jsx` does the
+ * half that CSS cannot reach — axis width, tick size, chart height. Both are gated at the same
+ * 600px, and **everything here is additive below that line**: no rule in this block applies to a
+ * desktop, which is why the computer view is untouched.
+ * ---------------------------------------------------------------------------------------------
+ */
+@media (max-width: 600px) {
+  .dashboard { padding: 14px 12px 32px; }
+
+  .dash-bi h1 { font-size: 1.3rem; }
+
+  /* A card no taller than what is in it. The 340px floor was sized for a 280px chart plus a head;
+     with the chart at 240 it only leaves a band of white under every card. */
+  .dash-chart-card { padding: 12px 10px; min-height: 0; }
+  .mgmt-chart-card { padding: 12px 10px; min-height: 0; }
+
+  .dash-charts-row,
+  .mgmt-grid,
+  .mgmt-cards-row { gap: 12px; }
+
+  /* Three columns of product names in 310px is three columns of ellipsis. */
+  .mgmt-top-products-grid { grid-template-columns: 1fr; gap: 12px; }
+
+  /* The tabs are the only way between the dashboard's sections, so they get the full width and
+     wrap, rather than scrolling off the right-hand edge where nobody looks for them. */
+  .dash-tab-bar { width: 100%; }
+  .dash-tab { flex: 1 1 auto; padding: 10px 12px; text-align: center; }
+
+  /* A dozen salesmen in a legend is taller than the chart it explains. Smaller, tighter, and
+     capped — past that it scrolls rather than pushing the next card off the screen. */
+  .dash-chart-legend {
+    font-size: 0.7rem;
+    gap: 4px 8px;
+    max-height: 5.5rem;
+    overflow-y: auto;
+  }
+
+  /* The hover box is placed by Recharts relative to the touch, and a desktop-width one goes off
+     the side of a phone. A ceiling keeps it on screen; long names wrap inside it. */
+  .dash-chart-tooltip { max-width: 70vw; font-size: 0.75rem; }
+  /* `nowrap` on the row is what makes the box as wide as its longest category name. Off here, so
+     a long name wraps inside the box instead of pushing the box off the side of the screen. */
+  .dash-chart-tooltip__row { white-space: normal; }
+}

@@ -21,6 +21,8 @@ const labels = {
   featuresIntro: 'Do‘kon qaysi imkoniyatlardan foydalanadi.',
   nasiyaLabel: 'Nasiya savdo',
   nasiyaHint: 'O‘chirilsa, yangi nasiya ochilmaydi.',
+  posCustomerLabel: 'Kassada mijoz majburiy',
+  posCustomerHint: 'O‘chirilsa, savdo mijozsiz ham yozilishi mumkin.',
   save: 'Saqlash',
   saving: 'Saqlanmoqda…',
 };
@@ -53,6 +55,7 @@ const render = (props = {}) => {
 };
 
 const toggle = () => container.querySelector('#nasiya-enabled');
+const posToggle = () => container.querySelector('#pos-customer-required');
 const submit = () => container.querySelector('button[type="submit"]');
 
 describe('the nasiya switch', () => {
@@ -92,7 +95,9 @@ describe('saving', () => {
     render({ initialNasiya: true, onSave });
     act(() => toggle().click());
     act(() => submit().click());
-    expect(onSave).toHaveBeenCalledWith({ nasiya_enabled: false });
+    expect(onSave).toHaveBeenCalledWith({
+      nasiya_enabled: false, pos_customer_required: true,
+    });
   });
 
   it('can switch it back on', () => {
@@ -100,14 +105,18 @@ describe('saving', () => {
     render({ initialNasiya: false, onSave });
     act(() => toggle().click());
     act(() => submit().click());
-    expect(onSave).toHaveBeenCalledWith({ nasiya_enabled: true });
+    expect(onSave).toHaveBeenCalledWith({
+      nasiya_enabled: true, pos_customer_required: true,
+    });
   });
 
   it('saves an unchanged value rather than doing nothing', () => {
     const onSave = jest.fn();
     render({ initialNasiya: true, onSave });
     act(() => submit().click());
-    expect(onSave).toHaveBeenCalledWith({ nasiya_enabled: true });
+    expect(onSave).toHaveBeenCalledWith({
+      nasiya_enabled: true, pos_customer_required: true,
+    });
   });
 
   it('does not fire while a save is already in flight', () => {
@@ -167,5 +176,69 @@ describe('what it tells the user', () => {
     render({ loading: true });
     expect(toggle()).toBeNull();
     expect(container.textContent).toContain('Yuklanmoqda…');
+  });
+});
+
+/**
+ * The second switch on the card.
+ *
+ * It is **not a feature flag**, whatever its neighbour is: nothing is hidden and no permission is
+ * withheld either way. It decides how strict one field on the till is. The same default argument
+ * applies all the same — a switch rendered off while the value is unknown would read as "this
+ * shop records anonymous sales", and one press of Save would make that true.
+ */
+describe('the till customer switch', () => {
+  it('starts from the saved value', () => {
+    render({ initialPosCustomerRequired: true });
+    expect(posToggle().checked).toBe(true);
+    render({ initialPosCustomerRequired: false });
+    expect(posToggle().checked).toBe(false);
+  });
+
+  it('defaults to required when nothing says otherwise', () => {
+    render({});
+    expect(posToggle().checked).toBe(true);
+  });
+
+  it('catches up when the saved value arrives after the first paint', () => {
+    render({ initialPosCustomerRequired: true });
+    render({ initialPosCustomerRequired: false });
+    expect(posToggle().checked).toBe(false);
+  });
+
+  it('does not lose an unsaved click when the parent re-renders', () => {
+    render({ initialPosCustomerRequired: true });
+    act(() => posToggle().click());
+    render({ initialPosCustomerRequired: true, error: 'something else happened' });
+    expect(posToggle().checked).toBe(false);
+  });
+});
+
+describe('the two switches do not disturb each other', () => {
+  it("a saved nasiya value arriving does not reset an unsaved click on the other", () => {
+    // The mutation this kills: one `useEffect` syncing both switches. Either saved value
+    // arriving would then reset the other switch and silently discard a click on it — and
+    // because both are sent on every Save, the discarded click would be saved as unchanged.
+    render({ initialNasiya: true, initialPosCustomerRequired: true });
+    act(() => posToggle().click());
+    render({ initialNasiya: false, initialPosCustomerRequired: true });
+    expect(posToggle().checked).toBe(false);
+  });
+
+  it('and the same the other way round', () => {
+    render({ initialNasiya: true, initialPosCustomerRequired: true });
+    act(() => toggle().click());
+    render({ initialNasiya: true, initialPosCustomerRequired: false });
+    expect(toggle().checked).toBe(false);
+  });
+
+  it('one Save carries both, so neither is left behind', () => {
+    const onSave = jest.fn();
+    render({ initialNasiya: true, initialPosCustomerRequired: true, onSave });
+    act(() => posToggle().click());
+    act(() => submit().click());
+    expect(onSave).toHaveBeenCalledWith({
+      nasiya_enabled: true, pos_customer_required: false,
+    });
   });
 });

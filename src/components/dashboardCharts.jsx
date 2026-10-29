@@ -13,7 +13,9 @@ import {
   YAxis,
 } from 'recharts';
 
-import { CHART_PALETTE, OTHERS_SLOT, slotKey } from '../utils/dashboardAnalytics';
+import { CHART_PALETTE, OTHERS_SLOT, round1, slotKey } from '../utils/dashboardAnalytics';
+
+export { round1 };
 
 /**
  * The chart cards the dashboards draw with, in one place.
@@ -29,6 +31,93 @@ import { CHART_PALETTE, OTHERS_SLOT, slotKey } from '../utils/dashboardAnalytics
  * future fix to how a chart is drawn now reaches every role that has that chart, which is the
  * only way this stays true without somebody remembering to copy it across.
  */
+
+/**
+ * Whether the charts are being read on a phone.
+ *
+ * A media query rather than a width measurement, and subscribed to rather than sampled once: a
+ * tablet turned on its side crosses this line without remounting anything, and a chart that kept
+ * its phone sizing in landscape would waste half the screen.
+ *
+ * **Above the breakpoint this returns `false` and every chart renders exactly as it always has.**
+ * That is the point — the desktop figures are the ones people have been reading for a year, and
+ * none of the sizing below should touch them.
+ */
+const NARROW_QUERY = '(max-width: 600px)';
+
+export function useNarrowCharts() {
+  const [narrow, setNarrow] = React.useState(
+    () => typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia(NARROW_QUERY).matches,
+  );
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia(NARROW_QUERY);
+    const onChange = (e) => setNarrow(e.matches);
+    setNarrow(mq.matches);
+    // `addListener` is the deprecated spelling; Safari before 14 has only that one, and a till
+    // or a dashboard opened on an older iPad is not a hypothetical here.
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+
+  return narrow;
+}
+
+/**
+ * What a chart's furniture costs on each screen.
+ *
+ * The axes are the problem on a phone, not the plot. Recharts reserves a fixed 60px for the Y
+ * axis, which on a 300px-wide card is a fifth of the chart given over to four numbers; and the
+ * left margin of 0 means the first X label hangs off the edge. Shrinking both is what gives the
+ * bars room, so the chart is readable rather than merely present.
+ *
+ * The X axis thins its own labels — Recharts drops colliding category ticks on its own — so there
+ * is nothing to do there beyond making them smaller.
+ */
+const DESKTOP = {
+  height: 280, tick: 12, yWidth: undefined, legendFont: 12,
+  margin: { top: 8, right: 8, left: 0, bottom: 0 },
+};
+
+/** Never taller on a phone than it was on a desktop — a handset has less height, not more. */
+export function chartHeight(narrow, desktop) {
+  return narrow ? Math.min(desktop, 240) : desktop;
+}
+
+export function axisTick(narrow, desktop = 12) {
+  return { fontSize: narrow ? 10 : desktop };
+}
+
+/**
+ * **The single biggest win on a phone**, and the one that is invisible in a stylesheet.
+ *
+ * Recharts reserves a flat 60px for a Y axis whatever is in it. On a ~310px card that is a fifth
+ * of the chart handed to four numbers before a bar is drawn; 34px fits the figures these axes
+ * actually carry and gives the rest back to the plot. `undefined` on a desktop means "whatever it
+ * was", so a chart that had set its own width keeps it.
+ */
+export function axisWidth(narrow, desktop) {
+  return narrow ? 34 : desktop;
+}
+
+export function chartSizing(narrow, desktop = {}) {
+  const desk = { ...DESKTOP, ...desktop };
+  if (!narrow) return desk;
+  return {
+    height: chartHeight(true, desk.height),
+    tick: 10,
+    yWidth: axisWidth(true, desk.yWidth),
+    legendFont: 10,
+    margin: { top: 8, right: 4, left: 0, bottom: 0 },
+  };
+}
 
 /**
  * The hover box, with the empty rows left out.
@@ -60,9 +149,7 @@ export function seriesTooltip({ active, payload, label }, tooltipStyle, options 
         <div key={entry.dataKey ?? entry.name} style={{ color: entry.color }}>
           {entry.name}
           {' : '}
-          {typeof entry.value === 'number'
-            ? Math.round(entry.value * 100) / 100
-            : entry.value}
+          {round1(entry.value)}
         </div>
       ))}
     </div>
@@ -98,7 +185,8 @@ export function ChartPanel({
   reverseTooltip = false,
   controls = null,
 }) {
-  const height = 280;
+  const narrow = useNarrowCharts();
+  const size = chartSizing(narrow);
 
   const legendProps = {
     onClick: (e) => {
@@ -106,7 +194,7 @@ export function ChartPanel({
       if (!key || !onLegendClick) return;
       onLegendClick(key);
     },
-    wrapperStyle: { cursor: 'pointer', fontSize: 12 },
+    wrapperStyle: { cursor: 'pointer', fontSize: size.legendFont },
   };
 
   const tooltipStyle = {
@@ -137,12 +225,17 @@ export function ChartPanel({
   return (
     <div className="dash-chart-card">
       {head}
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer width="100%" height={size.height}>
         {chartType === 'area' ? (
-          <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <AreaChart data={data} margin={size.margin}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+            <XAxis dataKey={xKey} tick={{ fontSize: size.tick }} />
+            <YAxis
+              tick={{ fontSize: size.tick }}
+              width={size.yWidth}
+              allowDecimals={false}
+              tickFormatter={round1}
+            />
             <Tooltip
               contentStyle={tooltipStyle}
               {...(hideZeroSeries || reverseTooltip
@@ -170,10 +263,15 @@ export function ChartPanel({
             ))}
           </AreaChart>
         ) : (
-          <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <BarChart data={data} margin={size.margin}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey={xKey} tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} allowDecimals={chartType === 'weekday'} />
+            <XAxis dataKey={xKey} tick={{ fontSize: size.tick }} />
+            <YAxis
+              tick={{ fontSize: size.tick }}
+              width={size.yWidth}
+              allowDecimals={chartType === 'weekday'}
+              tickFormatter={round1}
+            />
             <Tooltip
               contentStyle={tooltipStyle}
               {...(hideZeroSeries || reverseTooltip
@@ -238,6 +336,8 @@ export function CategoryTopSlotsChart({
   allowDecimals = false,
 }) {
   const { data, slotCount, hasOthers, categoryColors, namedCategories } = series;
+  const narrow = useNarrowCharts();
+  const size = chartSizing(narrow);
 
   const dimFor = (name) => (activeCross && activeCross !== name ? 0.3 : 0.9);
 
@@ -262,8 +362,9 @@ export function CategoryTopSlotsChart({
       });
     }
     if (!entries.length) return null;
-    // Weekday values are averages, so the total is rounded rather than printed raw.
-    const total = Math.round(entries.reduce((sum, e) => sum + e.value, 0) * 100) / 100;
+    // Summed first, then rounded once. Rounding each row and adding the rounded figures would
+    // print a total that does not match the rows above it — the reader checks that.
+    const total = round1(entries.reduce((sum, e) => sum + e.value, 0));
 
     return (
       <div className="dash-chart-tooltip">
@@ -272,7 +373,7 @@ export function CategoryTopSlotsChart({
           <div className="dash-chart-tooltip__row" key={e.name}>
             <span className="dash-chart-legend__swatch" style={{ background: e.fill }} />
             <span className="dash-chart-tooltip__name">{e.name}</span>
-            <span className="dash-chart-tooltip__value">{e.value}</span>
+            <span className="dash-chart-tooltip__value">{round1(e.value)}</span>
           </div>
         ))}
         <div className="dash-chart-tooltip__row dash-chart-tooltip__total">
@@ -295,11 +396,16 @@ export function CategoryTopSlotsChart({
   return (
     <div className="dash-chart-card">
       <h3>{title}</h3>
-      <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={size.height}>
+        <BarChart data={data} margin={size.margin}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey={xKey} tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} allowDecimals={allowDecimals} />
+          <XAxis dataKey={xKey} tick={{ fontSize: size.tick }} />
+          <YAxis
+            tick={{ fontSize: size.tick }}
+            width={size.yWidth}
+            allowDecimals={allowDecimals}
+            tickFormatter={round1}
+          />
           <Tooltip content={renderTooltip} cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }} />
           {/* slot0 first, so Recharts puts the bar's biggest seller at the base. */}
           {Array.from({ length: slotCount }, (_, i) => (

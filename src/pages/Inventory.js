@@ -175,10 +175,11 @@ const Inventory = () => {
    * different number, change the copies count in the print dialog itself.
    */
   const handlePrintLabels = useCallback((item) => {
-    const label = layerToLabelData(item);
+    // `t` so the sticker's category type reads the way the rest of the page writes it.
+    const label = layerToLabelData(item, t);
     if (!label) return;
     printHtmlDocument(buildLabelSheetHtml(label, label.maxCopies || 1));
-  }, []);
+  }, [t]);
 
   const [inventory, setInventory] = useState([]);
   const knownCategoryTypes = useProductCategoryTypes();
@@ -405,10 +406,10 @@ const Inventory = () => {
     if (!selectMode) return [];
     return displayInventory
       .filter((item) => selectedLayerIds.has(item.batch_id))
-      .map((item) => ({ item, label: layerToLabelData(item) }))
+      .map((item) => ({ item, label: layerToLabelData(item, t) }))
       .filter((entry) => entry.label)
       .map((entry) => ({ label: entry.label, copies: entry.label.maxCopies || 1 }));
-  }, [selectMode, displayInventory, selectedLayerIds]);
+  }, [selectMode, displayInventory, selectedLayerIds, t]);
 
   const selectedLabelTotal = useMemo(
     () => totalLabelCount(selectedLabelEntries),

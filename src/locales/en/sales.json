@@ -482,6 +482,7 @@
     "currencyUsd": "USD (dollar)",
     "currencyUzs": "UZS (som)",
     "required": "*",
+    "optional": "Optional",
     "emptyHint": "Scan a barcode, or pick from the search above.",
     "colItem": "Product",
     "colQty": "Qty",

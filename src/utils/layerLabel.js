@@ -1,4 +1,5 @@
 import { layerSellingQuote } from './inventorySelling';
+import { categoryTypeLabel } from './productCategoryTypes';
 
 /**
  * Money as the printed sticker writes it, which is not how the screen writes it.
@@ -22,14 +23,19 @@ export function formatLabelPrice(quote) {
 }
 
 /**
- * Turn an inventory row into the seven things printed on its sticker.
+ * Turn an inventory row into the eight things printed on its sticker.
  *
  * `code` is the layer's stored `barcode`, taken from the API verbatim and never rebuilt here.
  * Regenerating it on this side would let the sticker and the database drift apart, which is the
  * one failure this whole design exists to avoid: a printed label that scans to nothing, or worse,
  * to something else.
+ *
+ * `t` is optional, and the label is printed either way. Most category types are invented by the
+ * shop and are never in a locale file, so `categoryTypeLabel` falls back to the typed value —
+ * which means a caller with no translator still gets the shop's own word rather than a lookup key
+ * or a blank. See `productCategoryTypes`.
  */
-export function layerToLabelData(layer) {
+export function layerToLabelData(layer, t) {
   if (!layer || !layer.barcode) return null;
   const product = layer.product_detail || {};
   return {
@@ -39,6 +45,7 @@ export function layerToLabelData(layer) {
     model: product.model || '',
     size: product.size || '',
     color: product.color || '',
+    categoryType: categoryTypeLabel(product.category_type, t) || '',
     // The same figure the Inventory table shows on this very row — `layerSellingQuote` decides
     // which price that is — written the label's way.
     price: formatLabelPrice(layerSellingQuote(layer)),

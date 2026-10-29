@@ -39,6 +39,11 @@ const Settings = () => {
   const [savedName, setSavedName] = useState(settings?.shop_name || '');
   // Defaults to true, matching the column: an unread setting must never read as "nasiya is off".
   const [savedNasiya, setSavedNasiya] = useState(settings?.nasiya_enabled !== false);
+  // Same shape, and for the mirror-image reason: an unread setting must never read as "the till
+  // stopped asking for a customer". Both default to the strict side of their own column.
+  const [savedPosCustomer, setSavedPosCustomer] = useState(
+    settings?.pos_customer_required !== false,
+  );
   const [loading, setLoading] = useState(true);
 
   // A pair of states per card, so a failure on one does not paint an error across the other.
@@ -60,6 +65,7 @@ const Settings = () => {
   const applyRow = useCallback((data) => {
     setSavedName(data?.shop_name || '');
     setSavedNasiya(data?.nasiya_enabled !== false);
+    setSavedPosCustomer(data?.pos_customer_required !== false);
   }, []);
 
   const load = useCallback(async () => {
@@ -238,6 +244,7 @@ const Settings = () => {
 
           <ShopFeaturesForm
             initialNasiya={savedNasiya}
+            initialPosCustomerRequired={savedPosCustomer}
             loading={loading}
             saving={savingFeatures}
             error={featuresError}
@@ -249,6 +256,8 @@ const Settings = () => {
               featuresIntro: t('featuresIntro'),
               nasiyaLabel: t('form.nasiya'),
               nasiyaHint: t('form.nasiyaHint'),
+              posCustomerLabel: t('form.posCustomer'),
+              posCustomerHint: t('form.posCustomerHint'),
               save: t('form.save'),
               saving: t('form.saving'),
             }}

@@ -236,6 +236,94 @@ describe('a group checkout taken on credit', () => {
     });
   });
 
+  test('and it is SPLIT across the lines, not handed to each one whole', () => {
+    // **The bug this file missed.** The test above checked that the flag travelled and never
+    // that the figure did, so the group's whole discount rode down to every line while the
+    // payment was apportioned — and the server refused each line for forgiving more than its
+    // own slice of the gap.
+    //
+    // $40 of goods, $36 paid, $4 forgiven. Weighted 30/40 and 10/40: $3 and $1, which are
+    // exactly the two remainders left by the $27 / $9 payment split.
+    const f = form({
+      balance_shortfall_type: 'discount', balance_shortfall_amount: '4', usd: '36',
+    });
+    const reqs = buildGroupCompleteRequests(lines, f, meta(lineA, f), null);
+
+    expect(reqs[0].data.balance_shortfall_amount).toBeCloseTo(3, 6);
+    expect(reqs[1].data.balance_shortfall_amount).toBeCloseTo(1, 6);
+  });
+
+  test('the shares add back to the figure the cashier typed', () => {
+    // Nothing forgiven twice, and no dust left behind. If the parts did not sum to the whole,
+    // the shop would write off a different amount from the one on the screen.
+    const f = form({
+      balance_shortfall_type: 'discount', balance_shortfall_amount: '4', usd: '36',
+    });
+    const reqs = buildGroupCompleteRequests(lines, f, meta(lineA, f), null);
+    const total = reqs.reduce((sum, r) => sum + (r.data.balance_shortfall_amount || 0), 0);
+
+    expect(total).toBeCloseTo(4, 6);
+  });
+
+  test("no line is ever asked to forgive more than its own unpaid share", () => {
+    // The property the server enforces, asserted here so it is caught before the counter:
+    // `discount <= due - paid`, on every line.
+    const f = form({
+      balance_shortfall_type: 'discount', balance_shortfall_amount: '4', usd: '36',
+    });
+    const reqs = buildGroupCompleteRequests(lines, f, meta(lineA, f), null);
+
+    reqs.forEach((r, i) => {
+      const due = lines[i].total_amount;
+      const paid = r.data.usd || 0;
+      expect(r.data.balance_shortfall_amount).toBeLessThanOrEqual(due - paid + 1e-6);
+    });
+  });
+
+  test("the owner's own basket: 250 000 + 245 000 soum, 400 000 taken, 95 000 forgiven", () => {
+    // Reported from the counter. The 245 000 line was handed 197 980 and then told to write off
+    // 95 000 of a 47 020 remainder — "Discount 95000 UZS exceeds the unpaid remainder 47020
+    // UZS". In soum, so the shares are whole numbers and have to land exactly.
+    const soum = (id, amount) => ({
+      ...dollarSale, id, sale_currency: 'UZS', selling_price: amount, total_amount: amount,
+      quantity: 1,
+    });
+    const basket = [soum(701, 250000), soum(702, 245000)];
+    const f = form({
+      balance_shortfall_type: 'discount', balance_shortfall_amount: '95000', uzs: '400000',
+    });
+    const reqs = buildGroupCompleteRequests(basket, f, meta(basket[0], f), null);
+
+    expect(reqs[0].data.uzs).toBe(202020);
+    expect(reqs[1].data.uzs).toBe(197980);
+    expect(reqs[0].data.balance_shortfall_amount).toBe(47980);
+    expect(reqs[1].data.balance_shortfall_amount).toBe(47020);
+    // Each line now balances exactly: paid + forgiven == its own due.
+    expect(reqs[0].data.uzs + reqs[0].data.balance_shortfall_amount).toBe(250000);
+    expect(reqs[1].data.uzs + reqs[1].data.balance_shortfall_amount).toBe(245000);
+  });
+
+  test('a line whose discount share rounds away carries no discount at all', () => {
+    // The server refuses a discount of nothing. A share that rounds to zero means a remainder
+    // that rounded to zero with it, so there is nothing to explain on that line either.
+    const soum = (id, amount) => ({
+      ...dollarSale, id, sale_currency: 'UZS', selling_price: amount, total_amount: amount,
+      quantity: 1,
+    });
+    const lopsided = [soum(711, 1000000), soum(712, 100)];
+    const f = form({
+      balance_shortfall_type: 'discount', balance_shortfall_amount: '1', uzs: '1000099',
+    });
+    const reqs = buildGroupCompleteRequests(lopsided, f, meta(lopsided[0], f), null);
+
+    // The big line takes the whole soum; the last line is left with nothing to forgive, and
+    // nothing unpaid either — its share of the money already covers its 100 in full.
+    expect(reqs[0].data.balance_shortfall_amount).toBe(1);
+    expect(reqs[1].data.balance_shortfall_type).toBeUndefined();
+    expect(reqs[1].data.balance_shortfall_amount).toBeUndefined();
+    expect(reqs[1].data.uzs).toBe(lopsided[1].total_amount);
+  });
+
   test('an ordinary group completion carries no credit fields at all', () => {
     const f = form({ usd: '40' });
     const reqs = buildGroupCompleteRequests(lines, f, meta(lineA, f), null);

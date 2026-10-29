@@ -8,7 +8,9 @@
     "save": "Save",
     "saving": "Saving…",
     "nasiya": "Credit sales (nasiya)",
-    "nasiyaHint": "Off: no new debt can be opened, and Qarzdorlik disappears once every existing debt is settled. Existing debts stay visible and collectable."
+    "nasiyaHint": "Off: no new debt can be opened, and Qarzdorlik disappears once every existing debt is settled. Existing debts stay visible and collectable.",
+    "posCustomer": "Customer required at the till",
+    "posCustomerHint": "On: Kassa will not ring up a basket until a customer is chosen. Off: a sale may be recorded with no customer. A nasiya sale always needs one either way — a debt owed by nobody cannot be collected."
   },
   "errors": {
     "loadFailed": "Could not load the settings.",

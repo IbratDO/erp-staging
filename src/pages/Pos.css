@@ -92,6 +92,9 @@
   color: #64748b;
 }
 .pos__required { font-style: normal; color: #dc2626; font-weight: 700; }
+/* Quiet, where its sibling shouts. "Optional" is information, not a warning, and a second red
+   marker beside a field would read as a second thing that has to be dealt with. */
+.pos__optional { font-style: normal; color: #94a3b8; font-weight: 600; }
 
 /* Tinted like the Sotuvlar currency picker, so the basket's currency is never a surprise at the
    moment the total is read out. */
@@ -261,4 +264,56 @@
   .pos__body { grid-template-columns: 1fr; }
   .pos__head { display: none; }
   .pos__line { grid-template-columns: minmax(0, 1fr) 110px 100px 100px; row-gap: 8px; }
+}
+
+/*
+ * Phones: the item gets a row of its own.
+ *
+ * **This is what made the name disappear.** The 900px rule above declares four columns whose three
+ * fixed ones already want 310px before the gaps; on a 390px handset, once the page padding and the
+ * basket's own padding are taken out, there is nothing left for the `minmax(0, 1fr)` the name lives
+ * in. It resolves to zero, and `.pos__line-name` clips its overflow — so the seller was reading a
+ * price and a quantity for an item with no name against them. `minmax(0, …)` is doing exactly what
+ * it was asked to: a floor of zero is a floor of zero.
+ *
+ * So on a phone the line stops pretending to be a table row. Four rows, in the order the sale is
+ * actually built: what it is, how many and for how much, then the adjustments.
+ *
+ *     [ name .............................. ] [x]
+ *     [ qty -  2  + ]          [ line total ]
+ *     [ price ]                   [ discount ]
+ *     [ package ............................ ]
+ *
+ * Every cell is placed explicitly rather than left to auto-flow. Seven children across four rows
+ * auto-place into whatever Grid finds convenient, and a till is the last screen that should
+ * rearrange itself because a column count changed somewhere above.
+ */
+@media (max-width: 640px) {
+  .pos__line {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px;
+    column-gap: 8px;
+    row-gap: 10px;
+    padding: 12px 4px;
+  }
+
+  .pos__line-item        { grid-area: 1 / 1 / 2 / 3; }
+  .pos__line-drop        { grid-area: 1 / 3 / 2 / 4; align-self: start; }
+  .pos__line-qty         { grid-area: 2 / 1 / 3 / 2; justify-content: flex-start; }
+  .pos__line-total       { grid-area: 2 / 2 / 3 / 4; }
+  .pos__line-price--unit { grid-area: 3 / 1 / 4 / 2; }
+  .pos__line-price--off  { grid-area: 3 / 2 / 4 / 4; }
+  .pos__line-pkg         { grid-area: 4 / 1 / 5 / 4; }
+
+  /* Two short lines beat one ellipsis: the name is the whole point of the row, and on a phone
+     "Nike Air Zoom Pega…" is not an identification. */
+  .pos__line-name { white-space: normal; font-size: 1rem; line-height: 1.3; }
+
+  /* 16px, because iOS Safari zooms the whole page in when a smaller field takes focus and never
+     zooms back out — the operator is then scrolling a magnified till one-handed. */
+  .pos__line-price,
+  .pos__line-pkg { font-size: 16px; }
+
+  /* Thumb-sized. These are pressed repeatedly, standing up, with a customer waiting. */
+  .pos__line-qty button { width: 40px; height: 40px; }
+  .pos__line-drop { width: 32px; height: 32px; }
 }

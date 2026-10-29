@@ -18,7 +18,14 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
 
-import { nonZeroTooltip, seriesTooltip } from './dashboardCharts';
+import {
+  axisTick,
+  axisWidth,
+  chartHeight,
+  nonZeroTooltip,
+  round1,
+  seriesTooltip,
+} from './dashboardCharts';
 
 const STYLE = { background: '#fff' };
 
@@ -72,12 +79,49 @@ describe('who appears in the hover', () => {
     const text = show({ payload: [entry('Ali', 0.25), entry('Vali', 0)] });
 
     expect(text).toContain('Ali');
-    expect(text).toContain('0.25');
+    expect(text).toContain('0.3');
     expect(text).not.toContain('Vali');
   });
 
-  test('a long average is trimmed to two decimals', () => {
-    expect(show({ payload: [entry('Ali', 1.6666666)] })).toContain('1.67');
+  test('a long average is trimmed to one decimal', () => {
+    expect(show({ payload: [entry('Ali', 1.6666666)] })).toContain('1.7');
+  });
+});
+
+/**
+ * How every figure on every chart is printed.
+ *
+ * One decimal place, by the owner's instruction. The reason it is `Math.round(v * 10) / 10` and
+ * not `toFixed(1)` is pinned below: almost every series on this dashboard is a *count*. "7.0
+ * pairs" claims a precision that does not exist, and the reader has to stop and check whether
+ * they are looking at units or at money.
+ */
+describe('how a figure is printed', () => {
+  test('a long average is cut to one decimal', () => {
+    expect(round1(1.66666)).toBe(1.7);
+    expect(round1(3.3333)).toBe(3.3);
+  });
+
+  test('a whole number stays whole', () => {
+    // The mutation: `toFixed(1)`, which would print a seven-pair month as "7.0".
+    expect(round1(7)).toBe(7);
+    expect(round1(0)).toBe(0);
+  });
+
+  test('a figure below half a tenth does round to zero, and that is the known cost', () => {
+    // Worth stating rather than discovering: the hover drops *exact* zeros only, so a 0.04 would
+    // still be listed -- printed as "0". In practice it cannot arrive: `weekdayAverages` already
+    // rounds to one decimal before the chart ever sees it, so nothing finer reaches here. If a
+    // series is ever added that does not pre-round, this is the line that will bite.
+    expect(round1(0.04)).toBe(0);
+    expect(round1(0.06)).toBe(0.1);
+  });
+
+  test('anything that is not a number passes straight through', () => {
+    // Math.round on a label is NaN, and "NaN" in a tooltip is what the reader would see.
+    expect(round1('-')).toBe('-');
+    expect(round1(undefined)).toBe(undefined);
+    expect(round1(Infinity)).toBe(Infinity);
   });
 });
 
@@ -161,5 +205,40 @@ describe('reversing the hover order', () => {
 
     expect(text).toContain('Old customers');
     expect(text).not.toContain('New customers');
+  });
+});
+
+/**
+ * What a chart's furniture costs on each screen.
+ *
+ * These three decide whether a phone gets a readable chart or a readable axis, and they are the
+ * half of "responsive" that a stylesheet cannot reach — Recharts sizes its axes from props, not
+ * from CSS. Pinned here mostly for the desktop direction: **above the breakpoint every one of
+ * them has to hand back exactly what it was given**, because that is what keeps the computer view
+ * byte-identical to the one people have been reading for a year.
+ */
+describe('chart sizing', () => {
+  test('a desktop gets back precisely what it asked for', () => {
+    expect(chartHeight(false, 280)).toBe(280);
+    expect(chartHeight(false, 220)).toBe(220);
+    expect(axisTick(false, 11)).toEqual({ fontSize: 11 });
+    expect(axisTick(false)).toEqual({ fontSize: 12 });
+    expect(axisWidth(false)).toBeUndefined();
+    expect(axisWidth(false, 44)).toBe(44);
+  });
+
+  test('a phone never gets a taller chart than the desktop had', () => {
+    // The mutation: a flat `240` on the narrow branch, which would make the 220px management
+    // cards *grow* on the smaller screen.
+    expect(chartHeight(true, 280)).toBe(240);
+    expect(chartHeight(true, 220)).toBe(220);
+  });
+
+  test('a phone gets smaller ticks and a narrower axis whatever the desktop asked for', () => {
+    expect(axisTick(true, 11)).toEqual({ fontSize: 10 });
+    expect(axisTick(true, 12)).toEqual({ fontSize: 10 });
+    // 60px of a ~310px card is a fifth of the chart spent on four numbers.
+    expect(axisWidth(true)).toBe(34);
+    expect(axisWidth(true, 44)).toBe(34);
   });
 });

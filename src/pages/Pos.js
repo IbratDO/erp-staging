@@ -62,7 +62,7 @@ export default function Pos() {
   const navigate = useNavigate();
   const { hasPermission } = usePermissions();
   const canPay = hasPermission('sales.complete_pay');
-  const { settings } = useSettings();
+  const { settings, refreshSettings } = useSettings();
 
   const [lines, setLines] = useState([emptyBatchLine()]);
   const [customer, setCustomer] = useState('');
@@ -121,7 +121,29 @@ export default function Pos() {
     api.get('/exchange-rate/')
       .then((r) => setCbuRate(r.data?.rate ?? null))
       .catch(() => { /* a same-currency basket never needs it */ });
-  }, [loadShelf, say, tr]);
+    // The full settings row, for `pos_customer_required`.
+    //
+    // `SettingsProvider` boots on `/settings/public/`, which carries the shop's name and nothing
+    // else — it runs before anyone has signed in, so it cannot ask for more. The rest of the row
+    // only arrives when something asks, and until now only the Sozlamalar page ever did. Without
+    // this the till would read an absent flag on every visit, fall to the strict default and go
+    // on demanding a customer however the Admin had set it.
+    //
+    // Failure is deliberately silent: the flag then stays unknown, which reads as "required" —
+    // the behaviour the till has always had. A settings request must never stop a shop trading.
+    refreshSettings();
+  }, [loadShelf, say, tr, refreshSettings]);
+
+  /**
+   * Whether the till insists on a name before it will ring anything up.
+   *
+   * `!== false` and not a truthiness test, because the three states are different: `true` is the
+   * Admin saying yes, `false` is the Admin saying no, and **`undefined` is not knowing yet** —
+   * the row has not arrived, or the request failed. Not knowing has to read as "required", which
+   * is both what the till has always done and the safer error: a customer asked for unnecessarily
+   * costs one tap, while a customer never asked for is a fact nobody can reconstruct later.
+   */
+  const customerRequired = settings?.pos_customer_required !== false;
 
   /**
    * The currency the basket is being rung up in — the first item's, once there is one.
@@ -300,7 +322,7 @@ export default function Pos() {
    * a second fetch or a guess about which sales were just made.
    */
   const startPayment = async () => {
-    if (!customer) { say('error', tr('pos.errCustomer')); return; }
+    if (customerRequired && !customer) { say('error', tr('pos.errCustomer')); return; }
     setBusy(true);
     try {
       // The shelf as it stands *now*, not as it was when the till was opened. Somebody else may
@@ -333,7 +355,9 @@ export default function Pos() {
       }
 
       const { data } = await api.post('/sales/batch_create/', {
-        customer: parseInt(customer, 10),
+        // `null`, not an absent key and not `NaN`: the server tells a till basket with no
+        // customer apart from a malformed one, and only lets the first through.
+        customer: customer ? parseInt(customer, 10) : null,
         // The Sotuvlar batch form posts an identical body to this endpoint, so the till has to
         // name itself: only a basket rung up here may later be discarded unpaid.
         source: 'pos',
@@ -572,15 +596,18 @@ export default function Pos() {
                           `wide={false}` because `.amount-input--wide` would put a 10ch floor under
                           these boxes and push the till's grid out of line. */}
                       <AmountInput
-                        className="pos__line-price"
+                        className="pos__line-price pos__line-price--unit"
                         wide={false}
                         value={line.selling_price}
                         onChange={(e) => repriceLine(line.key, 'selling_price', e.target.value)}
                         aria-label={tr('pos.colPrice', { currency: unitName })}
                       />
 
+                      {/* The modifier is not decoration: on a phone the line is re-laid out into
+                          four rows and the two boxes land in different cells, which CSS cannot do
+                          while they are indistinguishable. */}
                       <AmountInput
-                        className="pos__line-price"
+                        className="pos__line-price pos__line-price--off"
                         wide={false}
                         placeholder="0"
                         value={line.discount_price || ''}
@@ -637,7 +664,14 @@ export default function Pos() {
         <aside className="pos__pay">
           <label className="pos__customer">
             <span className="pos__tool-label">
-              {tr('pos.customer')} <em className="pos__required">{tr('pos.required')}</em>
+              {tr('pos.customer')}{' '}
+              {/* Say which it is. A field marked neither way is one the cashier has to find out
+                  about by pressing the button and being refused. */}
+              {customerRequired ? (
+                <em className="pos__required">{tr('pos.required')}</em>
+              ) : (
+                <em className="pos__optional">{tr('pos.optional')}</em>
+              )}
             </span>
             <div className="pos__customer-row">
               <CustomerSearchableSelect
@@ -683,7 +717,7 @@ export default function Pos() {
             type="button"
             className="pos__checkout"
             onClick={startPayment}
-            disabled={busy || !filled.length || !customer || !canPay}
+            disabled={busy || !filled.length || (customerRequired && !customer) || !canPay}
           >
             {busy ? tr('pos.checkoutBusy') : tr('pos.checkout')}
             {!busy && filled.length > 0 && (
@@ -691,7 +725,7 @@ export default function Pos() {
             )}
           </button>
           {/* Why the button is grey. Otherwise a disabled TO'LASH with a full basket is a puzzle. */}
-          {canPay && !busy && (!filled.length || !customer) && (
+          {canPay && !busy && (!filled.length || (customerRequired && !customer)) && (
             <p className="pos__hint pos__hint--block">
               {!filled.length ? tr('pos.needItems') : tr('pos.needCustomer')}
             </p>

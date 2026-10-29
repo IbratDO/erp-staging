@@ -11,8 +11,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { CHART_PALETTE } from '../utils/dashboardAnalytics';
+import { CHART_PALETTE, round1 } from '../utils/dashboardAnalytics';
 import useAppTranslation from '../hooks/useAppTranslation';
+import {
+  axisTick,
+  axisWidth,
+  chartHeight,
+  useNarrowCharts,
+} from './dashboardCharts';
 
 export function fmtUsd(n) {
   return `$${(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -182,13 +188,16 @@ export function FinanceCards({ data, turnoverLoading }) {
 
 export function NetProfitChart({ data }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
+  // Phone sizing. Above 600px `narrow` is false and every figure below is the desktop
+  // one, so this tab renders exactly as it did.
+  const narrow = useNarrowCharts();
   return (
     <MgmtChart title={t('mgmt.netProfitMonthly')}>
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={chartHeight(narrow, 240)}>
         <LineChart data={data?.net_profit_monthly || []}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="month_label" tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} />
+          <XAxis dataKey="month_label" tick={axisTick(narrow, 12)} />
+          <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} />
           <Tooltip contentStyle={tooltipStyle} formatter={(v) => fmtUsd(v)} />
           <Line
             type="monotone"
@@ -206,14 +215,17 @@ export function NetProfitChart({ data }) {
 
 export function FinanceCharts({ data, expensesGranularity, setExpensesGranularity }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
+  // Phone sizing. Above 600px `narrow` is false and every figure below is the desktop
+  // one, so this tab renders exactly as it did.
+  const narrow = useNarrowCharts();
   return (
     <div className="mgmt-grid">
       <MgmtChart title={t('mgmt.netProfitMonthly')}>
-        <ResponsiveContainer width="100%" height={240}>
+        <ResponsiveContainer width="100%" height={chartHeight(narrow, 240)}>
           <LineChart data={data?.net_profit_monthly || []}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="month_label" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} />
+            <XAxis dataKey="month_label" tick={axisTick(narrow, 12)} />
+            <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} />
             <Tooltip contentStyle={tooltipStyle} formatter={(v) => fmtUsd(v)} />
             <Line
               type="monotone"
@@ -241,11 +253,11 @@ export function FinanceCharts({ data, expensesGranularity, setExpensesGranularit
           />
         }
       >
-        <ResponsiveContainer width="100%" height={240}>
+        <ResponsiveContainer width="100%" height={chartHeight(narrow, 240)}>
           <LineChart data={data?.other_expenses_trend?.points || []}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 12 }} />
+            <XAxis dataKey="period" tick={axisTick(narrow, 11)} />
+            <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} />
             <Tooltip
               contentStyle={tooltipStyle}
               content={({ active, payload, label }) => {
@@ -266,7 +278,7 @@ export function FinanceCharts({ data, expensesGranularity, setExpensesGranularit
                     )}
                     {(p?.uzs_native ?? 0) > 0 && (
                       <div>
-                        {t('mgmt.tooltipUzsExpenses')} {p.uzs_native.toLocaleString()} UZS
+                        {t('mgmt.tooltipUzsExpenses')} {round1(p.uzs_native).toLocaleString()} UZS
                       </div>
                     )}
                   </div>
@@ -286,12 +298,12 @@ export function FinanceCharts({ data, expensesGranularity, setExpensesGranularit
       </MgmtChart>
 
       <MgmtChart title={t('mgmt.capitalTurnoverMonthly')}>
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={chartHeight(narrow, 220)}>
           <LineChart data={data?.capital_turnover_monthly || []}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="month_label" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} />
-            <Tooltip contentStyle={tooltipStyle} />
+            <XAxis dataKey="month_label" tick={axisTick(narrow, 12)} />
+            <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} />
+            <Tooltip contentStyle={tooltipStyle} formatter={round1} />
             <Line
               type="monotone"
               dataKey="value"
@@ -304,11 +316,11 @@ export function FinanceCharts({ data, expensesGranularity, setExpensesGranularit
       </MgmtChart>
 
       <MgmtChart title={t('mgmt.roiMonthly')}>
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={chartHeight(narrow, 220)}>
           <LineChart data={data?.roi_monthly || []}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="month_label" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} unit="%" />
+            <XAxis dataKey="month_label" tick={axisTick(narrow, 12)} />
+            <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} unit="%" />
             <Tooltip
               contentStyle={tooltipStyle}
               content={({ active, payload, label }) => {
@@ -342,6 +354,9 @@ export function FinanceCharts({ data, expensesGranularity, setExpensesGranularit
 
 export function MarketingPerItemChart({ data, marketingGranularity, setMarketingGranularity }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
+  // Phone sizing. Above 600px `narrow` is false and every figure below is the desktop
+  // one, so this tab renders exactly as it did.
+  const narrow = useNarrowCharts();
   return (
     <MgmtChart
       title={t('mgmt.marketingPerItem')}
@@ -356,11 +371,11 @@ export function MarketingPerItemChart({ data, marketingGranularity, setMarketing
         />
       }
     >
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={chartHeight(narrow, 240)}>
         <BarChart data={data?.marketing_per_sold_item?.points || []}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 12 }} />
+          <XAxis dataKey="period" tick={axisTick(narrow, 11)} />
+          <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} />
           <Tooltip
             contentStyle={tooltipStyle}
             content={({ active, payload, label }) => {
@@ -375,7 +390,7 @@ export function MarketingPerItemChart({ data, marketingGranularity, setMarketing
                     {t('mgmt.marketing')} {fmtUsd(p?.marketing_expenses_usd)}
                   </div>
                   <div>
-                    {t('mgmt.soldUnits')} {p?.sold_units}
+                    {t('mgmt.soldUnits')} {round1(p?.sold_units)}
                   </div>
                   <div>
                     {t('mgmt.perItem')}{' '}
@@ -394,6 +409,9 @@ export function MarketingPerItemChart({ data, marketingGranularity, setMarketing
 
 function MarketingPerCustomerChart({ data, granularity = 'weekly', onGranularityChange }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
+  // Phone sizing. Above 600px `narrow` is false and every figure below is the desktop
+  // one, so this tab renders exactly as it did.
+  const narrow = useNarrowCharts();
   return (
     <MgmtChart
       title={t('mgmt.marketingPerCustomer')}
@@ -410,11 +428,11 @@ function MarketingPerCustomerChart({ data, granularity = 'weekly', onGranularity
         ) : null
       }
     >
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={chartHeight(narrow, 240)}>
         <BarChart data={data?.marketing_per_new_customer_weekly || []}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 12 }} />
+          <XAxis dataKey="period" tick={axisTick(narrow, 11)} />
+          <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} />
           <Tooltip
             contentStyle={tooltipStyle}
             content={({ active, payload, label }) => {
@@ -429,7 +447,7 @@ function MarketingPerCustomerChart({ data, granularity = 'weekly', onGranularity
                     {t('mgmt.marketing')} {fmtUsd(p?.marketing_expenses_usd)}
                   </div>
                   <div>
-                    {t('mgmt.newCustomers')} {p?.new_customers}
+                    {t('mgmt.newCustomers')} {round1(p?.new_customers)}
                   </div>
                   <div>
                     {t('mgmt.perCustomer')} {p?.value_na ? 'N/A' : fmtUsd(p?.value)}
@@ -496,6 +514,9 @@ export function ManagerMarginChart({
   height = 280,
 }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
+  // Phone sizing. Above 600px `narrow` is false and every figure below is the desktop
+  // one, so this tab renders exactly as it did.
+  const narrow = useNarrowCharts();
   const { managerChartData, managerNames } = useManagerChartData(data, granularity);
   return (
     <MgmtChart
@@ -513,13 +534,13 @@ export function ManagerMarginChart({
         ) : null
       }
     >
-      <ResponsiveContainer width="100%" height={height}>
+      <ResponsiveContainer width="100%" height={chartHeight(narrow, height)}>
         <LineChart data={managerChartData}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="monthLabel" tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} />
-          <Tooltip contentStyle={tooltipStyle} />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <XAxis dataKey="monthLabel" tick={axisTick(narrow, 12)} />
+          <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} />
+          <Tooltip contentStyle={tooltipStyle} formatter={round1} />
+          <Legend wrapperStyle={{ fontSize: narrow ? 10 : 11 }} />
           {managerNames.map((name, i) => (
             <Line
               key={name}
@@ -538,6 +559,9 @@ export function ManagerMarginChart({
 
 export function InventoryCharts({ data }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
+  // Phone sizing. Above 600px `narrow` is false and every figure below is the desktop
+  // one, so this tab renders exactly as it did.
+  const narrow = useNarrowCharts();
   return (
     <>
       <div className="mgmt-cards-row">
@@ -549,13 +573,13 @@ export function InventoryCharts({ data }) {
       </div>
       <div className="mgmt-charts-grid">
         <MgmtChart title={t('mgmt.slowInventory')}>
-          <ResponsiveContainer width="100%" height={240}>
+          <ResponsiveContainer width="100%" height={chartHeight(narrow, 240)}>
             <BarChart data={data?.inventory_aging_monthly || []}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="month_label" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <XAxis dataKey="month_label" tick={axisTick(narrow, 12)} />
+              <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} allowDecimals={false} />
+              <Tooltip contentStyle={tooltipStyle} formatter={round1} />
+              <Legend wrapperStyle={{ fontSize: narrow ? 10 : 11 }} />
               <Bar dataKey="age_3_5" name={t('mgmt.age3_5')} stackId="age" fill="#f59e0b" />
               <Bar dataKey="age_5_8" name={t('mgmt.age5_8')} stackId="age" fill="#ea580c" />
               <Bar dataKey="age_8_plus" name={t('mgmt.age8plus')} stackId="age" fill="#b91c1c" />
@@ -569,16 +593,19 @@ export function InventoryCharts({ data }) {
 
 export function SalesMgmtCharts({ data }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
+  // Phone sizing. Above 600px `narrow` is false and every figure below is the desktop
+  // one, so this tab renders exactly as it did.
+  const narrow = useNarrowCharts();
   return (
     <div className="mgmt-charts-grid">
       <MgmtChart title={t('mgmt.shopVsDelivery')}>
-        <ResponsiveContainer width="100%" height={240}>
+        <ResponsiveContainer width="100%" height={chartHeight(narrow, 240)}>
           <BarChart data={data?.shop_vs_delivery_monthly || []}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="month_label" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-            <Tooltip contentStyle={tooltipStyle} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <XAxis dataKey="month_label" tick={axisTick(narrow, 12)} />
+            <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} allowDecimals={false} />
+            <Tooltip contentStyle={tooltipStyle} formatter={round1} />
+            <Legend wrapperStyle={{ fontSize: narrow ? 10 : 11 }} />
             <Bar dataKey="shop" name={t('mgmt.shop')} stackId="a" fill="#0ea5e9" />
             <Bar dataKey="delivery" name={t('mgmt.delivery')} stackId="a" fill="#8b5cf6" />
           </BarChart>
@@ -586,24 +613,30 @@ export function SalesMgmtCharts({ data }) {
       </MgmtChart>
 
       <MgmtChart title={t('mgmt.returnsMonthly')}>
-        <ResponsiveContainer width="100%" height={240}>
+        <ResponsiveContainer width="100%" height={chartHeight(narrow, 240)}>
           <BarChart data={data?.returns_monthly || []}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="month_label" tick={{ fontSize: 12 }} />
-            <YAxis yAxisId="units" tick={{ fontSize: 12 }} allowDecimals={false} />
+            <XAxis dataKey="month_label" tick={axisTick(narrow, 12)} />
             <YAxis
+              width={axisWidth(narrow)}
+              yAxisId="units"
+              tick={axisTick(narrow, 12)}
+              allowDecimals={false}
+            />
+            <YAxis
+              width={axisWidth(narrow)}
               yAxisId="usd"
               orientation="right"
-              tick={{ fontSize: 12 }}
-              tickFormatter={(v) => `$${v}`}
+              tick={axisTick(narrow, 12)}
+              tickFormatter={(v) => `$${round1(v)}`}
             />
             <Tooltip
               contentStyle={tooltipStyle}
               formatter={(value, name) =>
-                name === t('mgmt.refundsUsd') ? fmtUsd(value) : value
+                name === t('mgmt.refundsUsd') ? fmtUsd(value) : round1(value)
               }
             />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Legend wrapperStyle={{ fontSize: narrow ? 10 : 11 }} />
             <Bar
               yAxisId="units"
               dataKey="returned_units"

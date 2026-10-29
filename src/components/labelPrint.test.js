@@ -94,6 +94,27 @@ describe('copies', () => {
 });
 
 describe('escaping', () => {
+  it('prints the category type beside size and colour', () => {
+    const html = buildLabelSheetHtml({ ...LABEL, categoryType: 'Sport' }, 1);
+    expect(html).toContain('42 · Qora · Sport');
+  });
+
+  it('prints no stray separator when the product has no category type', () => {
+    // `filter(Boolean)` before the join. Without it the line reads "42 · Qora · " and the
+    // trailing dot looks like something failed to load.
+    const html = buildLabelSheetHtml(LABEL, 1);
+    expect(html).toContain('42 · Qora<');
+  });
+
+  it('keeps the attributes on ONE line however long the type is', () => {
+    // Load-bearing, not cosmetic. The sticker is 40x30mm and full; a wrapped line pushes it past
+    // 30mm, and one pixel of overflow prints EVERY label on two pages. The ellipsis is what
+    // makes a long category type cost characters instead of a whole roll.
+    const html = buildLabelSheetHtml({ ...LABEL, categoryType: 'A'.repeat(60) }, 1);
+    expect(html).toContain('white-space: nowrap; overflow: hidden; text-overflow: ellipsis;');
+    expect(countOf(html, 'class="label"')).toBe(1);
+  });
+
   it('escapes a product name that would otherwise corrupt the document', () => {
     const html = buildLabelSheetHtml({ ...LABEL, model: 'A & B <x>' }, 1);
     expect(html).toContain('A &amp; B &lt;x&gt;');

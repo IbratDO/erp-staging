@@ -1,5 +1,27 @@
 /** Client-side transforms for dashboard sale facts (cross-filter + chart series). */
 
+/**
+ * Every number a chart prints, to one decimal place.
+ *
+ * `Math.round(v * 10) / 10` and not `toFixed(1)`, deliberately: most of these series are counts.
+ * A month that sold 7 pairs should read `7`, not `7.0` — a trailing zero on a whole number reads
+ * as a measurement precise to a tenth of a shoe. The decimal only appears where there genuinely
+ * is one, which on this dashboard means the averages, the ratios and the percentages.
+ *
+ * Non-numbers pass through untouched. A tooltip row can carry a label rather than a figure, and
+ * `Math.round` on a string is `NaN` — which would print as "NaN" in front of the reader.
+ *
+ * **It lives here rather than beside the charts** because it is needed by two unrelated chart
+ * modules — the shared cards in `dashboardCharts.jsx` and the management KPI sections — and the
+ * second of those is exactly where it was missed the first time round. A helper only one of them
+ * can see is a helper the other will go without.
+ */
+export function round1(value) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.round(value * 10) / 10
+    : value;
+}
+
 export const CHART_PALETTE = [
   '#2563eb',
   '#059669',

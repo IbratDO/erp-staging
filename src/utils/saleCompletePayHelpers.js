@@ -1010,6 +1010,40 @@ export function buildGroupCompleteRequests(groupSales, paymentFormData, meta, ex
   let changeUsdLeft = changeUsdIn;
 
   const applyGroupDiscount = paymentFormData.balance_shortfall_type === 'discount';
+  // The named discount splits by the same weights as the payment, and for the same reason the
+  // change does.
+  //
+  // **This is what was broken.** The group's whole figure used to ride down to every line while
+  // the payment was apportioned, so each line was asked to forgive the group's total out of its
+  // own slice of the gap. Two items at 250 000 and 245 000, 400 000 collected and 95 000
+  // forgiven: the 245 000 line received 197 980 and was then told to write off 95 000 of a
+  // 47 020 remainder, and the server refused with "Discount 95000 UZS exceeds the unpaid
+  // remainder 47020 UZS". It refused *every* such group, because a whole discount is larger than
+  // any one line's share of itself by definition — so the only group discount that ever worked
+  // was a single-line one.
+  //
+  // Had the server been more permissive it would have been worse than an error: each line would
+  // have recorded the full 95 000 and the shop would have written off 190 000 for a 95 000
+  // discount, silently.
+  //
+  // The same applies to the named FX amount below, which the server bounds against each line's
+  // surplus in exactly the same way.
+  const sc = String(groupSales[0]?.sale_currency || 'USD').toUpperCase();
+  // Soum has no decimals; dollars have two. Matching the payment split directly above, so a
+  // line's discount and its share of the money are rounded to the same grid and cannot end up
+  // a hundredth apart.
+  const roundShare = (value) => (sc === 'UZS' ? Math.round(value) : Math.round(value * 100) / 100);
+
+  const discountIn = applyGroupDiscount
+    ? parseFloat(paymentFormData.balance_shortfall_amount) || 0
+    : 0;
+  let discountLeft = discountIn;
+
+  const wantFx = !!paymentFormData.apply_currency_conversion_difference;
+  const fxIn = wantFx && paymentFormData.apply_additional_profit
+    ? parseFloat(paymentFormData.currency_conversion_difference_amount) || 0
+    : 0;
+  let fxLeft = fxIn;
   // Credit rides down to every line, and every line opens its own debt. That is deliberate:
   // profit on a credit sale is recognized against that line's own cost, so a group cannot share
   // one debt row without the payment split quietly deciding how much profit each line reports.
@@ -1029,11 +1063,25 @@ export function buildGroupCompleteRequests(groupSales, paymentFormData, meta, ex
     changeUzsLeft -= changeUzsShare;
     changeUsdLeft -= changeUsdShare;
 
+    // Last line takes the remainder, as every other split here does: the shares then add back to
+    // the figure the cashier typed exactly, with no rounding dust left over to explain.
+    const discountShare = isLast ? discountLeft : roundShare(discountIn * weight);
+    discountLeft -= discountShare;
+    const fxShare = isLast ? fxLeft : roundShare(fxIn * weight);
+    fxLeft -= fxShare;
+
     const childForm = {
       ...paymentFormData,
       uzs: uzsShare > 0 ? String(uzsShare) : '',
       usd: usdShare > 0 ? String(usdShare) : '',
-      balance_shortfall_type: applyGroupDiscount ? 'discount' : '',
+      // A line whose share rounds away has no discount to record, and the server refuses a
+      // discount of nothing ("Enter the discount amount when Discount is selected"). Its
+      // remainder has rounded away with it — the two are the same weighting — so there is
+      // nothing left unexplained either.
+      balance_shortfall_type: applyGroupDiscount && discountShare > 0 ? 'discount' : '',
+      balance_shortfall_amount: discountShare > 0 ? String(discountShare) : '',
+      apply_currency_conversion_difference: wantFx,
+      currency_conversion_difference_amount: fxShare > 0 ? String(fxShare) : '',
       apply_credit: applyGroupCredit,
       // The named share is deliberately dropped per line: each line's debt is whatever is left
       // of its own due after its own slice of the payment, which the server already computes.

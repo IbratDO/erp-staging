@@ -482,6 +482,7 @@
     "currencyUsd": "USD (dollar)",
     "currencyUzs": "UZS (so'm)",
     "required": "*",
+    "optional": "Ixtiyoriy",
     "emptyHint": "Shtrix-kodni skanerlang yoki yuqoridagi qidiruvdan tanlang.",
     "colItem": "Mahsulot",
     "colQty": "Soni",
