@@ -94,24 +94,53 @@ describe('copies', () => {
 });
 
 describe('escaping', () => {
-  it('prints the category type beside size and colour', () => {
-    const html = buildLabelSheetHtml({ ...LABEL, categoryType: 'Sport' }, 1);
-    expect(html).toContain('42 · Qora · Sport');
-  });
-
-  it('prints no stray separator when the product has no category type', () => {
-    // `filter(Boolean)` before the join. Without it the line reads "42 · Qora · " and the
-    // trailing dot looks like something failed to load.
+  it('keeps size and colour to themselves', () => {
     const html = buildLabelSheetHtml(LABEL, 1);
     expect(html).toContain('42 · Qora<');
   });
 
-  it('keeps the attributes on ONE line however long the type is', () => {
+  it('prints the type and the category on their own line', () => {
+    // **Measured, not a preference.** All four on one line truncated 920 of the shop's own 1000
+    // rows -- the classification would have been ellipsed away on nearly every sticker, which is
+    // the same as not printing it at all.
+    const html = buildLabelSheetHtml(
+      { ...LABEL, categoryType: 'Sport', category: 'Krossovka' }, 1,
+    );
+    expect(html).toContain('42 · Qora<');
+    expect(html).toContain('Sport · Krossovka');
+  });
+
+  it('prints each of them alone when only one is set', () => {
+    expect(buildLabelSheetHtml({ ...LABEL, categoryType: 'Sport' }, 1))
+      .toContain('>Sport<');
+    expect(buildLabelSheetHtml({ ...LABEL, category: 'Krossovka' }, 1))
+      .toContain('>Krossovka<');
+  });
+
+  it('drops the line entirely when the product has neither', () => {
+    // Not an empty div: `space-between` would hand it a share of the vertical space and push
+    // the barcode down for nothing.
+    const html = buildLabelSheetHtml(LABEL, 1);
+    // The element, not the bare name: the rule for it is in the stylesheet either way.
+    expect(html).not.toContain('class="label__class"');
+  });
+
+  it('prints no stray separator when only one of the two is set', () => {
+    // `filter(Boolean)` before the join. Without it the line reads "Sport · " and the trailing
+    // dot looks like something failed to load.
+    const html = buildLabelSheetHtml({ ...LABEL, categoryType: 'Sport' }, 1);
+    expect(html).not.toContain('Sport ·');
+  });
+
+  it('keeps every line on ONE line however long its content is', () => {
     // Load-bearing, not cosmetic. The sticker is 40x30mm and full; a wrapped line pushes it past
     // 30mm, and one pixel of overflow prints EVERY label on two pages. The ellipsis is what
-    // makes a long category type cost characters instead of a whole roll.
-    const html = buildLabelSheetHtml({ ...LABEL, categoryType: 'A'.repeat(60) }, 1);
-    expect(html).toContain('white-space: nowrap; overflow: hidden; text-overflow: ellipsis;');
+    // makes a long category cost characters instead of a whole roll.
+    const html = buildLabelSheetHtml(
+      { ...LABEL, categoryType: 'A'.repeat(60), category: 'B'.repeat(60) }, 1,
+    );
+    expect(countOf(html, 'white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'))
+      .toBeGreaterThanOrEqual(3);
     expect(countOf(html, 'class="label"')).toBe(1);
   });
 

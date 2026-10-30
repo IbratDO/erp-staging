@@ -110,6 +110,7 @@
     "rowColumn": "Qator",
     "rowLabel": "{{row}}-qator",
     "saveFailed": "Saqlashda xatolik, hech narsa saqlanmadi.",
+    "saveUnknown": "Import yuborildi, lekin javob kelmadi. Qaytadan yubormang — u serverda yakunlangan bo'lishi mumkin. Avval ro'yxatni tekshiring.",
     "startOver": "Boshqa fayl",
     "templateFailed": "Shablonni yuklab olishda xatolik.",
     "title": "Asosiy vositalar — Excel'dan yuklash",

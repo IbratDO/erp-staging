@@ -110,6 +110,7 @@
     "rowColumn": "Row",
     "rowLabel": "row {{row}}",
     "saveFailed": "Saving failed, so nothing was saved.",
+    "saveUnknown": "The import was sent but no answer came back. Do not send it again — it may have finished on the server. Check the list first.",
     "startOver": "Another file",
     "templateFailed": "The template could not be downloaded.",
     "title": "Fixed assets — import from Excel",

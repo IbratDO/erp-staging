@@ -46,6 +46,9 @@ export function layerToLabelData(layer, t) {
     size: product.size || '',
     color: product.color || '',
     categoryType: categoryTypeLabel(product.category_type, t) || '',
+    // The shop's own word, printed as typed. Unlike the type it has no lookup table —
+    // `category` is free text on the product and never a translation key.
+    category: product.category || '',
     // The same figure the Inventory table shows on this very row — `layerSellingQuote` decides
     // which price that is — written the label's way.
     price: formatLabelPrice(layerSellingQuote(layer)),

@@ -392,3 +392,82 @@ describe('choosing a file', () => {
     expect(confirmButton().disabled).toBe(true);
   });
 });
+
+/**
+ * Pressing Buy twice.
+ *
+ * **This is the one that cost real money.** A thousand-row import outran the gateway's patience,
+ * the browser was handed a 504, and the work carried on behind it and committed. `busy` cleared
+ * in the `finally`, so the button lit up again under a message saying the import had failed. It
+ * was pressed again. A shop's opening stock went in three times, and the till was debited three
+ * times for it, before anybody could tell that the first attempt had worked.
+ *
+ * So one press is all there is. The dialog cannot know whether a write it did not hear back from
+ * reached the database, and the only safe reading of silence is "it might have".
+ */
+describe('the Buy button is a one-shot', () => {
+  const failing = (status) => ({
+    ...apiWith(),
+    post: jest.fn().mockRejectedValue(status ? { response: { status } } : new Error('offline')),
+  });
+
+  async function pressBuy(api) {
+    mount({ api });
+    await pickFile();
+    await act(async () => { confirmButton().click(); });
+  }
+
+  it('stays down after a gateway timeout, when the import may well have worked', async () => {
+    const api = failing(504);
+    await pressBuy(api);
+    expect(confirmButton().disabled).toBe(true);
+    await act(async () => { confirmButton().click(); });
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the result is unknown rather than claiming it failed', async () => {
+    await pressBuy(failing(504));
+    expect(text()).toContain('importExcel.saveUnknown');
+    expect(text()).not.toContain('importExcel.saveFailed');
+  });
+
+  it('does the same when the connection simply dropped', async () => {
+    // No response at all says even less than a 504 does.
+    const api = failing(null);
+    await pressBuy(api);
+    expect(confirmButton().disabled).toBe(true);
+    expect(text()).toContain('importExcel.saveUnknown');
+  });
+
+  it('but a real refusal from the server still reads as a refusal', async () => {
+    // A 400 is a verdict: the server looked at the rows and said no, and nothing was written.
+    await pressBuy(failing(400));
+    expect(text()).toContain('importExcel.saveFailed');
+    expect(text()).not.toContain('importExcel.saveUnknown');
+  });
+
+  it('and the button stays down after that too', async () => {
+    // Even a clean refusal does not re-arm it. Re-pick the file to try again -- that way a retry
+    // is a decision somebody takes, not a reflex against a message.
+    const api = failing(400);
+    await pressBuy(api);
+    await act(async () => { confirmButton().click(); });
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('choosing a file again arms it', async () => {
+    const api = failing(504);
+    await pressBuy(api);
+    await pickFile('ombor-2.xlsx');
+    expect(confirmButton().disabled).toBe(false);
+  });
+
+  it('a successful import does not leave it pressable either', async () => {
+    const api = apiWith();
+    mount({ api });
+    await pickFile();
+    await act(async () => { confirmButton().click(); });
+    await act(async () => { confirmButton()?.click(); });
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+});

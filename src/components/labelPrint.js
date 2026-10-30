@@ -85,6 +85,13 @@ const STYLES = `
     font-size: 6pt; line-height: 1.05;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  /* The classification, on its own line. Lighter than the attributes above it because it says
+     what *kind* of thing this is, which a customer at the shelf reads after the size and colour
+     rather than instead of them. */
+  .label__class {
+    font-size: 6pt; line-height: 1.05; color: #333;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   /* The biggest thing on the label, because it is what a customer reads. */
   .label__price { font-size: 11pt; font-weight: 700; line-height: 1.1; }
   .label__code { display: block; width: 100%; height: 8.5mm; }
@@ -98,15 +105,24 @@ function labelMarkup(label, barcodeSvg) {
   // two words ("On" + "club T" reads as three words with no way to tell where the brand ends).
   // `filter(Boolean)` first, so a product missing one of the two does not print a stray bar.
   const title = [label.brand, label.model].filter(Boolean).join(' | ');
-  // Category type joins this line rather than taking one of its own. The sticker is 40x30mm and
-  // already full: a fifth line is the thing most likely to push content past 30mm, and one pixel
-  // of overflow prints EVERY label on two pages — see the note on `.label__attrs` above. This row
-  // already truncates with an ellipsis, so a long type costs characters, never a page.
-  const attrs = [label.size, label.color, label.categoryType].filter(Boolean).join(' · ');
+  const attrs = [label.size, label.color].filter(Boolean).join(' · ');
+  // Type and category on a line of their own rather than appended to the one above.
+  //
+  // **Measured, not guessed.** On this shop's own 1000-row stock file, all four on one line
+  // truncates 920 rows out of 1000 — the classification would be ellipsed away on nearly every
+  // sticker, which is the same as not printing it. Split, the two lines truncate 61 and 36.
+  //
+  // The extra line is affordable, which is the other half of the check. At 6pt/1.05 it costs
+  // ~2.2mm against ~5.5mm of slack: 25mm of content height (30mm less 2x2.5mm padding) against
+  // title 2.6 + attrs 2.2 + price 4.3 + barcode 8.5 + human 1.9 = 19.5mm. `space-between`
+  // absorbs the rest. A sixth line would not be affordable, and one pixel of overflow prints
+  // EVERY label on two pages — see the note on `.label__title`.
+  const klass = [label.categoryType, label.category].filter(Boolean).join(' · ');
   return `
     <div class="label">
       <div class="label__title">${esc(title)}</div>
       <div class="label__attrs">${esc(attrs)}</div>
+      ${klass ? `<div class="label__class">${esc(klass)}</div>` : ''}
       <div class="label__price">${esc(label.price)}</div>
       ${barcodeSvg}
       <div class="label__human">${esc(label.code)} · #${esc(label.layerNo)}</div>

@@ -27,6 +27,23 @@ export default function SimpleImportModal({
   const [error, setError] = useState('');
   const [rowErrors, setRowErrors] = useState([]);
   const [busy, setBusy] = useState(false);
+  /**
+   * Has a commit been sent for this file?
+   *
+   * **Deliberately not cleared in the `finally` below**, which is the whole point and the thing
+   * `busy` could not do. A write that fails in the browser has *not* necessarily failed on the
+   * server: a request that outlives the gateway's patience comes back as a 504 while the work
+   * carries on behind it and commits. The button lit up again, the error said it had failed, and
+   * pressing it once more sent a second import that also succeeded — a shop's opening stock went
+   * in three times that way, with the till debited three times for it.
+   *
+   * So after one attempt the button stays down whatever the outcome. Only picking a file again,
+   * or closing the dialog, arms it. Choosing to retry is then a decision somebody takes after
+   * looking, instead of a reflex against a message that may be untrue.
+   *
+   * The preview button is deliberately left alone: it writes nothing, so retrying it is free.
+   */
+  const [commitSent, setCommitSent] = useState(false);
   const fileRef = useRef(null);
 
   const reset = useCallback(() => {
@@ -36,6 +53,7 @@ export default function SimpleImportModal({
     setError('');
     setRowErrors([]);
     setBusy(false);
+    setCommitSent(false);
     if (fileRef.current) fileRef.current.value = '';
   }, []);
 
@@ -67,6 +85,7 @@ export default function SimpleImportModal({
     setResult(null);
     setError('');
     setRowErrors([]);
+    setCommitSent(false);
     setFile(picked || null);
     if (!picked) return;
     setBusy(true);
@@ -81,7 +100,10 @@ export default function SimpleImportModal({
   };
 
   const confirm = async () => {
-    if (!preview?.can_commit) return;
+    if (!preview?.can_commit || commitSent) return;
+    // Set before the request, not after it: an await cannot be relied on to come back, and this
+    // has to hold even if the tab is throttled or the connection drops mid-flight.
+    setCommitSent(true);
     setBusy(true);
     setError('');
     setRowErrors([]);
@@ -97,7 +119,15 @@ export default function SimpleImportModal({
       if (onImported) onImported(res.data);
     } catch (err) {
       const data = err?.response?.data;
-      setError(messageOf(err, t('importExcel.saveFailed')));
+      // **A failure with no answer from the server is not a failure.** A 502/504 is the
+      // gateway giving up while the request runs on; a dropped connection says nothing at all
+      // about whether the transaction committed. Only a real status code carries a real verdict,
+      // so anything else gets the "check before retrying" wording instead of "saving failed".
+      const status = err?.response?.status;
+      const unknown = !err?.response || status === 502 || status === 503 || status === 504;
+      setError(unknown
+        ? t('importExcel.saveUnknown')
+        : messageOf(err, t('importExcel.saveFailed')));
       setRowErrors(Array.isArray(data?.item_errors) ? data.item_errors : []);
     } finally {
       setBusy(false);
@@ -240,7 +270,7 @@ export default function SimpleImportModal({
             type="button"
             className="btn-primary btn-dialog"
             onClick={confirm}
-            disabled={busy || !preview?.can_commit}
+            disabled={busy || commitSent || !preview?.can_commit}
           >
             {t('importExcel.confirm')}
           </ActionButton>

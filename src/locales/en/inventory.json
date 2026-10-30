@@ -216,6 +216,7 @@
     "rowColumn": "Row",
     "rowLabel": "row {{row}}",
     "saveFailed": "Saving failed, so nothing was bought.",
+    "saveUnknown": "The import was sent but no answer came back. Do not send it again — it may have finished on the server. Check the list first.",
     "sellingPrice": "Selling price",
     "spendsMoneyNote": "NOTE: confirming spends real money from the till. Undoing it means cancelling each layer one at a time, and anything already sold cannot be cancelled at all.",
     "startOver": "Another file",

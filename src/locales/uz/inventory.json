@@ -216,6 +216,7 @@
     "rowColumn": "Qator",
     "rowLabel": "{{row}}-qator",
     "saveFailed": "Saqlashda xatolik, hech narsa olinmadi.",
+    "saveUnknown": "Import yuborildi, lekin javob kelmadi. Qaytadan yubormang — u serverda yakunlangan bo'lishi mumkin. Avval ro'yxatni tekshiring.",
     "sellingPrice": "Sotuv narxi",
     "spendsMoneyNote": "DIQQAT: tasdiqlasangiz, kassadan haqiqiy pul chiqadi. Keyin har bir qatlamni alohida bekor qilish kerak bo'ladi, sotilgani esa bekor qilinmaydi.",
     "startOver": "Boshqa fayl",

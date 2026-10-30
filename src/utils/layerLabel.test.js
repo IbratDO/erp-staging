@@ -86,10 +86,18 @@ describe('category type', () => {
     expect(layerToLabelData(l).categoryType).toBe('Klassika');
   });
 
+  it('carries the category as the shop typed it, with no lookup', () => {
+    // `category` is free text on the product -- unlike `category_type` it has no translation
+    // table, so it must never be put through one.
+    const l = layer({ product_detail: { ...layer().product_detail, category: 'Krossovka' } });
+    expect(layerToLabelData(l, t).category).toBe('Krossovka');
+  });
+
   it('is an empty string when the product has none, never undefined', () => {
     // The markup joins it with `filter(Boolean)`, so a blank costs nothing — but `undefined`
     // reaching `esc()` would print the word "undefined" on a customer-facing sticker.
     expect(layerToLabelData(layer(), t).categoryType).toBe('');
+    expect(layerToLabelData(layer(), t).category).toBe('');
   });
 });
 
