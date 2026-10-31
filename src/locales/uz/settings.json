@@ -73,6 +73,7 @@
   },
   "groups": {
     "shop": "Do‘kon",
-    "payments": "To‘lov tizimlari"
+    "payments": "To‘lov tizimlari",
+    "danger": "Xavfli amallar"
   }
 }

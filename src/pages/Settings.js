@@ -6,6 +6,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { usePermissions } from '../hooks/usePermissions';
 import ShopSettingsForm from './ShopSettingsForm';
 import ShopFeaturesForm from './ShopFeaturesForm';
+import ClearBusinessDataCard from '../components/ClearBusinessDataCard';
 import PaymentProviderForm, { CLICK_FIELDS, PAYME_FIELDS } from './PaymentProviderForm';
 import useProviderCredentials from '../hooks/useProviderCredentials';
 
@@ -34,7 +35,10 @@ import useProviderCredentials from '../hooks/useProviderCredentials';
 const Settings = () => {
   const { t } = useTranslation(['settings', 'common']);
   const { settings, refreshSettings } = useSettings();
-  const { refreshUser } = usePermissions();
+  const { refreshUser, hasPermission } = usePermissions();
+  // The heading is gated as well as the card. A group title over an empty grid reads as a
+  // card that failed to load -- the same reason the payments group below hides its own.
+  const canClearData = hasPermission('data.clear_business');
 
   const [savedName, setSavedName] = useState(settings?.shop_name || '');
   // Defaults to true, matching the column: an unread setting must never read as "nasiya is off".
@@ -311,6 +315,18 @@ const Settings = () => {
                 labels={providerLabels('payme')}
               />
             ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {/* Last on the page, in a group of its own, and absent entirely for anyone who cannot use
+          it. The card guards itself too -- this is the belt to that braces, and it is what keeps
+          the heading from appearing over nothing. */}
+      {canClearData ? (
+        <section className="settings-group">
+          <h2 className="settings-group__title">{t('groups.danger')}</h2>
+          <div className="settings-group__cards">
+            <ClearBusinessDataCard />
           </div>
         </section>
       ) : null}

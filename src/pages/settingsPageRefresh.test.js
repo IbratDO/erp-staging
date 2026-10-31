@@ -92,7 +92,10 @@ beforeEach(() => {
   refreshSettings = jest.fn().mockResolvedValue(undefined);
   refreshUser = jest.fn().mockResolvedValue(undefined);
   useSettings.mockReturnValue({ settings: ROW, refreshSettings });
-  usePermissions.mockReturnValue({ refreshUser });
+  // `hasPermission` as well as `refreshUser`: the page asks it whether to draw the danger group.
+  // Granting everything by default keeps the existing tests about what they were about; the two
+  // below override it to check the gate itself.
+  usePermissions.mockReturnValue({ refreshUser, hasPermission: () => true });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -363,5 +366,41 @@ describe('when the server itself fails', () => {
     });
     await submitForm(0);
     expect(container.textContent).toContain('This field may not be blank.');
+  });
+});
+
+/**
+ * The clear-database card.
+ *
+ * It moved here from Foydalanuvchilar, and moving it narrowed who may use it: `data.clear_business`
+ * is the Admin role's alone, where the old `is_admin()` check meant Founder *or* Admin *or* any
+ * superuser.
+ *
+ * The heading is gated as well as the card. A group title standing over an empty grid reads as a
+ * card that failed to load — which is the last thing a page should imply about a button that
+ * deletes every business record.
+ */
+describe('the danger group', () => {
+  it('is drawn for a role that holds the code', async () => {
+    await mount();
+    expect(container.textContent).toContain('groups.danger');
+  });
+
+  it('is absent entirely — heading and all — for a role that does not', async () => {
+    usePermissions.mockReturnValue({
+      refreshUser, hasPermission: (code) => code !== 'data.clear_business',
+    });
+    await mount();
+    expect(container.textContent).not.toContain('groups.danger');
+    expect(container.textContent).not.toContain('clearDataButton');
+  });
+
+  it('and the rest of the page is unaffected by that', async () => {
+    // The gate must hide one section, not break the page it sits on.
+    usePermissions.mockReturnValue({
+      refreshUser, hasPermission: (code) => code !== 'data.clear_business',
+    });
+    await mount();
+    expect(container.textContent).toContain('featuresTitle');
   });
 });

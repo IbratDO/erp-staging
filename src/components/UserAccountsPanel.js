@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import Modal from './Modal';
 import apiGetAll from '../utils/fetchAllPages';
@@ -23,32 +23,18 @@ const emptyUser = () => ({
  */
 const UserAccountsPanel = () => {
   const { t } = useAppTranslation(['users', 'common']);
-  const { hasPermission, isAdmin } = usePermissions();
+  const { hasPermission } = usePermissions();
   const canManage = hasPermission('users.manage');
-  const canClearData = canManage && isAdmin;
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [showClearForm, setShowClearForm] = useState(false);
-  const [clearConfirmText, setClearConfirmText] = useState('');
-  const [clearing, setClearing] = useState(false);
-  const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(emptyUser());
-
-  const confirmPhrase = useMemo(() => t('clearDataConfirmPhrase').trim().toUpperCase(), [t]);
-  const confirmMatches = clearConfirmText.trim().toUpperCase() === confirmPhrase;
-  const showConfirmMismatch = clearConfirmText.length > 0 && !confirmMatches;
 
   useEffect(() => {
     loadData();
   }, []);
-
-  const showNotification = (message, type = 'success') => {
-    setNotification({ show: true, message, type });
-    setTimeout(() => setNotification({ show: false, message: '', type: 'success' }), 5000);
-  };
 
   const loadData = async () => {
     setLoading(true);
@@ -72,30 +58,10 @@ const UserAccountsPanel = () => {
     setFormData(emptyUser());
   };
 
-  const closeClearForm = () => {
-    if (clearing) return;
-    setShowClearForm(false);
-    setClearConfirmText('');
-  };
-
   const openCreate = () => {
     setEditingId(null);
     setFormData(emptyUser());
-    setShowClearForm(false);
-    setClearConfirmText('');
     setShowForm(true);
-  };
-
-  const toggleClearForm = () => {
-    if (showClearForm) {
-      closeClearForm();
-      return;
-    }
-    setShowForm(false);
-    setEditingId(null);
-    setFormData(emptyUser());
-    setClearConfirmText('');
-    setShowClearForm(true);
   };
 
   const openEdit = (user) => {
@@ -110,8 +76,6 @@ const UserAccountsPanel = () => {
       password: '',
       is_active: user.is_active !== false,
     });
-    setShowClearForm(false);
-    setClearConfirmText('');
     setShowForm(true);
   };
 
@@ -164,25 +128,6 @@ const UserAccountsPanel = () => {
     }
   };
 
-  const handleClearDatabase = async (e) => {
-    e.preventDefault();
-    if (!confirmMatches) return;
-    setClearing(true);
-    try {
-      await api.post('/users/clear-business-data/', { confirm: clearConfirmText.trim().toUpperCase() });
-      closeClearForm();
-      showNotification(t('clearDataSuccess'), 'success');
-      loadData();
-    } catch (err) {
-      showNotification(
-        err.response?.data?.error || err.response?.data?.detail || t('clearDataFailed'),
-        'error',
-      );
-    } finally {
-      setClearing(false);
-    }
-  };
-
   if (loading) {
     return <div className="page-container">{t('actions.loading', { ns: 'common' })}</div>;
   }
@@ -197,69 +142,10 @@ const UserAccountsPanel = () => {
               + {t('newLogin')}
             </button>
           )}
-          {canClearData && (
-            <button type="button" className="btn-danger-action" onClick={toggleClearForm}>
-              {showClearForm ? t('actions.cancel', { ns: 'common' }) : t('clearDataButton')}
-            </button>
-          )}
         </div>
       </div>
 
-      {notification.show && (
-        <div className={`notification-banner ${notification.type}`}>{notification.message}</div>
-      )}
-
       <p style={{ color: '#666', marginBottom: 16, fontSize: '0.9em', maxWidth: 820 }}>{t('intro')}</p>
-
-      <Modal
-        open={showClearForm && canClearData}
-        onClose={closeClearForm}
-        closeLabel={t('actions.close', { ns: 'common' })}
-        closeOnBackdrop={false}
-        className="form-card--danger"
-        title={t('clearDataTitle')}
-      >
-          <div className="danger-callout">
-            <div>{t('clearDataWarningIntro')}</div>
-            <ul>
-              <li>{t('clearDataWarningItem1')}</li>
-              <li>{t('clearDataWarningItem2')}</li>
-              <li>{t('clearDataWarningItem3')}</li>
-            </ul>
-            <div className="danger-callout__kept">{t('clearDataWarningKept')}</div>
-          </div>
-          <BusyForm onSubmit={handleClearDatabase}>
-            <div className="form-grid" style={{ gridTemplateColumns: 'minmax(0, 320px)' }}>
-              <div className="form-group">
-                <label>{t('clearDataConfirmLabel')}</label>
-                <input
-                  type="text"
-                  value={clearConfirmText}
-                  onChange={(e) => setClearConfirmText(e.target.value)}
-                  placeholder={t('clearDataConfirmPlaceholder')}
-                  autoComplete="off"
-                  disabled={clearing}
-                  aria-invalid={showConfirmMismatch}
-                />
-                {showConfirmMismatch && (
-                  <span className="form-hint-error">{t('clearDataConfirmMismatch')}</span>
-                )}
-              </div>
-            </div>
-            <div className="form-actions">
-              <SubmitButton
-               
-                className="btn-danger-action"
-                disabled={clearing || !confirmMatches}
-              >
-                {clearing ? t('actions.loading', { ns: 'common' }) : t('clearDataProceed')}
-              </SubmitButton>
-              <button type="button" className="btn-edit" onClick={closeClearForm} disabled={clearing}>
-                {t('actions.cancel', { ns: 'common' })}
-              </button>
-            </div>
-          </BusyForm>
-      </Modal>
 
       <Modal
         open={showForm && canManage}

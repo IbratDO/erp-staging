@@ -73,6 +73,7 @@
   },
   "groups": {
     "shop": "Shop",
-    "payments": "Payment providers"
+    "payments": "Payment providers",
+    "danger": "Danger zone"
   }
 }

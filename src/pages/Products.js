@@ -127,6 +127,15 @@ const Products = () => {
   const { hasPermission } = usePermissions();
 
   const canCreate = hasPermission('products.create');
+  // Excel, in and out, is the Admin's alone — the owner's decision. Its own code rather than the
+  // create one beside it: typing a row is a decision taken looking at what you typed, a file is
+  // one taken on trust, and the Ombor file beside it spends the till on every line.
+  //
+  // It gates the download as well as the upload. The table export is a convenience the browser
+  // builds from what is already on screen, so hiding it is not a wall — anyone who can read the
+  // page can still copy it. What it does is keep the pair consistent, so "Excel is the Admin's"
+  // is true of the button as well as of the endpoint that enforces it.
+  const canUseExcel = hasPermission('products.import');
   const canUpdate = hasPermission('products.update');
   const canDelete = hasPermission('products.delete');
   const [products, setProducts] = useState([]);
@@ -1140,18 +1149,20 @@ const Products = () => {
 
       <div className="table-card">
         <div className="table-card__toolbar">
-          <TableDownloadButton
-            tableRef={tableRef}
-            filename="mahsulotlar"
-            rowCount={filteredProducts.length}
-          />
+          {canUseExcel ? (
+            <TableDownloadButton
+              tableRef={tableRef}
+              filename="mahsulotlar"
+              rowCount={filteredProducts.length}
+            />
+          ) : null}
           {/* Adding one product at a time means one entry per size and colour, so a new range is
               dozens of them. Gated on the same permission as adding one by hand.
 
               Same classes as the download button it sits next to: they are a pair — one takes the
               table out to Excel, the other brings it back — so they should be the same size and
               colour rather than one of them being an unstyled browser default. */}
-          {canCreate ? (
+          {canUseExcel ? (
             <ActionButton
               type="button"
               className="btn-edit table-download-btn"

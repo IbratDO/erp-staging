@@ -147,6 +147,15 @@ const Inventory = () => {
   const { t, tStatus, language, monthOptions } = useAppTranslation(['inventory', 'common', 'status']);
   const { hasPermission } = usePermissions();
   const canAddInventory = hasPermission('inventory.create');
+  // Excel, in and out, is the Admin's alone — the owner's decision. Its own code rather than the
+  // create one beside it: typing a row is a decision taken looking at what you typed, a file is
+  // one taken on trust, and the Ombor file spends the till on every line of it.
+  //
+  // It gates the download as well as the upload. The table export is a convenience the browser
+  // builds from what is already on screen, so hiding it is not a wall — anyone who can read the
+  // page can still copy it. What it does is keep the pair consistent, so "Excel is the Admin's"
+  // is true of the button as well as of the endpoint that enforces it.
+  const canUseExcel = hasPermission('inventory.import');
   // Granted to the Founder role alone: cancelling a line puts cash back into the till.
   const canCancelLayer = hasPermission('inventory.cancel_layer');
   // Printing a label only reproduces what is already on the screen beside the button, so it
@@ -1102,14 +1111,16 @@ const Inventory = () => {
               )}
             </div>
           )}
-          <TableDownloadButton
-            tableRef={tableRef}
-            filename="ombor-mahsulotlar"
-            rowCount={filteredInventory.length}
-          />
-          {/* A delivery is dozens of layers typed one at a time. Same permission as adding one by
-              hand, and the same classes as the download button it pairs with. */}
-          {canAddInventory ? (
+          {canUseExcel ? (
+            <TableDownloadButton
+              tableRef={tableRef}
+              filename="ombor-mahsulotlar"
+              rowCount={filteredInventory.length}
+            />
+          ) : null}
+          {/* A delivery is dozens of layers typed one at a time. The same classes as the download
+              button it pairs with — one takes the table out, the other brings it back. */}
+          {canUseExcel ? (
             <ActionButton
               type="button"
               className="btn-edit table-download-btn"
