@@ -659,8 +659,11 @@ const Inventory = () => {
                     <col className="batch-col-category" />
                     <col className="batch-col-product" />
                     <col className="batch-col-qty" />
-                    <col className="batch-col-price" />
-                    <col className="batch-col-price" />
+                    {/* Wider than `batch-col-price`: these two cells hold a currency select
+                        beside the money box, and at the price width the box was left about two
+                        characters wide. */}
+                    <col className="batch-col-money-currency" />
+                    <col className="batch-col-money-currency" />
                     <col className="batch-col-package" />
                     <col className="batch-col-row" />
                   </colgroup>
@@ -768,10 +771,9 @@ const Inventory = () => {
                             />
                           </td>
                           <td>
-                            <div style={{ display: 'flex', gap: '6px' }}>
+                            <div className="batch-money-currency">
                               <AmountInput
                                 className="batch-sale-lines__control"
-                                style={{ flex: 1, minWidth: 0 }}
                                 placeholder={
                                   line.selling_price_currency === 'UZS'
                                     ? t('form.uzsPerUnit')
@@ -785,7 +787,7 @@ const Inventory = () => {
                               />
                               {/* One currency, not a pair: a price is quoted in one or the other. */}
                               <select
-                                style={{ width: '76px', flex: '0 0 auto' }}
+                                className="batch-sale-lines__control"
                                 value={line.selling_price_currency}
                                 onChange={(e) =>
                                   updateLine(line.key, { selling_price_currency: e.target.value })
@@ -801,10 +803,9 @@ const Inventory = () => {
                             )}
                           </td>
                           <td>
-                            <div style={{ display: 'flex', gap: '6px' }}>
+                            <div className="batch-money-currency">
                               <AmountInput
                                 className="batch-sale-lines__control"
-                                style={{ flex: 1, minWidth: 0 }}
                                 placeholder={
                                   line.unit_supplier_cost_currency === 'UZS'
                                     ? t('form.uzsPerUnit')
@@ -832,7 +833,7 @@ const Inventory = () => {
                                   Switching the dropdown carries the number across rather than
                                   losing it. */}
                               <select
-                                style={{ width: '76px', flex: '0 0 auto' }}
+                                className="batch-sale-lines__control"
                                 value={line.unit_supplier_cost_currency}
                                 onChange={(e) => {
                                   const next = e.target.value;

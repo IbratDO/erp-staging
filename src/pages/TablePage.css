@@ -1415,6 +1415,23 @@
 .batch-sale-lines col.batch-col-package {
   width: 13.5rem;
 }
+
+/*
+  A money box **with a currency select beside it**, which is a wider thing than a money box.
+
+  `batch-col-price` is 7.5rem and correct for a cell holding one box. Put a 76px select in the same
+  cell and the box is left about 25px -- the width of two characters -- so "USD" rendered and the
+  amount did not. Giving these cells their own column is the fix rather than widening
+  `batch-col-price`, because Sales and Orders put a bare box in theirs and would only lose room on
+  screen for nothing.
+
+  11.5rem = the select, the gap, the cell padding, and about 6.5rem of box -- enough for a grouped
+  seven-figure soum amount and for the "USD/dona" placeholder, which is what the cell shows before
+  anything is typed.
+*/
+.batch-sale-lines col.batch-col-money-currency {
+  width: 11.5rem;
+}
 .batch-sale-lines col.batch-col-pkgs {
   width: 4.75rem;
 }
@@ -1451,11 +1468,41 @@
   min-width: 70rem;
 }
 .batch-inventory-lines {
-  min-width: 75rem;
+  /* Was 75rem, when its two money columns were 7.5rem apiece; they are 11.5rem now. */
+  min-width: 83rem;
 }
 .batch-order-lines {
   min-width: 101rem;
 }
+/*
+  The money box and its currency select, as one row.
+
+  `flex-wrap` is the part that matters on a narrow screen. The column above is wide enough that
+  these two sit side by side at every size the table is actually drawn at -- but a cell can still
+  be squeezed by a long value or a browser that rounds the other way, and the failure mode without
+  wrapping is the one that was reported: the box collapses to nothing while the select keeps its
+  full width, because `min-width: 0` on `.batch-sale-lines__control` lets it. With a real floor on
+  the box, the select drops to a second line instead, and both stay readable.
+*/
+.batch-money-currency {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.batch-money-currency > .amount-input,
+.batch-money-currency > input {
+  flex: 1 1 6.5rem;
+  min-width: 6.5rem;
+}
+
+/* The class is repeated to outrank `.batch-sale-lines__control`'s `width: 100%`, which is
+   declared further down this file and would otherwise win the tie and stretch the select. */
+.batch-money-currency > select.batch-sale-lines__control {
+  flex: 0 0 4.75rem;
+  width: 4.75rem;
+}
+
 .batch-order-lines-advance-cell {
   display: flex;
   gap: 4px;
@@ -1635,6 +1682,16 @@ input.batch-sale-lines__control[type='number']::-webkit-outer-spin-button {
   /* The column has to grow with the button it holds, or the cell's padding is eaten instead. */
   .batch-sale-lines col.batch-col-row {
     width: 3.6rem;
+  }
+
+  /* Same reason, one cell over: the select's text is 16px here, so "USD" plus the native arrow
+     needs more room, and the column has to carry it or the money box pays for it. */
+  .batch-money-currency > select.batch-sale-lines__control {
+    flex: 0 0 5.5rem;
+    width: 5.5rem;
+  }
+  .batch-sale-lines col.batch-col-money-currency {
+    width: 12.5rem;
   }
   .batch-sale-lines th.batch-sale-lines__th--action,
   .batch-sale-lines td.batch-sale-lines__td--action {
