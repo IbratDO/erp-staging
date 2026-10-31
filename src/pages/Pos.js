@@ -540,8 +540,18 @@ export default function Pos() {
                 {filled.map((line) => {
                   const p = products.find((x) => String(x.id) === String(line.product));
                   const name = p ? `${p.brand} ${p.model}` : `#${line.layer}`;
+                  // Size, colour, then what kind of thing it is. `category` is free text on the
+                  // product and never a translation key, so it prints exactly as the shop typed
+                  // it — unlike `category_type`, which has a lookup table behind it.
+                  //
+                  // Last of the three on purpose: size and colour are what tell two otherwise
+                  // identical rows apart, and that is what the seller scans the basket for.
                   const specs = p
-                    ? [p.size && tr('pos.specSize', { value: p.size }), p.color].filter(Boolean)
+                    ? [
+                        p.size && tr('pos.specSize', { value: p.size }),
+                        p.color,
+                        p.category,
+                      ].filter(Boolean)
                     : [];
                   const qty = parseInt(line.quantity, 10) || 0;
                   const unit = Number(line.selling_price) || 0;
