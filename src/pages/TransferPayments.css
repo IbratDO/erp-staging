@@ -1,8 +1,10 @@
 /*
- * Perechisleniye to'lovlari.
+ * Billing — bank transfers the shop is waiting for.
  *
- * Its own stylesheet rather than borrowing `GatewayUI.css`: that one belongs to the Click page,
- * and a shared `.gw-` class would mean a change made for one subtab silently restyling the other.
+ * Its own stylesheet rather than borrowing `GatewayUI.css`: that one belongs to the Online
+ * to'lovlar page, and a shared `.gw-` class would mean a change made for one silently restyling
+ * the other. Everything structural — the card, the filter panel, the table — comes from
+ * `TablePage.css`, so what is left here is only what is particular to this page.
  */
 
 /* Money lines up on the right and shares a digit width, so a column of som figures can be
@@ -13,10 +15,21 @@
   white-space: nowrap;
 }
 
+/* What is still owed: the figure the page exists to show, so it carries the weight. */
+.transfer-num--lead {
+  font-weight: 600;
+}
+
+/* A date is never worth wrapping onto two lines. */
+.transfer-nowrap {
+  white-space: nowrap;
+}
+
 /*
  * The row's state as a left-hand band. **A fully received record turns green and offers nothing
- * further** — the owner asked for that outright, and it is the page's only use of colour as
- * information. A band rather than a filled row, so the figures stay readable.
+ * further** — the owner asked for that outright. A band rather than a filled row, so the figures
+ * stay readable; the pill below is what makes the same state legible when the table is scrolled
+ * sideways and the first cell is off screen.
  */
 .transfer-row--awaiting td {
   box-shadow: inset 3px 0 0 0 transparent;
@@ -40,9 +53,186 @@
   color: #6b7280;
 }
 
+/*
+ * The status pill. Same shape as the stock-count chips, deliberately — one visual language for
+ * "this row is in this state" across the app.
+ *
+ * **Four states, three colours, and the pairing is the point.** Waiting and partly paid are both
+ * amber-to-neutral because both mean the same thing to the reader: somebody still has to chase
+ * it. Paid is the only green. Written off is grey rather than red — it is a decision that has
+ * been taken, not an error to fix.
+ */
+.transfer-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.85em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.transfer-pill--unpaid { background: #f1f5f9; color: #334155; }
+.transfer-pill--partial { background: #fef3c7; color: #92400e; }
+.transfer-pill--paid { background: #dcfce7; color: #166534; }
+.transfer-pill--waived { background: #e5e7eb; color: #4b5563; }
+
+/* The row count beside the card's title: present, but never competing with it. */
+.transfer-count {
+  margin-left: 8px;
+  color: #6b7280;
+  font-size: 0.8em;
+  font-weight: 400;
+}
+
+/* The buttons in the Actions cell wrap instead of forcing the column wider. */
+.transfer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/*
+ * The three panels that open under a row — record a receipt, write off the remainder, read the
+ * history. One class, so they cannot drift apart, and inset from the table so it is obvious the
+ * panel belongs to the row above it rather than being a row of its own.
+ */
+.transfer-expanded > td {
+  background: #f8fafc;
+  padding: 12px 14px;
+}
+
+.transfer-panel {
+  border-left: 3px solid #cbd5e1;
+  padding-left: 12px;
+}
+
+/* The write-off is the one action on this page that cannot be undone from it. */
+.transfer-panel--danger {
+  border-left-color: #dc2626;
+}
+
+.transfer-panel__title {
+  margin: 0 0 4px;
+  font-size: 1em;
+}
+
+.transfer-panel__hint {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 0.9em;
+}
+
+/*
+ * The fields inside a panel. A grid rather than the flex row this page used to lay out by hand:
+ * on a phone the row kept its widths and ran off the side, and the save button ended up beside
+ * the last field instead of under the form.
+ */
+.transfer-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.transfer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+/* The notes and reason boxes: a free-text field is the one worth widening. */
+.transfer-field--grow {
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+
+.transfer-field label {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: #334155;
+}
+
+.transfer-field input,
+.transfer-field select {
+  padding: 7px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.95em;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.transfer-field input:focus,
+.transfer-field select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.transfer-field small {
+  color: #64748b;
+  font-size: 0.8em;
+}
+
+/* The month lock's reason, which appears only after the server has said the period is closed.
+ * Amber throughout, so it does not read as an ordinary field somebody skipped. */
+.transfer-field--warn label,
+.transfer-field--warn small {
+  color: #b45309;
+}
+
+.transfer-field--warn input {
+  border-color: #f59e0b;
+}
+
+/* The buttons sit under the form, not in the middle of it: the save and the cancel belong to the
+ * whole panel, and inline they read as belonging to the field they happen to follow. */
+.transfer-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* The owner's three-row breakdown. Narrow on purpose — it is three rows of two figures, and at
+ * full width the eye has to travel across empty space to pair them. */
+.transfer-breakdown {
+  margin-bottom: 16px;
+}
+
+.transfer-breakdown__table {
+  max-width: 520px;
+}
+
 /* A correction is a negative receipt. Struck through and dimmed, because the line it cancels is
  * still above it in the history and the two have to be told apart at a glance. */
 .transfer-line--correction td {
   color: #b91c1c;
   font-style: italic;
+}
+
+.transfer-note-flag {
+  display: block;
+  color: #b45309;
+  font-size: 0.85em;
+}
+
+/* On a phone the panel's left rule and inset cost width the form needs more. */
+@media (max-width: 640px) {
+  .transfer-expanded > td {
+    padding: 10px 8px;
+  }
+
+  .transfer-panel {
+    padding-left: 8px;
+  }
+
+  .transfer-field,
+  .transfer-field--grow {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
 }

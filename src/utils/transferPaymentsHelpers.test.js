@@ -191,6 +191,7 @@ describe('the strings the page needs', () => {
   const SHELL = ['title', 'tabOnline', 'tabTransfer', 'nothingToSee'];
   const KEYS = [
     'intro', 'empty', 'filterScope', 'scopeOpen', 'scopeAll', 'filterSale', 'filterDocument',
+    'tableTitle', 'rowCount',
     'colSale', 'colDate', 'colCustomer', 'colExpected', 'colReceived', 'colWaived',
     'colRemaining', 'colStatus', 'colActions', 'colValueDate', 'colAmount',
     'colRemainingAfter', 'colDocument', 'colEnteredBy', 'colNote', 'totalsLabel',

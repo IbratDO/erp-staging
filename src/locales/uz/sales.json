@@ -632,6 +632,8 @@
     "nothingToSee": "Sizda hech qaysi to'lov turiga ruxsat yo'q."
   },
   "transfers": {
+    "tableTitle": "Bank o‘tkazmalari",
+    "rowCount": "{{count}} ta yozuv",
     "intro": "Do'kon hali kutayotgan perechisleniyelar. Bank ko'chirmasida ko'rsatilganini tegishli sotuvga kiriting; tashkilotga to'lov maqsadida yozish uchun aytilgan raqam shu sotuv ID.",
     "empty": "Kutilayotgan perechisleniye yo'q.",
     "filterScope": "Ko'rsatish",

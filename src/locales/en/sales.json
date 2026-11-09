@@ -632,6 +632,8 @@
     "nothingToSee": "You have access to neither kind of payment."
   },
   "transfers": {
+    "tableTitle": "Bank transfers",
+    "rowCount": "{{count}} records",
     "intro": "Bank transfers the shop is still waiting for. Record what the statement shows against the sale it belongs to; the sale id is what the organisation was asked to quote on the transfer.",
     "empty": "No bank transfers are outstanding.",
     "filterScope": "Show",
