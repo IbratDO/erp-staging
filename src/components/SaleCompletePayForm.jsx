@@ -195,18 +195,24 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   //   * **a som-priced sale** — the owner's decision of 2026-11-08. The bank account takes som,
   //     so a som figure on a som sale needs no conversion. A dollar sale would mean freezing a
   //     rate onto the record and giving it its own leg in the sheet's FX section;
-  //   * **a registered organisation** — the owner's rule. `is_organisation` is served by
-  //     `CustomerLiteSerializer`, which names its fields explicitly, so it had to be added there;
+  //   * **somebody on the sale** — a transfer opens a receivable, and a debt owed by nobody
+  //     cannot be collected; the same rule nasiya has whatever `pos_customer_required` says. This
+  //     condition used to read `is_organisation`: the owner's original specification allowed a
+  //     transfer only to a registered organisation and he **dropped that on 2026-11-09**, because
+  //     anybody can wire money from their phone, and the rule's one real cost was refusing a
+  //     private customer who had *already paid* — which left the cashier recording bank money as
+  //     cash. `is_organisation` is still served by `CustomerLiteSerializer` and still worth
+  //     recording; nothing gates on it;
   //   * **not a group** — a group is paid once and divided per line, and a transfer names a
   //     single figure that would have to be apportioned across the lines. That apportioning is
   //     not built, so the box is hidden rather than offered and then mis-split.
   //
   // The server re-checks every one of these. The box is a courtesy, not a control.
   const saleIsSoum = (sale?.sale_currency || '').toUpperCase() === 'UZS';
-  const customerIsOrganisation = !!sale?.customer_detail?.is_organisation;
+  const hasCustomer = !!(sale?.customer_detail?.id || sale?.customer);
   const transferAvailable =
     saleIsSoum
-    && customerIsOrganisation
+    && hasCustomer
     && !groupSales
     && shortfallMeta.short != null && shortfallMeta.short > changeTol;
   const onTransfer = !!paymentFormData.apply_transfer;
@@ -347,7 +353,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         }
       }
 
-      // **"Pul tushgan" asks once, and names the organisation and the sum rather than saying
+      // **"Pul tushgan" asks once, and names the customer and the sum rather than saying
       // "are you sure".** A confirm that only asks is one people learn to dismiss; one that
       // states what is about to be asserted is one they read. This is money entering the books
       // on the cashier's word, so it is the one place in this form that deserves the friction.
@@ -368,8 +374,8 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         ? { ...paymentFormData, apply_credit: false, credit_amount: '', credit_due_date: '' }
         : paymentFormData;
       // The same staleness for a transfer: ticked, then the payment was raised until nothing was
-      // owing, or the customer was changed to somebody who is not an organisation. The box is
-      // gone from the form, so the flag must not travel with the request.
+      // owing, or the customer was cleared off the sale. The box is gone from the form, so the
+      // flag must not travel with the request.
       if (effForm.apply_transfer && !transferAvailable) {
         effForm = {
           ...effForm, apply_transfer: false, transfer_amount: '', transfer_received: false,
