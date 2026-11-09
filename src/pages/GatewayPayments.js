@@ -18,17 +18,6 @@ import './TablePage.css';
 import '../components/GatewayUI.css';
 
 /**
- * The page shell, or nothing at all when this page is a subtab and the shell above owns it.
- *
- * One component rather than two copies of the render tree: the alternative is an `embedded ? (
- * ...whole page... ) : ( ...whole page again... )`, and the second copy is the one that stops
- * being updated.
- */
-const Shell = ({ embedded, children }) => (
-  embedded ? <>{children}</> : <div className="page-container">{children}</div>
-);
-
-/**
  * Click to'lovlari — the charges nobody has finished with.
  *
  * **The population that matters is the first one: money Click confirmed that no sale has taken.**
@@ -56,12 +45,12 @@ const Shell = ({ embedded, children }) => (
  * Click reports as cancelled settles the row that way.
  */
 /**
- * `embedded` is set when this page is rendered as a subtab of To'lovlar nazorati, which owns the
- * page title and the tab strip. It suppresses only the outer `page-container` and the `<h1>` —
- * nothing else about the page differs, so there is one implementation and one set of tests
- * whether it is reached by its own route or through the shell. Two copies would have drifted.
+ * A whole page of its own, under the To'lovlar nazorati sidebar group at
+ * `/payments-control/online`. It briefly took an `embedded` prop, while the two kinds of promised
+ * money shared one page with a tab strip above them; the group dropdown replaced that, so the
+ * page owns its container and its title again and there is nothing conditional about its shell.
  */
-const GatewayPayments = ({ embedded = false }) => {
+const GatewayPayments = () => {
   const { t } = useTranslation(['sales', 'common']);
   const [rows, setRows] = useState([]);
   const [staleCount, setStaleCount] = useState(0);
@@ -177,12 +166,10 @@ const GatewayPayments = ({ embedded = false }) => {
   const heldWithNoSale = sumHeldWithNoSale(rows);
 
   return (
-    <Shell embedded={embedded}>
-      {embedded ? null : (
-        <div className="page-header">
-          <h1>{t('gatewayPage.title')}</h1>
-        </div>
-      )}
+    <div className="page-container">
+      <div className="page-header">
+        <h1>{t('gatewayPage.title')}</h1>
+      </div>
       <p className="page-intro">{t('gatewayPage.intro')}</p>
 
       {heldWithNoSale > 0 ? (
@@ -415,7 +402,7 @@ const GatewayPayments = ({ embedded = false }) => {
       )}
 
       <p className="form-hint" style={{ marginTop: 16 }}>{t('gatewayPage.footnote')}</p>
-    </Shell>
+    </div>
   );
 };
 

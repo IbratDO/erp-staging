@@ -33,7 +33,9 @@
     "stockCounts": "Контроль склада",
     "users": "Пользователи",
     "workers": "Сотрудники",
-    "paymentsControl": "Контроль платежей"
+    "paymentsControl": "Контроль платежей",
+    "paymentsOnline": "Онлайн-платежи",
+    "paymentsBilling": "Billing"
   },
   "auth": {
     "username": "Логин",

@@ -1,76 +1,41 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-import GatewayPayments from './GatewayPayments';
-import TransferPayments from './TransferPayments';
 import { usePermissions } from '../hooks/usePermissions';
-import './TablePage.css';
 
 /**
- * To'lovlar nazorati — money the shop is owed by somebody who is not standing at the counter.
+ * To'lovlar nazorati — the group's landing path, which shows nothing of its own.
  *
- * Two subtabs, and they are here together because they are the same job done twice: a payment
- * that was promised by a third party and has to be checked against that party's own record.
- * Online to'lovlar checks Click and Payme; Perechisleniye to'lovlari checks the bank statement.
+ * The two kinds of promised money are **two pages under one sidebar group**, the same shape as
+ * Ombor: `/payments-control/online` for Click and Payme, `/payments-control/billing` for bank
+ * transfers. Each is a whole page with its own title, its own permission and its own route, so
+ * neither carries a tab strip and neither knows the other exists.
  *
- * **Online to'lovlar is the existing page, moved under this shell unchanged.** Nothing about it
- * is rewritten — it keeps its own data loading, its own actions and its own tests. The shell
- * only decides which of the two is on screen.
+ * This component exists only so `/payments-control` itself keeps working — it is in bookmarks and
+ * in the deploy notes, and so is the older `/gateway-payments`. **It redirects to the first page
+ * the reader may actually open**, rather than to a fixed default: the accountant holds
+ * `transfer.view` alone and whoever watches the gateways holds `gateway.view_pending` alone, so a
+ * fixed landing would send half the staff to a page the server refuses.
  *
- * **Each subtab is gated on its own permission, and the shell on either.** The accountant holds
- * `transfer.view` and not `gateway.view_pending`, so a shell demanding both would have hidden the
- * page from the one role built for it; a shell demanding neither would have shown a cashier a tab
- * whose contents the server refuses. So the tab strip shows only what the reader may open, and
- * the first one they may open is the one that starts selected — rather than a fixed default that
- * lands half the staff on an empty tab.
+ * `replace`, so the redirect does not sit in the history and trap the back button on it.
  */
 const PaymentsControl = () => {
-  const { t } = useTranslation(['sales', 'common']);
+  const { t } = useTranslation(['sales']);
   const { hasPermission } = usePermissions();
 
-  const tabs = [
-    hasPermission('gateway.view_pending') && {
-      key: 'online',
-      label: t('paymentsControl.tabOnline'),
-      render: () => <GatewayPayments embedded />,
-    },
-    hasPermission('transfer.view') && {
-      key: 'transfer',
-      label: t('paymentsControl.tabTransfer'),
-      render: () => <TransferPayments />,
-    },
-  ].filter(Boolean);
+  if (hasPermission('gateway.view_pending')) {
+    return <Navigate to="/payments-control/online" replace />;
+  }
+  if (hasPermission('transfer.view')) {
+    return <Navigate to="/payments-control/billing" replace />;
+  }
 
-  const [active, setActive] = useState(tabs[0]?.key || '');
-  // A permission can disappear between renders — a refreshed `/users/me/`, a role changed by an
-  // Admin while the page is open. Falling back to the first tab that still exists keeps the shell
-  // from rendering nothing at all with no explanation.
-  const current = tabs.find((tab) => tab.key === active) || tabs[0];
-
+  // Reachable only if a permission disappeared between the route's own check and this render --
+  // a refreshed `/users/me/`, a role changed by an Admin while the page was open.
   return (
     <div className="page-container">
-      <div className="page-header">
-        <h1>{t('paymentsControl.title')}</h1>
-      </div>
-
-      {tabs.length > 1 ? (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              className={`btn ${tab.key === current?.key ? 'btn-primary' : ''}`}
-              onClick={() => setActive(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {current ? current.render() : (
-        <p className="form-hint">{t('paymentsControl.nothingToSee')}</p>
-      )}
+      <p className="form-hint">{t('paymentsControl.nothingToSee')}</p>
     </div>
   );
 };

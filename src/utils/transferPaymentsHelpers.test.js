@@ -223,6 +223,12 @@ describe('the strings the page needs', () => {
     const common = require(`../locales/${lang}/common.json`);
 
     expect(typeof common.nav.paymentsControl).toBe('string');
+    // The two sidebar sub-items. They are separate keys from the old tab labels because the
+    // group is now navigation, not a tab strip, and the sidebar reads `common.nav.*`.
+    expect(typeof common.nav.paymentsOnline).toBe('string');
+    expect(common.nav.paymentsOnline.length).toBeGreaterThan(0);
+    expect(typeof common.nav.paymentsBilling).toBe('string');
+    expect(common.nav.paymentsBilling.length).toBeGreaterThan(0);
     SHELL.forEach((key) => {
       expect(typeof sales.paymentsControl[key]).toBe('string');
       expect(sales.paymentsControl[key].length).toBeGreaterThan(0);
@@ -294,6 +300,68 @@ describe('the strings the page needs', () => {
       // eslint-disable-next-line global-require, import/no-dynamic-require
       const { transfers } = require(`../locales/${lang}/sales.json`);
       expect(transfers.confirmCorrect.length).toBeGreaterThan(80);
+    });
+  });
+});
+
+
+describe("To'lovlar nazorati is a sidebar group, the way Ombor is", () => {
+  // eslint-disable-next-line global-require
+  const { MENU_ITEMS, ROUTE_PERMISSIONS, filterMenuItems } = require('./permissions');
+
+  const group = MENU_ITEMS.find((item) => item.labelKey === 'nav.paymentsControl');
+
+  test('it is a dropdown with a basePath, not a single page', () => {
+    expect(group.isDropdown).toBe(true);
+    expect(group.basePath).toBe('/payments-control');
+    // No `path` of its own: a group that also had one would render as a link in the sidebar and
+    // the dropdown would never open.
+    expect(group.path).toBeUndefined();
+    expect(group.subItems.map((sub) => sub.path)).toEqual([
+      '/payments-control/online',
+      '/payments-control/billing',
+    ]);
+  });
+
+  test('each page is gated on its own single permission', () => {
+    // The point of the split: neither route has to be opened to the other's code. While the two
+    // shared one page the route had to accept either, so whoever watched the gateways could
+    // reach the bank statement page and the other way round.
+    expect(ROUTE_PERMISSIONS['/payments-control/online']).toBe('gateway.view_pending');
+    expect(ROUTE_PERMISSIONS['/payments-control/billing']).toBe('transfer.view');
+    expect(group.subItems.map((sub) => sub.permission)).toEqual([
+      'gateway.view_pending',
+      'transfer.view',
+    ]);
+    // The group's landing path has no entry on purpose -- it is reachable on either code and
+    // only redirects. A code here would lock one of the two roles out of its own page.
+    expect(ROUTE_PERMISSIONS['/payments-control']).toBeUndefined();
+  });
+
+  test('a reader with one permission sees one sub-item, not both', () => {
+    const accountant = { role_code: 'buxgalter', permissions: ['transfer.view'] };
+    const menu = filterMenuItems(accountant);
+    const shown = menu.find((item) => item.labelKey === 'nav.paymentsControl');
+    expect(shown.subItems.map((sub) => sub.path)).toEqual(['/payments-control/billing']);
+  });
+
+  test('a cashier sees no group at all', () => {
+    const cashier = { role_code: 'sales_manager', permissions: ['sales.complete_pay'] };
+    const menu = filterMenuItems(cashier);
+    expect(menu.find((item) => item.labelKey === 'nav.paymentsControl')).toBeUndefined();
+  });
+
+  test('every dropdown names its own basePath', () => {
+    // `Layout` keys a group's open/expanded state by `basePath`. One without it would share the
+    // `undefined` key with every other such group, so they would open and close together --
+    // which is exactly the bug the single `inventoryOpen` boolean had.
+    const dropdowns = MENU_ITEMS.filter((item) => item.isDropdown);
+    expect(dropdowns.length).toBeGreaterThan(1);
+    dropdowns.forEach((item) => {
+      expect(typeof item.basePath).toBe('string');
+      item.subItems.forEach((sub) => {
+        expect(sub.path.startsWith(item.basePath)).toBe(true);
+      });
     });
   });
 });

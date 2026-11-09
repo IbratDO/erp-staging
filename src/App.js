@@ -20,8 +20,9 @@ import Returns from './pages/Returns';
 import Finance from './pages/Finance';
 import ReceivablesPayables from './pages/ReceivablesPayables';
 import CreditSales from './pages/CreditSales';
-// `GatewayPayments` is no longer imported here: both of its routes now render the
-// To'lovlar nazorati shell, which imports it itself as a subtab.
+import GatewayPayments from './pages/GatewayPayments';
+import TransferPayments from './pages/TransferPayments';
+// The group's landing path only redirects; the two pages above are what the sidebar points at.
 import PaymentsControl from './pages/PaymentsControl';
 import Equity from './pages/Equity';
 import FixedAssets from './pages/FixedAssets';
@@ -166,11 +167,31 @@ function App() {
                   </ProtectedRoute>
                 }
               />
-              {/* To'lovlar nazorati: money promised by a third party, in two subtabs.
-                  Gated on **either** permission, because the accountant holds `transfer.view`
-                  and not `gateway.view_pending` -- demanding both would hide the page from the
-                  one role it was built for. The shell then shows only the subtabs the reader may
-                  actually open. */}
+              {/* To'lovlar nazorati: money promised by a third party, as two pages under one
+                  sidebar group -- the Ombor shape. **Each page is gated on its own single
+                  permission**, which is the whole gain over the tab shell: the accountant holds
+                  `transfer.view` alone and whoever watches the gateways holds
+                  `gateway.view_pending` alone, and neither route has to be opened to the other's
+                  code to let its own reader in. */}
+              <Route
+                path="payments-control/online"
+                element={
+                  <ProtectedRoute permission="gateway.view_pending">
+                    <GatewayPayments />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="payments-control/billing"
+                element={
+                  <ProtectedRoute permission="transfer.view">
+                    <TransferPayments />
+                  </ProtectedRoute>
+                }
+              />
+              {/* The group's own path and the older `/gateway-payments`, both kept: they are in
+                  bookmarks and in the deploy notes, and a dead link is a support call. Neither is
+                  in any menu; both redirect to whichever page the reader may open. */}
               <Route
                 path="payments-control"
                 element={
@@ -179,10 +200,6 @@ function App() {
                   </ProtectedRoute>
                 }
               />
-              {/* The old path kept, pointing at the same shell. It is in no menu any more, but it
-                  is in people's bookmarks and in the deploy notes, and a dead link is a support
-                  call. The shell lands them on the Online to'lovlar subtab, which is what they
-                  were going to. */}
               <Route
                 path="gateway-payments"
                 element={

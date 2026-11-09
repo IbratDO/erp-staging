@@ -23,7 +23,11 @@ const Layout = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [inventoryOpen, setInventoryOpen] = useState(false);
+  // **Which sidebar groups are expanded, keyed by the group's `basePath`.** This was a single
+  // `inventoryOpen` boolean, which was fine while Ombor was the only group and silently wrong
+  // the moment a second one existed: both would have opened and closed together, and both would
+  // have highlighted whenever either was the current page.
+  const [openGroups, setOpenGroups] = useState({});
   const [isMobile, setIsMobile] = useState(
     () => typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT,
   );
@@ -51,17 +55,29 @@ const Layout = () => {
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
+  // Open the group the current page lives in, and never close one the reader opened by hand --
+  // landing on a page inside a collapsed group would otherwise leave the sidebar with no sign of
+  // where you are.
   useEffect(() => {
-    if (location.pathname.startsWith('/inventory')) {
-      setInventoryOpen(true);
+    const open = {};
+    for (const item of translatedMenu) {
+      if (item.isDropdown && item.basePath && location.pathname.startsWith(item.basePath)) {
+        open[item.basePath] = true;
+      }
+    }
+    if (Object.keys(open).length) {
+      setOpenGroups((prev) => ({ ...prev, ...open }));
     }
     if (isMobile) {
       setMobileNavOpen(false);
     }
-  }, [location.pathname, isMobile]);
+  }, [location.pathname, isMobile, translatedMenu]);
 
   const isActive = (path) => location.pathname === path;
-  const isInventoryActive = () => location.pathname.startsWith('/inventory');
+  const isGroupActive = (item) => Boolean(item.basePath) && location.pathname.startsWith(item.basePath);
+  const isGroupOpen = (item) => Boolean(openGroups[item.basePath]);
+  const toggleGroup = (item) =>
+    setOpenGroups((prev) => ({ ...prev, [item.basePath]: !prev[item.basePath] }));
 
   const displayRole = getRoleDisplayName(user, t);
 
@@ -103,24 +119,25 @@ const Layout = () => {
         <nav className="sidebar-nav">
           {translatedMenu.map((item, index) =>
             item.isDropdown ? (
-              <div key={index} className="nav-dropdown">
+              <div key={item.basePath || index} className="nav-dropdown">
                 <div
-                  className={`nav-item ${isInventoryActive() ? 'active' : ''}`}
-                  onClick={() => setInventoryOpen(!inventoryOpen)}
+                  className={`nav-item ${isGroupActive(item) ? 'active' : ''}`}
+                  onClick={() => toggleGroup(item)}
                   style={{ cursor: 'pointer' }}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && setInventoryOpen(!inventoryOpen)}
+                  aria-expanded={isGroupOpen(item)}
+                  onKeyDown={(e) => e.key === 'Enter' && toggleGroup(item)}
                 >
                   <span className="nav-icon">{item.icon}</span>
                   {(sidebarOpen || mobileNavOpen) && (
                     <>
                       <span className="nav-label">{item.label}</span>
-                      <span className="dropdown-arrow">{inventoryOpen ? '▼' : '▶'}</span>
+                      <span className="dropdown-arrow">{isGroupOpen(item) ? '▼' : '▶'}</span>
                     </>
                   )}
                 </div>
-                {inventoryOpen && (sidebarOpen || mobileNavOpen) && (
+                {isGroupOpen(item) && (sidebarOpen || mobileNavOpen) && (
                   <div className="submenu">
                     {item.subItems.map((subItem) => (
                       <Link

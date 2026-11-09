@@ -247,7 +247,10 @@ const TransferPayments = () => {
   const totals = sumTotals(rows);
 
   return (
-    <div>
+    <div className="page-container">
+      <div className="page-header">
+        <h1>{t('paymentsControl.tabTransfer')}</h1>
+      </div>
       <p className="page-intro">{t('transfers.intro')}</p>
 
       <div className="form-card" style={{ padding: 12, marginBottom: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>

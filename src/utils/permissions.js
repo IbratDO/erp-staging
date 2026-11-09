@@ -17,10 +17,12 @@ export const ROUTE_PERMISSIONS = {
   '/finance': 'finance.view',
   '/receivables-payables': 'receivables.view',
   '/credit-sales': 'credit_sales.view',
-  // **No entry for `/payments-control`.** `ROUTE_PERMISSIONS` holds one code per path and
-  // this page is reachable on either of two, so the gate is `permissionAny` on the route
-  // in `App.js` and `permissionAny` on the menu item below. An entry here naming one of
-  // the two would lock the other role out of its own page.
+  // To'lovlar nazorati, as two pages under one sidebar group -- the Ombor pattern. Each has
+  // exactly one code, which is what `ROUTE_PERMISSIONS` can express; the group's own landing
+  // path `/payments-control` deliberately has **no** entry, because it is reachable on either
+  // code and only redirects to whichever of the two the reader may open.
+  '/payments-control/online': 'gateway.view_pending',
+  '/payments-control/billing': 'transfer.view',
   '/gateway-payments': 'gateway.view_pending',
   '/equity': 'equity.view',
   '/fixed-assets': 'fixed_assets.view',
@@ -99,6 +101,10 @@ export const MENU_ITEMS = [
     labelKey: 'nav.inventory',
     icon: '📦',
     isDropdown: true,
+    // The prefix the group is "on": it opens itself and highlights whenever the current path
+    // starts with this. Named here rather than hard-coded in `Layout`, which is what made a
+    // second dropdown impossible before.
+    basePath: '/inventory',
     permissionAny: ['inventory.view', 'packages.view', 'inventory.count'],
     subItems: [
       { path: '/inventory/products', labelKey: 'nav.inventoryProducts', icon: '📦', permission: 'inventory.view' },
@@ -121,10 +127,26 @@ export const MENU_ITEMS = [
   // Next to Debitor / kreditor rather than near the till, because it is money to chase rather
   // than money to take, and the people who hold `view_pending` are the ones who read those
   // pages. A cashier never sees it.
-  // One entry for both kinds of promised money: Click/Payme and bank transfers, as subtabs.
-  // `permissionAny`, so the accountant (who holds `transfer.view` alone) and whoever watches the
-  // gateways (who holds `gateway.view_pending` alone) each see it, and a cashier sees neither.
-  { path: '/payments-control', labelKey: 'nav.paymentsControl', icon: '📲', permissionAny: ['gateway.view_pending', 'transfer.view'] },
+  // One group for both kinds of promised money: Click/Payme and bank transfers, each its own
+  // page under it -- the same shape as Ombor, and for the same reason: two populations that are
+  // read separately, by different people, with nothing to compare across them on one screen.
+  //
+  // **The group is gated on either code, each sub-item on its own.** The accountant holds
+  // `transfer.view` alone and whoever watches the gateways holds `gateway.view_pending` alone,
+  // so a group demanding both would hide it from each of them; `filterMenuItems` then drops the
+  // sub-item they may not open, and a reader with one permission sees one entry. A cashier has
+  // neither and sees no group at all.
+  {
+    labelKey: 'nav.paymentsControl',
+    icon: '📲',
+    isDropdown: true,
+    basePath: '/payments-control',
+    permissionAny: ['gateway.view_pending', 'transfer.view'],
+    subItems: [
+      { path: '/payments-control/online', labelKey: 'nav.paymentsOnline', icon: '📲', permission: 'gateway.view_pending' },
+      { path: '/payments-control/billing', labelKey: 'nav.paymentsBilling', icon: '🏦', permission: 'transfer.view' },
+    ],
+  },
   { path: '/finance', labelKey: 'nav.finance', icon: '💵', permission: 'finance.view' },
   { path: '/equity', labelKey: 'nav.equity', icon: '🏛️', permission: 'equity.view' },
   { path: '/fixed-assets', labelKey: 'nav.fixedAssets', icon: '🏢', permission: 'fixed_assets.view' },

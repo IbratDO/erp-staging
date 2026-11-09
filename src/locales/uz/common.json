@@ -33,7 +33,9 @@
     "stockCounts": "Ombor nazorati",
     "users": "Foydalanuvchilar",
     "workers": "Xodimlar",
-    "paymentsControl": "To'lovlar nazorati"
+    "paymentsControl": "To'lovlar nazorati",
+    "paymentsOnline": "Online to'lovlar",
+    "paymentsBilling": "Billing"
   },
   "auth": {
     "username": "Foydalanuvchi nomi",

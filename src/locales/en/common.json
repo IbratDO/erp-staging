@@ -33,7 +33,9 @@
     "stockCounts": "Stocktake",
     "users": "Users",
     "workers": "Workers",
-    "paymentsControl": "Payments control"
+    "paymentsControl": "Payments control",
+    "paymentsOnline": "Online payments",
+    "paymentsBilling": "Billing"
   },
   "auth": {
     "username": "Username",
