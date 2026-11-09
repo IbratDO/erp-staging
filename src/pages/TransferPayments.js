@@ -471,7 +471,7 @@ const TransferPayments = () => {
                             {canRecord && !closed ? (
                               <button
                                 type="button"
-                                className="btn btn-sm btn-primary"
+                                className="btn-primary"
                                 disabled={busy}
                                 aria-expanded={recording}
                                 onClick={() => openReceipt(row)}
@@ -485,7 +485,7 @@ const TransferPayments = () => {
                             {canWaive && !closed ? (
                               <button
                                 type="button"
-                                className="btn btn-sm btn-danger"
+                                className="btn-danger-action"
                                 disabled={busy}
                                 aria-expanded={waiving}
                                 onClick={() => {
@@ -499,7 +499,7 @@ const TransferPayments = () => {
                             ) : null}
                             <button
                               type="button"
-                              className="btn btn-sm"
+                              className="btn-edit"
                               aria-expanded={showing}
                               onClick={() => toggleHistory(row)}
                             >
@@ -588,7 +588,7 @@ const TransferPayments = () => {
                               <div className="transfer-panel__actions">
                                 <button
                                   type="button"
-                                  className="btn btn-primary"
+                                  className="btn-primary"
                                   disabled={busy}
                                   onClick={() => submitReceipt(row)}
                                 >
@@ -596,7 +596,7 @@ const TransferPayments = () => {
                                 </button>
                                 <button
                                   type="button"
-                                  className="btn"
+                                  className="btn-edit"
                                   disabled={busy}
                                   onClick={() => setReceiptFor(0)}
                                 >
@@ -633,7 +633,7 @@ const TransferPayments = () => {
                               <div className="transfer-panel__actions">
                                 <button
                                   type="button"
-                                  className="btn btn-danger"
+                                  className="btn-danger-action"
                                   disabled={busy}
                                   onClick={() => submitWaiver(row)}
                                 >
@@ -641,7 +641,7 @@ const TransferPayments = () => {
                                 </button>
                                 <button
                                   type="button"
-                                  className="btn"
+                                  className="btn-edit"
                                   disabled={busy}
                                   onClick={() => setWaivingFor(0)}
                                 >
@@ -754,7 +754,7 @@ const TransferPayments = () => {
                                               {canFix && canCorrect(line) ? (
                                                 <button
                                                   type="button"
-                                                  className="btn btn-sm"
+                                                  className="btn-edit"
                                                   disabled={busy}
                                                   aria-expanded={correctingId === line.id}
                                                   onClick={() => {
@@ -787,7 +787,7 @@ const TransferPayments = () => {
                                                   <div className="transfer-panel__actions">
                                                     <button
                                                       type="button"
-                                                      className="btn btn-danger"
+                                                      className="btn-danger-action"
                                                       disabled={busy}
                                                       onClick={() => submitCorrection(row, line)}
                                                     >

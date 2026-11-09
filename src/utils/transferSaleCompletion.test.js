@@ -21,6 +21,7 @@ import {
   buildCompleteSaleRequest,
   computePaymentDifferenceMeta,
   emptyPaymentFormState,
+  somBoxForTransfer,
 } from './saleCompletePayHelpers';
 
 const RATE = 12000;
@@ -223,5 +224,60 @@ describe('the strings the block needs', () => {
       expect(msg).toContain('{{customer}}');
       expect(msg).toContain('{{amount}}');
     });
+  });
+});
+
+describe('the som box follows the transfer amount', () => {
+  /*
+    The cashier's complaint that produced this: the option was invisible, because it only
+    appeared once money was owing -- and the way you reach it is by having already typed the
+    amount due into the som box. You cannot choose how a sale is paid from a form that offers
+    the choice only after you have under-paid.
+
+    Now it is always offered, and typing an amount into it *creates* the shortfall by lowering
+    the som box. `somBoxForTransfer` is that subtraction, extracted so it can be checked here
+    rather than only by eye.
+  */
+  test('a transfer of part of the sale leaves the rest for the drawer', () => {
+    expect(somBoxForTransfer(1000000, 400000)).toBe('600000');
+  });
+
+  test('a transfer of the whole sale leaves the drawer nothing', () => {
+    expect(somBoxForTransfer(1000000, 1000000)).toBe('0');
+  });
+
+  test('clearing the transfer gives the som back', () => {
+    // What unticking the checkbox does. Without it the box keeps a figure that was only ever
+    // low because the bank was covering the rest, and the sale completes short.
+    expect(somBoxForTransfer(1000000, 0)).toBe('1000000');
+  });
+
+  test('a transfer larger than the sale never makes the drawer negative', () => {
+    // A mistake for the server to name -- it refuses an overpayment -- not one to express as a
+    // negative amount of cash.
+    expect(somBoxForTransfer(1000000, 1500000)).toBe('0');
+  });
+
+  test('the box is left alone when the due figure cannot be read', () => {
+    // A dollar-priced sale, or the CBU rate still loading. Filling the box with a guess is worse
+    // than leaving what the cashier typed.
+    expect(somBoxForTransfer(null, 400000)).toBeNull();
+    expect(somBoxForTransfer(undefined, 400000)).toBeNull();
+    expect(somBoxForTransfer(NaN, 400000)).toBeNull();
+  });
+
+  test('the answer is whole som', () => {
+    // The UZS ledger takes no tiyin, and the server refuses a fractional som outright.
+    expect(somBoxForTransfer(1000000.4, 333333.3)).toBe('666667');
+    expect(somBoxForTransfer(1000000, 333333)).toBe('666667');
+  });
+
+  test('the parts add back to the whole', () => {
+    // The property that matters: whatever is put on the bank, the two figures reconstitute the
+    // sale. A cashier should never be able to complete a sale claiming both.
+    for (const transfer of [0, 1, 250000, 333333, 999999, 1000000]) {
+      const som = Number(somBoxForTransfer(1000000, transfer));
+      expect(som + transfer).toBe(1000000);
+    }
   });
 });

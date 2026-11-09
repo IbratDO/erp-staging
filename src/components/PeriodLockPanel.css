@@ -1,0 +1,148 @@
+/*
+ * Yopilgan davrlar — the line the books are closed through, on Balans.
+ *
+ * It had no stylesheet at all: every rule was an inline `style={{...}}` and the buttons carried
+ * `btn` / `btn-sm`, which are class names **no stylesheet in this project defines.** So the one
+ * control on the panel rendered as a raw browser button next to a page of styled ones.
+ *
+ * Structural classes come from `TablePage.css` — the buttons and the banners — and only what is
+ * particular to this panel lives here.
+ */
+
+/*
+ * A card, and a quiet one. This sits above the balance sheet, which is what somebody came to the
+ * page for; a panel that competes with it for attention is a panel in the way. The left rule is
+ * what marks it as a statement about the sheet below rather than part of it.
+ */
+.period-lock {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #94a3b8;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.period-lock__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.period-lock__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.period-lock__label {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/*
+ * The date is the panel's whole content, so it is set apart from the sentence around it —
+ * findable at a glance rather than read for. Tabular figures so a date never shifts width.
+ */
+.period-lock__date {
+  font-variant-numeric: tabular-nums;
+  color: #0f172a;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+/* Nothing closed yet is not a warning and not an achievement; it is the ordinary starting state. */
+.period-lock__date--none {
+  background: transparent;
+  padding: 0;
+  color: #64748b;
+  font-weight: 400;
+}
+
+/* Who drew the line and why. Secondary: it answers a question somebody asks second. */
+.period-lock__meta {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 0.85em;
+}
+
+.period-lock__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.period-lock__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+/* The reason: a free-text box is the one field worth widening. */
+.period-lock__field--grow {
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+
+.period-lock__field label {
+  font-size: 0.85em;
+  font-weight: 600;
+  color: #334155;
+}
+
+.period-lock__field input {
+  padding: 7px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.95em;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.period-lock__field input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.period-lock__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/*
+ * The hint takes the whole width below the fields rather than sitting beside them: it explains
+ * both of them, and read next to one it looks like that field's own note.
+ */
+.period-lock__hint {
+  flex: 1 1 100%;
+  margin: 0;
+  color: #64748b;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .period-lock__field,
+  .period-lock__field--grow,
+  .period-lock__actions {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .period-lock__actions button {
+    width: 100%;
+  }
+}

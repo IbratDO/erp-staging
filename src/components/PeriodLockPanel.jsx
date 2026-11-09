@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import api from '../utils/api';
 import { usePermissions } from '../hooks/usePermissions';
+import './PeriodLockPanel.css';
 
 /**
  * How far the books are closed, and — for whoever may — the control to move the line.
@@ -19,6 +20,12 @@ import { usePermissions } from '../hooks/usePermissions';
  * **A reason is required in both directions, and matters more going back.** Closing a month is
  * routine; reopening one that has been reported is the entry that most needs an explanation
  * attached, which is why the warning below appears only when the date moves backwards.
+ *
+ * *Styling note: this shipped written entirely in inline styles, with `btn` / `btn-sm` /
+ * `error-message` class names that **exist in no stylesheet in this project** — so its buttons
+ * rendered as raw browser buttons beside a page of styled ones. It now uses the house classes
+ * (`btn-primary`, `btn-edit`, `notification-banner`) and its own stylesheet, like every other
+ * panel.*
  */
 const PeriodLockPanel = () => {
   const { t } = useTranslation(['balanceSheet', 'common']);
@@ -86,41 +93,51 @@ const PeriodLockPanel = () => {
   if (!canRead || state === null) return null;
 
   const closed = state.closed_through;
+  // Moving the line backwards reopens a month that has been read and acted on. Worth saying
+  // before the press, not after.
+  const movingBack = !!(closed && day && day < closed);
 
   return (
-    <div className="form-card" style={{ padding: 12, marginBottom: 16 }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <strong>{t('periodLock.title')}</strong>
-        <span>
-          {closed
-            ? t('periodLock.closedThrough', { date: closed })
-            : t('periodLock.nothingClosed')}
-        </span>
+    <div className="period-lock">
+      <div className="period-lock__head">
+        <div className="period-lock__title">
+          <span className="period-lock__label">{t('periodLock.title')}</span>
+          {/* The date carries the state, so it carries the colour: closed reads as settled,
+              nothing-closed as merely neutral. A date is the whole content of this panel and it
+              should be findable without reading the sentence around it. */}
+          <span className={`period-lock__date${closed ? '' : ' period-lock__date--none'}`}>
+            {closed
+              ? t('periodLock.closedThrough', { date: closed })
+              : t('periodLock.nothingClosed')}
+          </span>
+        </div>
         {state.may_change ? (
-          <button type="button" className="btn btn-sm" onClick={() => setOpen(!open)}>
+          <button
+            type="button"
+            className="btn-edit"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
             {open ? t('actions.cancel', { ns: 'common' }) : t('periodLock.change')}
           </button>
         ) : null}
       </div>
 
       {closed && state.reason ? (
-        <small style={{ color: '#666', display: 'block', marginTop: 4 }}>
+        <p className="period-lock__meta">
           {t('periodLock.setBy', { who: state.set_by || '—', reason: state.reason })}
-        </small>
+        </p>
       ) : null}
 
-      {error ? <div className="error-message" style={{ marginTop: 8 }}>{error}</div> : null}
-      {message ? (
-        <div style={{ color: '#15803d', marginTop: 8 }}>{message}</div>
-      ) : null}
+      {error ? <div className="notification-banner error">{error}</div> : null}
+      {message ? <div className="notification-banner success">{message}</div> : null}
 
       {open && state.may_change ? (
-        <div style={{ marginTop: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: 4 }}>
-              {t('periodLock.fieldDate')}
-            </label>
+        <div className="period-lock__form">
+          <div className="period-lock__field">
+            <label htmlFor="period-lock-date">{t('periodLock.fieldDate')}</label>
             <input
+              id="period-lock-date"
               type="date"
               // The books cannot close through a day that has not happened; the server refuses it
               // too, but offering it would be an invitation to be refused.
@@ -129,31 +146,27 @@ const PeriodLockPanel = () => {
               onChange={(e) => setDay(e.target.value)}
             />
           </div>
-          <div style={{ flex: '1 1 260px' }}>
-            <label style={{ display: 'block', marginBottom: 4 }}>
-              {t('periodLock.fieldReason')}
-            </label>
+          <div className="period-lock__field period-lock__field--grow">
+            <label htmlFor="period-lock-reason">{t('periodLock.fieldReason')}</label>
             <input
+              id="period-lock-reason"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              style={{ width: '100%' }}
             />
           </div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy || !day}
-            onClick={submit}
-          >
-            {t('periodLock.save')}
-          </button>
-        </div>
-      ) : null}
+          <div className="period-lock__actions">
+            <button
+              type="button"
+              className={movingBack ? 'btn-danger-action' : 'btn-primary'}
+              disabled={busy || !day}
+              onClick={submit}
+            >
+              {t('periodLock.save')}
+            </button>
+          </div>
 
-      {open && state.may_change ? (
-        <small style={{ color: '#666', display: 'block', marginTop: 8 }}>
-          {t('periodLock.hint')}
-        </small>
+          <p className="period-lock__hint">{t('periodLock.hint')}</p>
+        </div>
       ) : null}
     </div>
   );

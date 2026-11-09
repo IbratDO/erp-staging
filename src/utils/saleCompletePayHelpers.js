@@ -1331,3 +1331,31 @@ export function applyGiveawayToggle(form, checked) {
 export function shortfallOptionsVisible(shortfallMeta, form) {
   return Boolean(shortfallMeta?.needs) && !form?.apply_giveaway;
 }
+
+/**
+ * What the som box should read once a bank transfer is covering part of the sale.
+ *
+ * **The two numbers are one decision seen twice.** The som box is what the drawer receives; a
+ * transfer is the part of the sale the drawer does *not* receive, so every som put on the bank is
+ * a som the customer does not hand over. The cashier used to do that subtraction in their head,
+ * and the form accepted a sale claiming the full cash *and* the full transfer without a murmur.
+ *
+ * `Naqd (so'm)` in the method row follows for free: it is `uzsPosted - enteredTotal` and nothing
+ * types into it, which is the same cross-filtering Click Pass and Payme already had.
+ *
+ * Whole som, because the UZS ledger takes no tiyin (see `whole_soum.py`). Never negative: a
+ * transfer larger than the sale is a mistake for the server to name, not one to express as a
+ * negative amount of cash.
+ *
+ * Returns `null` when the due figure is not readable yet -- a dollar-priced sale, or the CBU rate
+ * still loading -- so the caller leaves the box alone rather than filling it with a guess.
+ *
+ * @param {number|null|undefined} due   amount due on the sale, in som
+ * @param {number} transferAmount       som being put on the bank
+ * @returns {string|null}               the value for the som box, or null to leave it be
+ */
+export function somBoxForTransfer(due, transferAmount) {
+  if (due == null || !Number.isFinite(due)) return null;
+  const wanted = Number.isFinite(transferAmount) && transferAmount > 0 ? transferAmount : 0;
+  return String(Math.max(0, Math.round(due - wanted)));
+}

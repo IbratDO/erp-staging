@@ -44,6 +44,7 @@ import {
   saleAcceptsChange,
   applyGiveawayToggle,
   shortfallOptionsVisible,
+  somBoxForTransfer,
 } from '../utils/saleCompletePayHelpers';
 
 /**
@@ -190,8 +191,6 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // Bank transfer is offered only where it can actually be taken, and each condition is a
   // decision rather than a convenience:
   //
-  //   * **a genuine shortfall** — there is nothing for the bank to send on a surplus, and the
-  //     server refuses it, so the box should not be there to tick;
   //   * **a som-priced sale** — the owner's decision of 2026-11-08. The bank account takes som,
   //     so a som figure on a som sale needs no conversion. A dollar sale would mean freezing a
   //     rate onto the record and giving it its own leg in the sheet's FX section;
@@ -210,11 +209,14 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // The server re-checks every one of these. The box is a courtesy, not a control.
   const saleIsSoum = (sale?.sale_currency || '').toUpperCase() === 'UZS';
   const hasCustomer = !!(sale?.customer_detail?.id || sale?.customer);
-  const transferAvailable =
-    saleIsSoum
-    && hasCustomer
-    && !groupSales
-    && shortfallMeta.short != null && shortfallMeta.short > changeTol;
+  // **Offered on every som sale with a customer, whether anything is owing or not.**
+  //
+  // It used to carry `shortfallMeta.short > changeTol` as well, copied from the nasiya checkbox
+  // beside it, and that made it invisible in the one situation a cashier reaches it from: the
+  // amount due already filled into the som box. You cannot choose how a sale is paid from a form
+  // that only offers the choice once you have under-paid. Ticking it and typing an amount now
+  // *creates* the shortfall, by lowering the som box -- see `setTransferAmount`.
+  const transferAvailable = saleIsSoum && hasCustomer && !groupSales;
   const onTransfer = !!paymentFormData.apply_transfer;
   // Bepul is offered only when the sale really is free: nothing typed in either currency, and
   // something actually owing. Part-paid is a discount on a real sale, and the server refuses
@@ -528,6 +530,30 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
     uzsPosted, amounts: methodAmounts, cashConfirmed, clickTakenUzs,
     usdPosted, usdCashConfirmed,
   });
+
+  /**
+   * Typing a transfer amount lowers the som box by the same amount, and raising it again puts it
+   * back.
+   *
+   * **The two numbers are one decision seen twice.** The som box is what the drawer receives; a
+   * transfer is the part of the sale the drawer does *not* receive, so every som put on the bank
+   * is a som the customer does not hand over. Before this the cashier had to do that subtraction
+   * in their head and type the answer, and the form happily accepted a sale claiming both the
+   * full cash and the full transfer.
+   *
+   * `Naqd (so'm)` follows for free, because it is `uzsPosted - enteredTotal` and nothing types
+   * into it -- which is the same cross-filtering Click Pass and Payme already had.
+   *
+   * **It is set, not clamped.** The cashier can still overtype the som box afterwards, for the
+   * customer who hands over a different amount; the next change to the transfer figure takes it
+   * back to the derived value, because that is the number they are editing at the time.
+   */
+  const setTransferAmount = (value) => {
+    const next = { ...paymentFormData, transfer_amount: value };
+    const uzs = somBoxForTransfer(shortfallMeta?.due, methodAmount(value));
+    if (uzs !== null) next.uzs = uzs;
+    setPaymentFormData(next);
+  };
 
   const setMethodAmount = (method, value) => {
     // Stored as a plain number string; `formatGrouped` decides how it is displayed. Keeping those
@@ -930,8 +956,17 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   checked={onTransfer}
                   onChange={(e) => {
                     const checked = e.target.checked;
+                    // Unticking gives the som back, in **this same update**. Calling
+                    // `setTransferAmount('')` first and then setting the flag does not work:
+                    // both build their object from the current `paymentFormData`, React applies
+                    // them in order, and the second quietly restores the old `uzs`.
+                    const restoredUzs = checked
+                      ? null
+                      : somBoxForTransfer(shortfallMeta?.due, 0);
+                    const restored = restoredUzs === null ? {} : { uzs: restoredUzs };
                     setPaymentFormData({
                       ...paymentFormData,
+                      ...restored,
                       apply_transfer: checked,
                       transfer_amount: checked ? paymentFormData.transfer_amount : '',
                       // Clearing the confirmation with the box is what stops a cashier ticking
@@ -953,11 +988,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                       // Always som: there is one bank account and it takes one currency.
                       wholeOnly
                       value={paymentFormData.transfer_amount ?? ''}
-                      onChange={(e) =>
-                        setPaymentFormData({
-                          ...paymentFormData, transfer_amount: e.target.value,
-                        })
-                      }
+                      onChange={(e) => setTransferAmount(e.target.value)}
                       required
                     />
                     <small style={{ color: '#666' }}>

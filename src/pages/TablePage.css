@@ -512,6 +512,29 @@
   gap: 10px;
 }
 
+/*
+  Two classes six pages have been using with **no rule anywhere in the stylesheet.**
+
+  `.page-intro` is the sentence under a page's title on Click to'lovlari, Billing and Sozlamalar;
+  `.loading-screen` is what `ProtectedRoute` shows the whole app while it checks a session. Both
+  rendered as unstyled body text, which is not obviously broken -- it just reads as though nobody
+  decided anything, which is why it survived this long. Found while fixing the buttons on Billing,
+  which had the same shape of fault: a class name invented and never written.
+*/
+.page-intro {
+  margin: 0 0 16px;
+  max-width: 70ch;
+  color: #64748b;
+  font-size: 0.95em;
+  line-height: 1.5;
+}
+
+.loading-screen {
+  padding: 24px 0;
+  color: #64748b;
+  font-size: 0.95em;
+}
+
 .table-card {
   background: white;
   padding: 20px;
@@ -1425,12 +1448,19 @@
   `batch-col-price`, because Sales and Orders put a bare box in theirs and would only lose room on
   screen for nothing.
 
-  11.5rem = the select, the gap, the cell padding, and about 6.5rem of box -- enough for a grouped
-  seven-figure soum amount and for the "USD/dona" placeholder, which is what the cell shows before
-  anything is typed.
+  **14rem, and the arithmetic is written out because the previous 11.5rem did not add up.** The
+  comment here used to claim 11.5rem covered the select, the gap, the padding and the box; it did
+  not cover even the first three. At 11.5rem the cell is 184px, its padding (10px left, 8px right)
+  leaves 166px, and the contents ask for 104px of box + 6px gap + 88px of select = 198px. Short by
+  32px, so `flex-wrap` did what it was told and **dropped the select onto a second line** -- the
+  two fields stacked, on every screen where the column sits at its declared width.
+
+  15rem = 240px, minus 18px of padding = 222px, against 104px of box + 6px gap + 104px of select
+  = 214px asked for. The cell no longer wraps because it fits, and `flex-wrap: nowrap` below means
+  it cannot wrap even if some future column is squeezed.
 */
 .batch-sale-lines col.batch-col-money-currency {
-  width: 11.5rem;
+  width: 15rem;
 }
 .batch-sale-lines col.batch-col-pkgs {
   width: 4.75rem;
@@ -1468,8 +1498,10 @@
   min-width: 70rem;
 }
 .batch-inventory-lines {
-  /* Was 75rem, when its two money columns were 7.5rem apiece; they are 11.5rem now. */
-  min-width: 83rem;
+  /* 9.5 + 9.5 + 18 + 5 + 15 + 15 + 13.5 + 3.4 = 88.9rem of declared columns, plus slack. Was
+     83rem when the two money columns were 11.5rem apiece; they are 15rem now. A floor below the
+     sum of the columns is not a floor -- the columns are scaled down to meet it, silently. */
+  min-width: 90rem;
 }
 .batch-order-lines {
   min-width: 101rem;
@@ -1484,23 +1516,40 @@
   full width, because `min-width: 0` on `.batch-sale-lines__control` lets it. With a real floor on
   the box, the select drops to a second line instead, and both stay readable.
 */
+/*
+  A money box and its currency select, **side by side and never stacked.**
+
+  `flex-wrap: wrap` was the original, and wrapping is the wrong answer for these two: they are one
+  field in two parts, and a currency that has fallen below its amount reads as a separate control.
+  Worse, it happens silently -- nothing looks broken, the row just gets taller and the select ends
+  up clipped.
+
+  So: `nowrap`, and the box carries `min-width: 0` so that a cell narrower than it wants shrinks
+  the *box* rather than breaking the line. The table has a width floor and scrolls
+  (`.batch-sale-lines-wrap--scroll`), so swiping is what pays for a narrow screen -- not stacking.
+*/
 .batch-money-currency {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
+  align-items: center;
 }
 
 .batch-money-currency > .amount-input,
 .batch-money-currency > input {
   flex: 1 1 6.5rem;
-  min-width: 6.5rem;
+  min-width: 0;
 }
 
 /* The class is repeated to outrank `.batch-sale-lines__control`'s `width: 100%`, which is
    declared further down this file and would otherwise win the tie and stretch the select. */
+/* 6.5rem. It was 4.75, where a native select rendered "USD" as "U$" once its own arrow had taken
+   its share; 5.5rem fitted but only just, with the arrow sitting against the last letter. This is
+   the width at which the three letters and the arrow each have room, and it is the same on every
+   screen -- the phone tier's override is gone. */
 .batch-money-currency > select.batch-sale-lines__control {
-  flex: 0 0 4.75rem;
-  width: 4.75rem;
+  flex: 0 0 6.5rem;
+  width: 6.5rem;
 }
 
 .batch-order-lines-advance-cell {
@@ -1684,15 +1733,14 @@ input.batch-sale-lines__control[type='number']::-webkit-outer-spin-button {
     width: 3.6rem;
   }
 
-  /* Same reason, one cell over: the select's text is 16px here, so "USD" plus the native arrow
-     needs more room, and the column has to carry it or the money box pays for it. */
-  .batch-money-currency > select.batch-sale-lines__control {
-    flex: 0 0 5.5rem;
-    width: 5.5rem;
-  }
-  .batch-sale-lines col.batch-col-money-currency {
-    width: 12.5rem;
-  }
+  /*
+    The select and the money column used to be widened here, because this tier renders their text
+    at 16px and "USD" plus the native arrow did not fit the base 4.75rem. **Both overrides are
+    gone: the base now declares exactly these widths**, so one set serves every screen, which is
+    what the rest of this table's sizing already does. The old base was also short of its own
+    contents on a desktop -- see `batch-col-money-currency` -- so the phone tier was quietly the
+    only place the cell was ever sized correctly.
+  */
   .batch-sale-lines th.batch-sale-lines__th--action,
   .batch-sale-lines td.batch-sale-lines__td--action {
     width: 3.6rem;
