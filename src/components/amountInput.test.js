@@ -19,7 +19,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import AmountInput, { formatAmount, parseAmount } from './AmountInput';
+import AmountInput, { formatAmount, parseAmount, toWholeAmount } from './AmountInput';
 
 const GROUP = ' '; // the thin space the component groups with
 
@@ -192,5 +192,50 @@ describe('the avans boxes in the order form', () => {
     const input = render({ value: '', className: 'batch-sale-lines__control' });
     expect(input.className).toContain('amount-input');
     expect(input.className).toContain('batch-sale-lines__control');
+  });
+});
+
+describe('the whole-soum mask', () => {
+  /*
+   * The som ledger carries neither fractions nor tiyins — the owner's rule. Layer 1 of three:
+   * this mask, server-side validation keyed on field name, and the arithmetic that divides
+   * totals into whole soum. A mask is not a guard, which is why all three exist; what the mask
+   * buys is that nobody is told off *after* typing.
+   */
+  test('a decimal point is dropped as it is typed', () => {
+    expect(toWholeAmount('1200000.5')).toBe('1200000');
+    expect(toWholeAmount('555555.15')).toBe('555555');
+    // Mid-typing: the trailing point goes too, so the field never shows one.
+    expect(toWholeAmount('12.')).toBe('12');
+    expect(toWholeAmount('.5')).toBe('');
+  });
+
+  test('whole amounts are untouched', () => {
+    expect(toWholeAmount('1200000')).toBe('1200000');
+    expect(toWholeAmount('0')).toBe('0');
+    expect(toWholeAmount('')).toBe('');
+  });
+
+  test('it still accepts what people paste', () => {
+    // The grouping rules `parseAmount` already works out are applied first, so a pasted
+    // "1,200,000" is a million two hundred thousand here as it is everywhere else.
+    expect(toWholeAmount('1 200 000')).toBe('1200000');
+    expect(toWholeAmount('1,200,000')).toBe('1200000');
+    // A lone comma reads as a decimal point in uz/ru, so this is one and a half — dropped to 1.
+    expect(toWholeAmount('1,5')).toBe('1');
+  });
+
+  test('a negative stays negative', () => {
+    // Refunds and reversals go through the same field.
+    expect(toWholeAmount('-1200000.75')).toBe('-1200000');
+  });
+
+  test('dollars are deliberately not affected', () => {
+    // `wholeOnly` is opt-in per field. A cent is real money, and a helper that rounded both
+    // currencies would eventually eat somebody's change.
+    expect(parseAmount('12.34')).toBe('12.34');
+    // Asserted by its ending rather than against a literal: the thousands separator is a
+    // thin space, so a literal written with an ordinary space differs invisibly.
+    expect(formatAmount('1200000.5').endsWith('.5')).toBe(true);
   });
 });

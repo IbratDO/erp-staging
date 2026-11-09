@@ -1,0 +1,48 @@
+/*
+ * Perechisleniye to'lovlari.
+ *
+ * Its own stylesheet rather than borrowing `GatewayUI.css`: that one belongs to the Click page,
+ * and a shared `.gw-` class would mean a change made for one subtab silently restyling the other.
+ */
+
+/* Money lines up on the right and shares a digit width, so a column of som figures can be
+ * compared by eye. `tabular-nums` is what stops the thousands separators wandering. */
+.transfer-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * The row's state as a left-hand band. **A fully received record turns green and offers nothing
+ * further** — the owner asked for that outright, and it is the page's only use of colour as
+ * information. A band rather than a filled row, so the figures stay readable.
+ */
+.transfer-row--awaiting td {
+  box-shadow: inset 3px 0 0 0 transparent;
+}
+
+.transfer-row--partial td:first-child {
+  box-shadow: inset 3px 0 0 0 #b45309;
+}
+
+.transfer-row--paid td:first-child {
+  box-shadow: inset 3px 0 0 0 #15803d;
+}
+
+/* Written off is not the same as received, and must not read as success: the shop gave up on
+ * money it was owed. Grey, which is the one tone that says "closed, and not well". */
+.transfer-row--waived td:first-child {
+  box-shadow: inset 3px 0 0 0 #6b7280;
+}
+
+.transfer-row--waived td {
+  color: #6b7280;
+}
+
+/* A correction is a negative receipt. Struck through and dimmed, because the line it cancels is
+ * still above it in the history and the two have to be told apart at a glance. */
+.transfer-line--correction td {
+  color: #b91c1c;
+  font-style: italic;
+}

@@ -486,6 +486,19 @@ export const emptyPaymentFormState = () => ({
   credit_amount: '',
   // Required whenever credit is on: a debt with no date is one nobody is ever reminded about.
   credit_due_date: '',
+  // Bank transfer ("perechisleniye"). A fourth named claim on the same gap, beside discount and
+  // credit, and a deferral rather than a payment method: the money is not in the drawer, so it
+  // never joins the soum split in `paymentMethods.js`.
+  //
+  // `transfer_amount` is **required** when the box is on, unlike `credit_amount`. An unnamed
+  // credit means "whatever is left", which is the ordinary case for a debt; a transfer is never
+  // the leftover — the cashier is looking at an organisation that has agreed a figure. Two
+  // unnamed claims could not share one gap either.
+  apply_transfer: false,
+  transfer_amount: '',
+  // The till's "Pul tushgan": the money is already in the bank. Its own permission, because it
+  // is the one place money enters the books on a cashier's word.
+  transfer_received: false,
   apply_currency_conversion_difference: false,
   apply_additional_profit: false,
   apply_change: false,
@@ -610,11 +623,18 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
   const wantCredit =
     !!paymentFormData.apply_credit || paymentFormData.balance_shortfall_type === 'on_credit';
   const wantGiveaway = !!paymentFormData.apply_giveaway;
+  const wantTransfer = !!paymentFormData.apply_transfer;
   // An empty payment box reads as "nothing typed yet" everywhere else, which is what keeps the
-  // form from complaining about a shortfall the moment it opens. Credit and Bepul are the two
-  // completions where nothing typed is the whole answer — the customer hands over no money at
-  // all — so once either is chosen the blank is read as the zero it actually is.
-  const emptyIsTheAnswer = wantCredit || wantGiveaway;
+  // form from complaining about a shortfall the moment it opens. Credit, Bepul and a bank
+  // transfer are the **three** completions where nothing typed is the whole answer — the
+  // customer hands over no money at all — so once any of them is chosen the blank is read as the
+  // zero it actually is.
+  //
+  // `wantTransfer` is the third, and leaving it out was a real bug rather than a tidiness point:
+  // a sale settled wholly by transfer read as "nothing typed yet", so the form never classified
+  // the gap and `transferAmount` came back undefined. The server has the identical guard in
+  // `requests_transfer`, for the identical reason. Same rule, and this is the fifth layer of it.
+  const emptyIsTheAnswer = wantCredit || wantGiveaway || wantTransfer;
   const base =
     emptyIsTheAnswer && !raw.mixed && raw.due != null && raw.paid == null
       ? { ...raw, paid: 0, paidGross: raw.paidGross ?? 0, short: raw.due, needs: raw.due > 0 }
@@ -647,22 +667,44 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
   // the conversion difference absorbs the rest — the rule the server applies, mirrored here so
   // the form and the server never reach different verdicts about the same payment.
   const gap = base.due - base.paid;
+  // The transfer's named share, taken off the gap before credit's "whatever is left" is worked
+  // out. Without that subtraction a combined sale would put the transfer amount on the debt as
+  // well and the named claims would add up to more than the gap — the same ordering the server
+  // applies, mirrored here so the form and the server never reach different verdicts.
+  const namedTransfer = parseFloat(paymentFormData.transfer_amount);
+  let transferAmount = 0;
+  if (wantTransfer && gap > tol && Number.isFinite(namedTransfer) && namedTransfer > 0) {
+    transferAmount = namedTransfer;
+  }
   const namedCredit = parseFloat(paymentFormData.credit_amount);
   let creditAmount = 0;
   if (wantCredit && gap > tol) {
     creditAmount =
       Number.isFinite(namedCredit) && namedCredit > 0
         ? namedCredit
-        : Math.max(0, gap - discountAmount);
+        : Math.max(0, gap - discountAmount - transferAmount);
   }
   // Naming shares that together exceed the gap invents money that was never owed. Guarded on
   // there *being* a gap: on a surplus `gap` is negative, and without the guard a payment with
   // no discount and no credit reads as 0 > −2.28 and every overpayment is rejected.
-  const sharesExceedGap = gap > tol && discountAmount + creditAmount > gap + tol;
+  const sharesExceedGap =
+    gap > tol && discountAmount + creditAmount + transferAmount > gap + tol;
   // Ticked on a payment that leaves nothing owing — there is no debt to open.
   const creditWithNothingOwing = wantCredit && gap <= tol;
+  // The same refusal for a transfer: inventing an expected transfer against money already in the
+  // till would be a receivable for nothing.
+  const transferWithNothingOwing = wantTransfer && gap <= tol;
+  // The box is on but empty. Its own flag rather than folding into `sharesExceedGap`, because the
+  // thing to say is "type the amount", not "these add up to too much".
+  const transferAmountMissing =
+    wantTransfer && gap > tol && !(Number.isFinite(namedTransfer) && namedTransfer > 0);
+  // Whole som, the owner's rule for the whole UZS ledger. Checked here as well as on the server
+  // and in the input mask, because a rule fixed in one layer usually lives in three more.
+  const transferNotWholeSom =
+    transferAmount > 0 && Math.abs(transferAmount - Math.round(transferAmount)) > 1e-9;
 
-  const remainingAfterDiscount = base.paid - (base.due - discountAmount - creditAmount);
+  const remainingAfterDiscount =
+    base.paid - (base.due - discountAmount - creditAmount - transferAmount);
   const wantFx = !!paymentFormData.apply_currency_conversion_difference;
   const wantAdditionalProfit = !!paymentFormData.apply_additional_profit;
   const isOverpay = remainingAfterDiscount > tol;
@@ -682,6 +724,9 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
   // Credit explains part of a *shortfall* and only a shortfall: the customer walks out owing
   // what was not handed over. There is nothing to credit on a surplus.
   const creditExplained = creditAmount > 0 && !sharesExceedGap;
+  // A transfer explains part of a shortfall and only a shortfall, exactly as credit does: the
+  // customer takes the goods and the bank sends the money later.
+  const transferExplained = transferAmount > 0 && !sharesExceedGap;
   // A gift explains the whole of what was not handed over — the server turns Bepul into a
   // discount for the entire price. Without this the form would go on demanding a second
   // explanation for a gap the Bepul box has already answered in full.
@@ -693,7 +738,12 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
   const explained = fxExplained || apExplained || splitFxValid || giveawayExplained;
   const unexplained = explained ? 0 : remainingAfterDiscount;
   const differenceNeedsClassification =
-    sharesExceedGap || creditWithNothingOwing || Math.abs(unexplained) > tol;
+    sharesExceedGap
+    || creditWithNothingOwing
+    || transferWithNothingOwing
+    || transferAmountMissing
+    || transferNotWholeSom
+    || Math.abs(unexplained) > tol;
   // Reachable only for overpayment with nothing selected yet (advance sales stay hard-blocked).
   const needsAdditionalProfitConfirm =
     !wantFx && !wantAdditionalProfit && isOverpay && !base.hasAdvance;
@@ -726,6 +776,12 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
     giveawayExplained,
     sharesExceedGap,
     creditWithNothingOwing,
+    wantTransfer,
+    transferExplained,
+    transferAmount,
+    transferWithNothingOwing,
+    transferAmountMissing,
+    transferNotWholeSom,
     gap,
     differenceNeedsClassification,
     needsAdditionalProfitConfirm,
@@ -950,6 +1006,19 @@ export function buildCompleteSaleRequest(paymentFormData, meta, exchangeRate) {
     const credit = parseFloat(paymentFormData.credit_amount);
     if (Number.isFinite(credit) && credit > 0) {
       requestData.credit_amount = credit;
+    }
+  }
+  // Bank transfer. `transfer_amount` is always sent when the box is on — the server requires a
+  // named figure, for the reason given in `emptyPaymentFormState`.
+  if (paymentFormData.apply_transfer) {
+    const transfer = parseFloat(paymentFormData.transfer_amount);
+    if (Number.isFinite(transfer) && transfer > 0) {
+      requestData.transfer_amount = transfer;
+      // "Pul tushgan". Sent only alongside an amount, so a stale flag on its own can never reach
+      // the server and be refused for a half-filled form.
+      if (paymentFormData.transfer_received) {
+        requestData.transfer_received = true;
+      }
     }
   }
   if (paymentFormData.apply_currency_conversion_difference) {

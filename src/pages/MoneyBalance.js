@@ -13,30 +13,14 @@ import './TablePage.css';
 import AmountInput from '../components/AmountInput';
 import FilterPanel from '../components/FilterPanel';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
+import { LEDGER_BUCKETS, CURRENCY_COLS, isUzsBucket } from '../utils/ledgerBuckets';
 
-/** Table columns: one per currency (legacy *_cash and *_card ledger buckets roll up here). */
-const CURRENCY_COLS = [
-  {
-    key: 'usd',
-    label: 'USD',
-    isUzs: false,
-    matchBalanceType: (bt) => bt === 'usd_cash' || bt === 'usd_card',
-    sumBalances: (rows) =>
-      rows
-        .filter((b) => b.balance_type === 'usd_cash' || b.balance_type === 'usd_card')
-        .reduce((s, b) => s + (parseFloat(b.balance) || 0), 0),
-  },
-  {
-    key: 'uzs',
-    label: 'UZS',
-    isUzs: true,
-    matchBalanceType: (bt) => bt === 'uzs_cash' || bt === 'uzs_card',
-    sumBalances: (rows) =>
-      rows
-        .filter((b) => b.balance_type === 'uzs_cash' || b.balance_type === 'uzs_card')
-        .reduce((s, b) => s + (parseFloat(b.balance) || 0), 0),
-  },
-];
+// The bucket list and the per-currency roll-up live in `utils/ledgerBuckets.js` so they can be
+// tested without rendering this page -- the Jami totals are computed from them, and a bucket left
+// out of a total is wrong rather than merely missing. See that module's header.
+//
+// Which buckets a shop actually *sees* is still decided here at render time, from the balances it
+// holds: see `availableBuckets` below.
 
 function signedForCurrencyColumn(t, col) {
   const bt = t.balance_detail?.balance_type;
@@ -167,6 +151,10 @@ const MoneyBalance = () => {
   const [loading, setLoading] = useState(true);
   const [showAdjustForm, setShowAdjustForm] = useState(false);
   const [showConversionForm, setShowConversionForm] = useState(false);
+  // Closed by default, deliberately. The two Jami cards are what most people come to this page
+  // for; the per-account split matters only to whoever is reconciling the bank, so it costs a
+  // click to those who want it and nothing at all to everyone else.
+  const [showAccountDetail, setShowAccountDetail] = useState(false);
   const [adjustFormData, setAdjustFormData] = useState({
     balance_type: 'usd_cash',
     amount: '',
@@ -218,6 +206,50 @@ const MoneyBalance = () => {
       setLoading(false);
     }
   };
+
+  /**
+   * The buckets worth offering: those this shop actually holds a balance row for.
+   *
+   * **Read from `balances`, never from `transactions`.** `balance_type` is a *server-side* filter
+   * -- `fetchTransactions` puts it in the query string -- so the rows on screen are already
+   * narrowed to the chosen bucket. Building the options from them would leave the dropdown with
+   * exactly one entry the moment you picked anything, and no way back. `balances` comes from
+   * `/cash-balance/` unfiltered, so it says what exists rather than what is currently shown.
+   *
+   * A balance row is the right test because `BalanceTransaction` points at one: a bucket with
+   * movements always has a row, and `fetchBalances` creates the two cash rows unconditionally, so
+   * those two never disappear even on a shop with no history yet.
+   *
+   * The current selection is kept in the list even if its row has gone, so an active filter never
+   * turns into a blank select that cannot be read or cleared.
+   */
+  const availableBuckets = useMemo(() => {
+    const present = new Set(balances.map((b) => b.balance_type));
+    if (filter.balance_type) present.add(filter.balance_type);
+    return LEDGER_BUCKETS.filter((b) => present.has(b.value));
+  }, [balances, filter.balance_type]);
+
+  /**
+   * One entry per account that actually holds a row, for the detail panel.
+   *
+   * **Not `availableBuckets`**, which is for the filter dropdown and therefore also includes
+   * whatever is currently selected even when it has no rows. A breakdown that invented a zero row
+   * because somebody had filtered on it would not add up to the Jami figures above it.
+   *
+   * Ordered by `LEDGER_BUCKETS` rather than by the API's order, so the cards do not reshuffle
+   * between loads.
+   */
+  const accountDetail = useMemo(() => {
+    const byType = new Map(balances.map((b) => [b.balance_type, b]));
+    return LEDGER_BUCKETS
+      .filter((b) => byType.has(b.value))
+      .map((b) => ({
+        value: b.value,
+        labelKey: b.labelKey,
+        isUzs: isUzsBucket(b.value),
+        amount: parseFloat(byType.get(b.value).balance) || 0,
+      }));
+  }, [balances]);
 
   const transactionAmountTotals = useMemo(() => {
     const out = Object.fromEntries(CURRENCY_COLS.map((c) => [c.key, 0]));
@@ -365,6 +397,61 @@ const MoneyBalance = () => {
         ))}
       </div>
 
+      {/* Per-account breakdown. The Jami cards above stay exactly as they were; this only says
+          where that money sits. Hidden entirely when there is nothing to show, so a fresh
+          database does not render an empty toggle. */}
+      {accountDetail.length > 0 && (
+        <div style={{ marginBottom: '30px' }}>
+          <button
+            type="button"
+            onClick={() => setShowAccountDetail((v) => !v)}
+            aria-expanded={showAccountDetail}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: '4px 0',
+              cursor: 'pointer',
+              color: '#495057',
+              fontSize: 14,
+              fontWeight: 600,
+              fontFamily: 'inherit',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span style={{ fontSize: 10, color: '#868e96' }}>
+              {showAccountDetail ? '▼' : '▶'}
+            </span>
+            {t('accountDetailTitle')}
+          </button>
+          {showAccountDetail && (
+            <div className="metrics-grid" style={{ marginTop: 12 }}>
+              {accountDetail.map((acc) => (
+                <div
+                  key={acc.value}
+                  className="metric-card"
+                  style={{ backgroundColor: '#fff', border: '1px solid #dee2e6' }}
+                >
+                  <div className="metric-label">{t(acc.labelKey)}</div>
+                  <div
+                    className="metric-value"
+                    style={{ fontSize: '1.35em', color: '#343a40' }}
+                  >
+                    {acc.isUzs
+                      ? `${acc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })} UZS`
+                      : `$${acc.amount.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* The form supplies no card or heading of its own — the dialog does, so the two are
           not drawn twice. */}
       <Modal
@@ -453,10 +540,9 @@ const MoneyBalance = () => {
               onChange={(e) => setFilter({ ...filter, balance_type: e.target.value })}
             >
               <option value="">{t('allBuckets')}</option>
-              <option value="usd_cash">{t('usdCash')}</option>
-              <option value="uzs_cash">{t('uzsCash')}</option>
-              <option value="usd_card">{t('usdCardLegacy')}</option>
-              <option value="uzs_card">{t('uzsCardLegacy')}</option>
+              {availableBuckets.map((b) => (
+                <option key={b.value} value={b.value}>{t(b.labelKey)}</option>
+              ))}
             </select>
           </div>
           <div className="filter-field">

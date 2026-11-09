@@ -17,6 +17,10 @@ export const ROUTE_PERMISSIONS = {
   '/finance': 'finance.view',
   '/receivables-payables': 'receivables.view',
   '/credit-sales': 'credit_sales.view',
+  // **No entry for `/payments-control`.** `ROUTE_PERMISSIONS` holds one code per path and
+  // this page is reachable on either of two, so the gate is `permissionAny` on the route
+  // in `App.js` and `permissionAny` on the menu item below. An entry here naming one of
+  // the two would lock the other role out of its own page.
   '/gateway-payments': 'gateway.view_pending',
   '/equity': 'equity.view',
   '/fixed-assets': 'fixed_assets.view',
@@ -117,7 +121,10 @@ export const MENU_ITEMS = [
   // Next to Debitor / kreditor rather than near the till, because it is money to chase rather
   // than money to take, and the people who hold `view_pending` are the ones who read those
   // pages. A cashier never sees it.
-  { path: '/gateway-payments', labelKey: 'nav.gatewayPayments', icon: '📲', permission: 'gateway.view_pending' },
+  // One entry for both kinds of promised money: Click/Payme and bank transfers, as subtabs.
+  // `permissionAny`, so the accountant (who holds `transfer.view` alone) and whoever watches the
+  // gateways (who holds `gateway.view_pending` alone) each see it, and a cashier sees neither.
+  { path: '/payments-control', labelKey: 'nav.paymentsControl', icon: '📲', permissionAny: ['gateway.view_pending', 'transfer.view'] },
   { path: '/finance', labelKey: 'nav.finance', icon: '💵', permission: 'finance.view' },
   { path: '/equity', labelKey: 'nav.equity', icon: '🏛️', permission: 'equity.view' },
   { path: '/fixed-assets', labelKey: 'nav.fixedAssets', icon: '🏢', permission: 'fixed_assets.view' },

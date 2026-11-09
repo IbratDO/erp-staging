@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
+import PeriodLockPanel from '../components/PeriodLockPanel';
 import FilterPanel from '../components/FilterPanel';
 import { formatAppNumber } from '../utils/localeFormat';
 import './TablePage.css';
@@ -118,6 +119,13 @@ const BalanceSheet = () => {
   // so each total below is unchanged by their appearing. Absent on an older backend, hence ?? 0.
   const creditSalesRecv = assets?.current?.credit_sales_receivable?.total_usd ?? 0;
   const expectedCreditProfit = equity?.expected_credit_profit_usd ?? 0;
+  // The same pair again for bank transfers: an organisation has taken the goods and the bank has
+  // not sent the money. Read rather than derived, and that matters -- the asset is what
+  // `TransferSale` still expects and the equity row is that sale's share of one deferred margin,
+  // apportioned on the server. Recomputing either here would be a second measurement of the same
+  // money, which is how a page comes to disagree with the sheet printed above it.
+  const transferRecv = assets?.current?.transfer_receivable?.total_usd ?? 0;
+  const expectedTransferProfit = equity?.expected_transfer_profit_usd ?? 0;
 
   const faNonCurrent =
     assets?.non_current?.fixed_assets_usd
@@ -149,6 +157,10 @@ const BalanceSheet = () => {
       <p style={{ color: '#666', marginBottom: 12, fontSize: '0.9em', maxWidth: 720 }}>
         {t('intro')}
       </p>
+
+      {/* Above the filters, because how far the books are closed is context for reading the
+          figures rather than a control among them. */}
+      <PeriodLockPanel />
 
       <FilterPanel title={t('filters.title')} filters={filter} style={{ marginBottom: 16 }}>
         <div className="filter-toolbar">
@@ -285,6 +297,16 @@ const BalanceSheet = () => {
                         indent={1}
                       />
                     )}
+                    {/* Beside it for the same reason: money owed on goods that have gone, filed
+                        under what is going to pay for it. A transfer sale used to be reported on
+                        the row above whenever it also carried a nasiya debt. */}
+                    {Math.abs(transferRecv) > 0.005 && (
+                      <LineRow
+                        label={t('assets.transferReceivable')}
+                        value={formatUsd(transferRecv)}
+                        indent={1}
+                      />
+                    )}
                     <LineRow
                       label={t('assets.productReceivables')}
                       value={formatUsd(productRecv)}
@@ -382,6 +404,16 @@ const BalanceSheet = () => {
                       <LineRow
                         label={t('equity.expectedCreditProfit')}
                         value={formatUsd(expectedCreditProfit)}
+                        indent={1}
+                      />
+                    )}
+                    {/* And its third sibling: margin on goods a bank is going to pay for. The
+                        three are shares of the same idea -- value the shop has earned on paper
+                        and has not been paid for -- split by what is going to settle it. */}
+                    {Math.abs(expectedTransferProfit) > 0.005 && (
+                      <LineRow
+                        label={t('equity.expectedTransferProfit')}
+                        value={formatUsd(expectedTransferProfit)}
                         indent={1}
                       />
                     )}

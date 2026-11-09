@@ -32,7 +32,8 @@
     "settings": "Sozlamalar",
     "stockCounts": "Ombor nazorati",
     "users": "Foydalanuvchilar",
-    "workers": "Xodimlar"
+    "workers": "Xodimlar",
+    "paymentsControl": "To'lovlar nazorati"
   },
   "auth": {
     "username": "Foydalanuvchi nomi",

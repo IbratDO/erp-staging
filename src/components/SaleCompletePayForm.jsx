@@ -56,6 +56,11 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // Masked for everybody when the shop has Nasiya savdo switched off, so the same check answers
   // both "may this person lend?" and "does this shop lend at all?". See `feature_flags` on the server.
   const canMarkCredit = hasPermission('sales.mark_credit');
+  // **"Pul tushgan" only.** Recording a transfer as expected needs no extra code: it opens a
+  // receivable, which is visible and chaseable, and no money has moved. Declaring that the money
+  // is already in the bank is the one place in the system where money enters the books on a
+  // cashier's word — no provider receipt, no counted drawer — so it is its own right.
+  const canConfirmTransfer = hasPermission('transfer.confirm_at_sale');
   const groupSales = sale?.groupSales?.length ? sale.groupSales : null;
   const [paymentFormData, setPaymentFormData] = useState(() => emptyPaymentFormState());
   const [exchangeRate, setExchangeRate] = useState(null);
@@ -182,6 +187,29 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
     && !customerUnknown
     && shortfallMeta.short != null && shortfallMeta.short > changeTol;
   const onCredit = !!paymentFormData.apply_credit;
+  // Bank transfer is offered only where it can actually be taken, and each condition is a
+  // decision rather than a convenience:
+  //
+  //   * **a genuine shortfall** — there is nothing for the bank to send on a surplus, and the
+  //     server refuses it, so the box should not be there to tick;
+  //   * **a som-priced sale** — the owner's decision of 2026-11-08. The bank account takes som,
+  //     so a som figure on a som sale needs no conversion. A dollar sale would mean freezing a
+  //     rate onto the record and giving it its own leg in the sheet's FX section;
+  //   * **a registered organisation** — the owner's rule. `is_organisation` is served by
+  //     `CustomerLiteSerializer`, which names its fields explicitly, so it had to be added there;
+  //   * **not a group** — a group is paid once and divided per line, and a transfer names a
+  //     single figure that would have to be apportioned across the lines. That apportioning is
+  //     not built, so the box is hidden rather than offered and then mis-split.
+  //
+  // The server re-checks every one of these. The box is a courtesy, not a control.
+  const saleIsSoum = (sale?.sale_currency || '').toUpperCase() === 'UZS';
+  const customerIsOrganisation = !!sale?.customer_detail?.is_organisation;
+  const transferAvailable =
+    saleIsSoum
+    && customerIsOrganisation
+    && !groupSales
+    && shortfallMeta.short != null && shortfallMeta.short > changeTol;
+  const onTransfer = !!paymentFormData.apply_transfer;
   // Bepul is offered only when the sale really is free: nothing typed in either currency, and
   // something actually owing. Part-paid is a discount on a real sale, and the server refuses
   // the flag in that case anyway — so showing the box there would only invite a rejection.
@@ -319,12 +347,34 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
         }
       }
 
+      // **"Pul tushgan" asks once, and names the organisation and the sum rather than saying
+      // "are you sure".** A confirm that only asks is one people learn to dismiss; one that
+      // states what is about to be asserted is one they read. This is money entering the books
+      // on the cashier's word, so it is the one place in this form that deserves the friction.
+      if (paymentFormData.apply_transfer && paymentFormData.transfer_received) {
+        const confirmed = window.confirm(
+          t('completePay.transferReceivedConfirm', {
+            customer: sale?.customer_detail?.name || '',
+            amount: formatGrouped(parseFloat(paymentFormData.transfer_amount) || 0),
+          }),
+        );
+        if (!confirmed) return;
+      }
+
       // Ticked credit, then raised the payment until nothing was owing. The box has already
       // gone from the form, so drop the stale flag rather than sending a debt of nothing.
       const staleCredit = wantsCredit && !creditAvailable;
       let effForm = staleCredit
         ? { ...paymentFormData, apply_credit: false, credit_amount: '', credit_due_date: '' }
         : paymentFormData;
+      // The same staleness for a transfer: ticked, then the payment was raised until nothing was
+      // owing, or the customer was changed to somebody who is not an organisation. The box is
+      // gone from the form, so the flag must not travel with the request.
+      if (effForm.apply_transfer && !transferAvailable) {
+        effForm = {
+          ...effForm, apply_transfer: false, transfer_amount: '', transfer_received: false,
+        };
+      }
       let effMeta = staleCredit ? computePaymentDifferenceMeta(sale, effForm, cbuRate) : meta;
       if (meta.needsAdditionalProfitConfirm) {
         if (!window.confirm(buildAdditionalProfitConfirmMessage(meta, exchangeRate))) return;
@@ -606,6 +656,9 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
             <label>{t('currency.uzs', { ns: 'common' })}</label>
             <AmountInput
               placeholder="0"
+              // Som is whole. The field will not take a decimal point, and the server refuses
+              // one too -- the same rule in two layers, because a mask is not a guard.
+              wholeOnly
               value={paymentFormData.uzs ?? ''}
               onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs: e.target.value })}
             />
@@ -701,6 +754,9 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   </label>
                   <AmountInput
                     step={shortfallMeta.sc === 'UZS' ? '1' : '0.01'}
+                    // `step` does nothing on a text input, so the intent it was expressing --
+                    // whole som, cents on a dollar sale -- is now actually enforced.
+                    wholeOnly={shortfallMeta.sc === 'UZS'}
                     value={paymentFormData.balance_shortfall_amount ?? ''}
                     onChange={(e) =>
                       setPaymentFormData({
@@ -817,6 +873,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   </label>
                   <AmountInput
                     step={shortfallMeta.sc === 'UZS' ? '1' : '0.01'}
+                    wholeOnly={shortfallMeta.sc === 'UZS'}
                     placeholder={
                       shortfallMeta.creditAmount != null
                         ? (shortfallMeta.sc === 'UZS'
@@ -848,6 +905,113 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   <small style={{ color: '#666', marginTop: 5, display: 'block' }}>
                     {t('completePay.creditDueDateHint')}
                   </small>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/*
+            Beside the credit box and outside the shortfall block, for the same reason credit is
+            outside it: that block only appears once money has been typed and come up short, and a
+            transfer sale is exactly the case where nothing is typed at all — the organisation
+            takes the goods and the bank pays later.
+          */}
+          {transferAvailable && (
+            <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={onTransfer}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setPaymentFormData({
+                      ...paymentFormData,
+                      apply_transfer: checked,
+                      transfer_amount: checked ? paymentFormData.transfer_amount : '',
+                      // Clearing the confirmation with the box is what stops a cashier ticking
+                      // "Pul tushgan", changing their mind, and leaving the flag behind on a
+                      // transfer nobody has confirmed.
+                      transfer_received: false,
+                    });
+                  }}
+                />
+                <span>{t('completePay.transferOption')}</span>
+              </label>
+              {onTransfer && (
+                <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: 4 }}>
+                      {t('completePay.transferAmountLabel')}
+                    </label>
+                    <AmountInput
+                      // Always som: there is one bank account and it takes one currency.
+                      wholeOnly
+                      value={paymentFormData.transfer_amount ?? ''}
+                      onChange={(e) =>
+                        setPaymentFormData({
+                          ...paymentFormData, transfer_amount: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                    <small style={{ color: '#666' }}>
+                      {t('completePay.transferAmountHint')}
+                    </small>
+                  </div>
+
+                  {/*
+                    Two answers to one question: is the money coming, or is it already here.
+                    Radios rather than two buttons, because they are mutually exclusive and the
+                    cashier has to be able to see which one is currently selected — a pair of
+                    buttons shows neither state until one is pressed.
+                  */}
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="transfer_timing"
+                        checked={!paymentFormData.transfer_received}
+                        onChange={() =>
+                          setPaymentFormData({ ...paymentFormData, transfer_received: false })
+                        }
+                      />
+                      <span>{t('completePay.transferExpected')}</span>
+                    </label>
+                    <label
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 8,
+                        cursor: canConfirmTransfer ? 'pointer' : 'not-allowed',
+                        opacity: canConfirmTransfer ? 1 : 0.55,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="transfer_timing"
+                        checked={!!paymentFormData.transfer_received}
+                        disabled={!canConfirmTransfer}
+                        onChange={() =>
+                          setPaymentFormData({ ...paymentFormData, transfer_received: true })
+                        }
+                      />
+                      <span>{t('completePay.transferReceived')}</span>
+                    </label>
+                    {!canConfirmTransfer && (
+                      <small style={{ color: '#b45309' }}>
+                        {t('completePay.transferReceivedNotPermitted')}
+                      </small>
+                    )}
+                  </div>
+
+                  {paymentFormData.transfer_received && canConfirmTransfer && (
+                    <p style={{ margin: 0, fontSize: '0.85em', color: '#b45309', lineHeight: 1.45 }}>
+                      {t('completePay.transferReceivedHint')}
+                    </p>
+                  )}
+                  {shortfallMeta.transferNotWholeSom && (
+                    <small style={{ color: '#b91c1c' }}>
+                      {t('completePay.transferWholeSomOnly')}
+                    </small>
+                  )}
                 </div>
               )}
             </div>

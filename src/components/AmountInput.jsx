@@ -67,6 +67,22 @@ export function formatAmount(raw) {
   return `${negative ? '-' : ''}${grouped}${decimals}`;
 }
 
+/**
+ * "1 200 000.5" -> "1200000". The whole-soum mask.
+ *
+ * **The som ledger carries neither fractions nor tiyins** (the owner's rule, confirmed
+ * 2026-11-07), so a som field does not accept a decimal point at all -- the point is dropped as
+ * it is typed rather than flagged afterwards. Layer 1 of three: this, server-side validation, and
+ * the arithmetic that divides totals. See `whole_soum` on the server.
+ *
+ * Dollars are untouched: a cent is real money, and this is opt-in per field.
+ */
+export function toWholeAmount(raw) {
+  const s = parseAmount(raw);
+  const dot = s.indexOf('.');
+  return dot === -1 ? s : s.slice(0, dot);
+}
+
 /** Digits (and sign/point) before `pos`, so the caret can be put back after re-grouping. */
 function significantBefore(text, pos) {
   return text.slice(0, pos).replace(/[^\d.-]/g, '').length;
@@ -89,6 +105,10 @@ export default function AmountInput({
   onChange,
   className = '',
   wide = true,
+  // Set on a som field. Refuses the decimal point outright rather than accepting a tiyin and
+  // rejecting it later -- a field that will not take a character is a clearer rule than an error
+  // message after the fact, and the server refuses it too (see `whole_soum.TYPED_SOUM_KEYS`).
+  wholeOnly = false,
   ...rest
 }) {
   const ref = useRef(null);
@@ -106,7 +126,7 @@ export default function AmountInput({
   const handleChange = (event) => {
     const el = event.target;
     const typed = el.value;
-    const raw = parseAmount(typed);
+    const raw = wholeOnly ? toWholeAmount(typed) : parseAmount(typed);
     const formatted = formatAmount(raw);
     caret.current = caretForSignificant(
       formatted,
@@ -129,10 +149,12 @@ export default function AmountInput({
       {...rest}
       ref={ref}
       type="text"
-      inputMode="decimal"
+      // `numeric` rather than `decimal` on a som field, so a phone keypad does not offer a
+      // decimal point the field will not accept.
+      inputMode={wholeOnly ? 'numeric' : 'decimal'}
       autoComplete="off"
       className={`amount-input${wide ? ' amount-input--wide' : ''}${className ? ` ${className}` : ''}`}
-      value={formatAmount(value ?? '')}
+      value={formatAmount(wholeOnly ? toWholeAmount(value ?? '') : (value ?? ''))}
       onChange={handleChange}
     />
   );

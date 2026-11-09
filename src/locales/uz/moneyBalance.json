@@ -48,9 +48,12 @@
 
   "uzsCash": "UZS (naqd)",
 
-  "usdCardLegacy": "USD (eski karta)",
+  "usdCardLegacy": "USD (karta)",
 
-  "uzsCardLegacy": "UZS (eski karta)",
+  "uzsCardLegacy": "UZS (karta)",
+
+  "uzsTransfer": "UZS (perechisleniye)",
+  "accountDetailTitle": "Hisoblar bo‘yicha tafsilot",
 
   "errNoteRequired": "Balans tuzatish uchun izoh kiriting.",
 

@@ -32,7 +32,8 @@
     "settings": "Настройки",
     "stockCounts": "Контроль склада",
     "users": "Пользователи",
-    "workers": "Сотрудники"
+    "workers": "Сотрудники",
+    "paymentsControl": "Контроль платежей"
   },
   "auth": {
     "username": "Логин",

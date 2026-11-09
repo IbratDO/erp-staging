@@ -42,7 +42,8 @@
     "goodsWithCourier": "Kuryerdagi mahsulot (qaytarilishi kutilmoqda)",
     "prepaidExpenses": "Oldindan to‘langan xarajatlar",
     "fixedAssetsOnBooks": "Asosiy vositalar (balansda)",
-    "courierCash": "Kuryerlardagi pul (olingan, topshirilmagan)"
+    "courierCash": "Kuryerlardagi pul (olingan, topshirilmagan)",
+    "transferReceivable": "Perechisleniyedan kutilayotgan tushumlar"
   },
   "liabilities": {
     "title": "Majburiyatlar",
@@ -62,7 +63,23 @@
     "expectedProfit": "Kutilayotgan foyda/zarar (sotilgan, to‘lanmagan)",
     "expectedCreditProfit": "Qarzdorlikdan kutilayotgan foyda/zarar",
     "currencyConversionPl": "Valyuta operatsiyalari orqali yuzaga kelgan joriy farq (foyda/zarar)",
-    "notionalFx": "Fiktiv valyuta farqi"
+    "notionalFx": "Fiktiv valyuta farqi",
+    "expectedTransferProfit": "Perechisleniyedan kutilayotgan foyda/zarar"
   },
-  "notes": "Izohlar"
+  "notes": "Izohlar",
+  "periodLock": {
+    "title": "Yopilgan davrlar",
+    "closedThrough": "{{date}} gacha yopilgan — shu kun va undan oldin pul o'tkazilmaydi.",
+    "nothingClosed": "Hech qaysi oy yopilmagan. Pulni istalgan o'tgan kun bilan kiritish mumkin.",
+    "setBy": "{{who}} belgilagan: {{reason}}",
+    "change": "O'zgartirish",
+    "fieldDate": "Yopilgan sana",
+    "fieldReason": "Nima uchun?",
+    "save": "Saqlash",
+    "saved": "Saqlandi.",
+    "hint": "Shu kun va undan oldingi sana bilan pul kiritilmaydi — yopilgan oyga kiritish huquqi bo'lmasa. Har bir bunday yozuv sababi bilan saqlanadi.",
+    "reasonRequired": "Sababini kiriting — u yozuvda qoladi.",
+    "confirmReopen": "Davrlar {{from}} dan {{to}} gacha qayta ochilsinmi?\n\nAllaqachon hisobot berilgan oylar yana yozishga ochiladi. Bu sababingiz bilan yozuvda saqlanadi.",
+    "errSave": "Yopilgan sanani o'zgartirib bo'lmadi."
+  }
 }

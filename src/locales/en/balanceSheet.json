@@ -42,7 +42,8 @@
     "goodsWithCourier": "Goods with courier (awaiting return)",
     "prepaidExpenses": "Prepaid expenses",
     "fixedAssetsOnBooks": "Fixed assets (on the books)",
-    "courierCash": "Cash with courier (collected, not handed in)"
+    "courierCash": "Cash with courier (collected, not handed in)",
+    "transferReceivable": "Expected receipts from bank transfers"
   },
   "liabilities": {
     "title": "Liabilities",
@@ -62,7 +63,23 @@
     "expectedProfit": "Expected profit/loss (sold, unpaid)",
     "expectedCreditProfit": "Expected profit/loss from debts",
     "currencyConversionPl": "Current difference from currency operations (profit/loss)",
-    "notionalFx": "Unrealized currency difference (soum held)"
+    "notionalFx": "Unrealized currency difference (soum held)",
+    "expectedTransferProfit": "Expected profit/loss from bank transfers"
   },
-  "notes": "Notes"
+  "notes": "Notes",
+  "periodLock": {
+    "title": "Closed books",
+    "closedThrough": "Closed through {{date}} — money cannot be dated on or before it.",
+    "nothingClosed": "No month has been closed. Money may be dated to any past day.",
+    "setBy": "Set by {{who}}: {{reason}}",
+    "change": "Change",
+    "fieldDate": "Closed through",
+    "fieldReason": "Why?",
+    "save": "Save",
+    "saved": "Saved.",
+    "hint": "Money dated on or before this day is refused unless you hold the right to post into a finished month, and every such entry is recorded with its reason.",
+    "reasonRequired": "Say why the line is moving — it stays on the record.",
+    "confirmReopen": "Reopen the books from {{from}} back to {{to}}?\n\nMonths that have already been reported become writable again. This is kept on the record with your reason.",
+    "errSave": "Could not change the closed date."
+  }
 }

@@ -20,7 +20,9 @@ import Returns from './pages/Returns';
 import Finance from './pages/Finance';
 import ReceivablesPayables from './pages/ReceivablesPayables';
 import CreditSales from './pages/CreditSales';
-import GatewayPayments from './pages/GatewayPayments';
+// `GatewayPayments` is no longer imported here: both of its routes now render the
+// To'lovlar nazorati shell, which imports it itself as a subtab.
+import PaymentsControl from './pages/PaymentsControl';
 import Equity from './pages/Equity';
 import FixedAssets from './pages/FixedAssets';
 import ProfitLoss from './pages/ProfitLoss';
@@ -164,11 +166,28 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              {/* To'lovlar nazorati: money promised by a third party, in two subtabs.
+                  Gated on **either** permission, because the accountant holds `transfer.view`
+                  and not `gateway.view_pending` -- demanding both would hide the page from the
+                  one role it was built for. The shell then shows only the subtabs the reader may
+                  actually open. */}
+              <Route
+                path="payments-control"
+                element={
+                  <ProtectedRoute permissionAny={['gateway.view_pending', 'transfer.view']}>
+                    <PaymentsControl />
+                  </ProtectedRoute>
+                }
+              />
+              {/* The old path kept, pointing at the same shell. It is in no menu any more, but it
+                  is in people's bookmarks and in the deploy notes, and a dead link is a support
+                  call. The shell lands them on the Online to'lovlar subtab, which is what they
+                  were going to. */}
               <Route
                 path="gateway-payments"
                 element={
-                  <ProtectedRoute permission="gateway.view_pending">
-                    <GatewayPayments />
+                  <ProtectedRoute permissionAny={['gateway.view_pending', 'transfer.view']}>
+                    <PaymentsControl />
                   </ProtectedRoute>
                 }
               />

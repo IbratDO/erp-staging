@@ -32,7 +32,8 @@
     "settings": "Settings",
     "stockCounts": "Stocktake",
     "users": "Users",
-    "workers": "Workers"
+    "workers": "Workers",
+    "paymentsControl": "Payments control"
   },
   "auth": {
     "username": "Username",
