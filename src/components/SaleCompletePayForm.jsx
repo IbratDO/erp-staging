@@ -44,7 +44,7 @@ import {
   saleAcceptsChange,
   applyGiveawayToggle,
   shortfallOptionsVisible,
-  somBoxForTransfer,
+  cashBoxesForTransfer,
 } from '../utils/saleCompletePayHelpers';
 
 /**
@@ -156,7 +156,6 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   const discountAmountPerUnit = paymentFormData.discount_amount_per_unit ?? (parseFloat(sale.discount_price) || 0);
   const finalUnit = paymentFormData.final_unit_price ?? Math.max(0, listUnit - discountAmountPerUnit);
   const qty = parseFloat(sale.quantity) || 1;
-  const listTotal = paymentFormData.list_total_amount ?? listUnit * qty;
   const saleDiscountTotal = paymentFormData.sale_discount_total ?? discountAmountPerUnit * qty;
   const finalDue =
     shortfallMeta.due != null && !Number.isNaN(shortfallMeta.due)
@@ -191,9 +190,12 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // Bank transfer is offered only where it can actually be taken, and each condition is a
   // decision rather than a convenience:
   //
-  //   * **a som-priced sale** — the owner's decision of 2026-11-08. The bank account takes som,
-  //     so a som figure on a som sale needs no conversion. A dollar sale would mean freezing a
-  //     rate onto the record and giving it its own leg in the sheet's FX section;
+  //   * **a CBU rate, on a dollar-priced sale.** ~~A som-priced sale~~ — that was the owner's
+  //     decision of 2026-11-08 and he reversed it on 2026-11-11: "perechisleniye should work in
+  //     uzs, usd should only work in naqd". The amount is always som; on a dollar sale it is
+  //     valued at the CBU rate, which is why the rate is a condition rather than a convenience.
+  //     What it costs is a som claim standing against revenue frozen in dollars, reported by
+  //     `sale_transfer_soum_legs` on the sheet's FX line rather than avoided;
   //   * **somebody on the sale** — a transfer opens a receivable, and a debt owed by nobody
   //     cannot be collected; the same rule nasiya has whatever `pos_customer_required` says. This
   //     condition used to read `is_organisation`: the owner's original specification allowed a
@@ -202,12 +204,23 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   //     private customer who had *already paid* — which left the cashier recording bank money as
   //     cash. `is_organisation` is still served by `CustomerLiteSerializer` and still worth
   //     recording; nothing gates on it;
-  //   * **not a group** — a group is paid once and divided per line, and a transfer names a
-  //     single figure that would have to be apportioned across the lines. That apportioning is
-  //     not built, so the box is hidden rather than offered and then mis-split.
+  //   * **one currency across a group.** A group is paid once and divided per line, so the
+  //     transfer is apportioned by each line's due in `buildGroupCompleteRequests` — the same
+  //     weights the payment, the discount, the FX amount and the change already use, with the
+  //     last share taken by subtraction so the parts add back to the typed figure exactly. The
+  //     first build hid the box on a group because that apportioning did not exist; it does now.
+  //     The synthetic group sale borrows the *first* line's currency, so a mixed basket would
+  //     have every line valued at a currency only one of them is priced in.
   //
-  // The server re-checks every one of these. The box is a courtesy, not a control.
+  // The server re-checks every one of these, line by line: every line of a group completes
+  // through the same `update_status` endpoint a single sale does, so there is no group path for
+  // a check to be missing from. The box is a courtesy, not a control.
   const saleIsSoum = (sale?.sale_currency || '').toUpperCase() === 'UZS';
+  const groupIsOneCurrency =
+    !groupSales
+    || new Set(
+      groupSales.map((line) => (line?.sale_currency || '').toUpperCase()),
+    ).size === 1;
   const hasCustomer = !!(sale?.customer_detail?.id || sale?.customer);
   // **Offered on every som sale with a customer, whether anything is owing or not.**
   //
@@ -216,7 +229,8 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // amount due already filled into the som box. You cannot choose how a sale is paid from a form
   // that only offers the choice once you have under-paid. Ticking it and typing an amount now
   // *creates* the shortfall, by lowering the som box -- see `setTransferAmount`.
-  const transferAvailable = saleIsSoum && hasCustomer && !groupSales;
+  const transferAvailable =
+    hasCustomer && groupIsOneCurrency && (saleIsSoum || !!cbuRate);
   const onTransfer = !!paymentFormData.apply_transfer;
   // Bepul is offered only when the sale really is free: nothing typed in either currency, and
   // something actually owing. Part-paid is a discount on a real sale, and the server refuses
@@ -544,15 +558,20 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
    * `Naqd (so'm)` follows for free, because it is `uzsPosted - enteredTotal` and nothing types
    * into it -- which is the same cross-filtering Click Pass and Payme already had.
    *
+   * **On a dollar-priced sale it is the USD box that moves**, not the som one: the transfer is
+   * som, the cash that covers the rest is dollars, and "usd should only work in naqd" is the
+   * owner's own sentence for it. `cashBoxesForTransfer` decides which box from the sale's
+   * currency so this does not have to.
+   *
    * **It is set, not clamped.** The cashier can still overtype the som box afterwards, for the
    * customer who hands over a different amount; the next change to the transfer figure takes it
    * back to the derived value, because that is the number they are editing at the time.
    */
   const setTransferAmount = (value) => {
-    const next = { ...paymentFormData, transfer_amount: value };
-    const uzs = somBoxForTransfer(shortfallMeta?.due, methodAmount(value));
-    if (uzs !== null) next.uzs = uzs;
-    setPaymentFormData(next);
+    const boxes = cashBoxesForTransfer(
+      shortfallMeta?.due, sc, cbuRate, methodAmount(value),
+    );
+    setPaymentFormData({ ...paymentFormData, ...(boxes || {}), transfer_amount: value });
   };
 
   const setMethodAmount = (method, value) => {
@@ -640,25 +659,19 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           lineHeight: 1.5,
         }}
       >
-        {/* One line rather than four. These are four readings of the same price and they were
-            taking a quarter of the window to say so; read across, the relationship between them
-            is the obvious thing instead of something to assemble. */}
+        {/* Two readings, not four. The list price and the final price were removed on the
+            owner's instruction (2026-11-11): with no discount they are the same number printed
+            twice and then a third time as the amount due, and the discount line below already
+            says what came off. `completePay.listPrice` / `completePay.finalPrice` are left in
+            the locale files, and `list_unit_price` / `final_unit_price` on the form state, so
+            restoring the pair is a JSX change and no re-translation. */}
         <div className="pay-summary">
-          <span>
-            <strong>{t('completePay.listPrice')}</strong> {formatDisplayAmount(listUnit, sc)}{' '}
-            {t('completePay.perUnit')}
-            {qty > 1 ? ` · ${formatDisplayAmount(listTotal, sc)} ${t('completePay.total')}` : ''}
-          </span>
           <span>
             <strong>{t('completePay.discount')}</strong>{' '}
             {formatDisplayAmount(discountAmountPerUnit, sc)} {t('completePay.perUnit')}
             {saleDiscountTotal > 0 && qty > 1
               ? ` · ${formatDisplayAmount(saleDiscountTotal, sc)} ${t('completePay.total')}`
               : ''}
-          </span>
-          <span>
-            <strong>{t('completePay.finalPrice')}</strong> {formatDisplayAmount(finalUnit, sc)}{' '}
-            {t('completePay.perUnit')}
           </span>
           <span className="pay-summary__due">
             <strong>{t('completePay.amountDue')}</strong> {formatDisplayAmount(finalDue, sc)}
@@ -960,10 +973,9 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                     // `setTransferAmount('')` first and then setting the flag does not work:
                     // both build their object from the current `paymentFormData`, React applies
                     // them in order, and the second quietly restores the old `uzs`.
-                    const restoredUzs = checked
-                      ? null
-                      : somBoxForTransfer(shortfallMeta?.due, 0);
-                    const restored = restoredUzs === null ? {} : { uzs: restoredUzs };
+                    const restored = checked
+                      ? {}
+                      : (cashBoxesForTransfer(shortfallMeta?.due, sc, cbuRate, 0) || {});
                     setPaymentFormData({
                       ...paymentFormData,
                       ...restored,
@@ -994,6 +1006,22 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                     <small style={{ color: '#666' }}>
                       {t('completePay.transferAmountHint')}
                     </small>
+                    {/* A dollar-priced sale is settled with a som figure, so the one number the
+                        cashier cannot check in their head is what that som is worth against the
+                        price in front of them. Shown, not made editable: the som is what the
+                        customer wires and the dollars are only its reading today. */}
+                    {!saleIsSoum && shortfallMeta.transferAmount > 0 && (
+                      <small style={{ color: '#666', display: 'block' }}>
+                        {t('completePay.transferInSaleCurrency', {
+                          amount: formatDisplayAmount(shortfallMeta.transferAmount, sc),
+                        })}
+                      </small>
+                    )}
+                    {shortfallMeta.transferNeedsRate && (
+                      <small style={{ color: '#b45309', display: 'block' }}>
+                        {t('completePay.transferNeedsRate')}
+                      </small>
+                    )}
                   </div>
 
                   {/*

@@ -671,10 +671,32 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
   // out. Without that subtraction a combined sale would put the transfer amount on the debt as
   // well and the named claims would add up to more than the gap — the same ordering the server
   // applies, mirrored here so the form and the server never reach different verdicts.
+  //
+  // **The typed figure is always som; the gap may be in dollars.** The owner's rule of
+  // 2026-11-11 -- perechisleniye is som, dollars are cash only -- so on a dollar-priced sale the
+  // som has to be valued at the CBU rate before it can be set against the gap at all. Two
+  // numbers come out of this and they must not be confused: `transferSom` is what the customer
+  // will wire and what the whole-som rule applies to; `transferAmount` is the same money in the
+  // sale's currency, which is the only thing the arithmetic below can use. On a som sale they
+  // are the same number, which is why one variable sufficed until dollar sales were let in.
   const namedTransfer = parseFloat(paymentFormData.transfer_amount);
+  const transferRate = Number(cbuRate);
+  const transferRateUsable = Number.isFinite(transferRate) && transferRate > 0;
+  const transferSc = (base.sc || 'USD').toUpperCase();
+  let transferSom = 0;
   let transferAmount = 0;
+  // The rate has not arrived yet, so the form cannot say whether the payment adds up. Its own
+  // flag: "wait a moment" is a different thing to say than "these do not add up".
+  let transferNeedsRate = false;
   if (wantTransfer && gap > tol && Number.isFinite(namedTransfer) && namedTransfer > 0) {
-    transferAmount = namedTransfer;
+    transferSom = namedTransfer;
+    if (transferSc === 'UZS') {
+      transferAmount = namedTransfer;
+    } else if (transferRateUsable) {
+      transferAmount = namedTransfer / transferRate;
+    } else {
+      transferNeedsRate = true;
+    }
   }
   const namedCredit = parseFloat(paymentFormData.credit_amount);
   let creditAmount = 0;
@@ -700,8 +722,10 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
     wantTransfer && gap > tol && !(Number.isFinite(namedTransfer) && namedTransfer > 0);
   // Whole som, the owner's rule for the whole UZS ledger. Checked here as well as on the server
   // and in the input mask, because a rule fixed in one layer usually lives in three more.
+  // Read off `transferSom`, never off the converted figure: $8.00 of som is 96,000 som and
+  // perfectly whole, while the dollars it is worth are not and never could be.
   const transferNotWholeSom =
-    transferAmount > 0 && Math.abs(transferAmount - Math.round(transferAmount)) > 1e-9;
+    transferSom > 0 && Math.abs(transferSom - Math.round(transferSom)) > 1e-9;
 
   const remainingAfterDiscount =
     base.paid - (base.due - discountAmount - creditAmount - transferAmount);
@@ -743,6 +767,7 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
     || transferWithNothingOwing
     || transferAmountMissing
     || transferNotWholeSom
+    || transferNeedsRate
     || Math.abs(unexplained) > tol;
   // Reachable only for overpayment with nothing selected yet (advance sales stay hard-blocked).
   const needsAdditionalProfitConfirm =
@@ -779,6 +804,8 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
     wantTransfer,
     transferExplained,
     transferAmount,
+    transferSom,
+    transferNeedsRate,
     transferWithNothingOwing,
     transferAmountMissing,
     transferNotWholeSom,
@@ -1038,9 +1065,17 @@ export function buildCompleteSaleRequest(paymentFormData, meta, exchangeRate) {
   if (changeUsd > 0) requestData.change_usd = changeUsd;
   const uzsT = requestData.uzs;
   const usdT = requestData.usd;
+  // A transfer on a dollar-priced sale is a som figure the server has to convert, so the rate
+  // the form showed travels with it. Without this the server falls back to the latest CBU row,
+  // which is *usually* the same number and silently is not on the day the rate changes -- and
+  // the sale would then be classified against a rate the cashier never saw.
+  const transferNeedsCbu =
+    !!paymentFormData.apply_transfer
+    && (paymentFormData.sale_currency || '').toUpperCase() !== 'UZS';
   const needsCbu =
     exchangeRate?.rate &&
-    ((uzsT > 0 && usdT > 0) ||
+    (transferNeedsCbu ||
+      (uzsT > 0 && usdT > 0) ||
       meta?.splitCurrency ||
       (meta?.crossCurrency && (uzsT > 0 || usdT > 0)) ||
       // Change crossing the currency line has to be valued at the same rate the server uses.
@@ -1113,6 +1148,21 @@ export function buildGroupCompleteRequests(groupSales, paymentFormData, meta, ex
     ? parseFloat(paymentFormData.currency_conversion_difference_amount) || 0
     : 0;
   let fxLeft = fxIn;
+
+  // The bank transfer, apportioned by the same weights and for the same reason the discount is.
+  //
+  // `...paymentFormData` carries every field down to every line, so an un-apportioned
+  // `transfer_amount` would be recorded **once per line**: two items settled by a 500 000 som
+  // transfer would open 1 000 000 of receivable, and with "Pul tushgan" would book 1 000 000
+  // into the bank bucket against the 500 000 the bank actually holds. Unlike the discount, the
+  // server would not refuse it — a transfer is a named figure, not a write-off bounded by a
+  // remainder — so this is the quiet kind of wrong rather than the loud kind.
+  //
+  // Transfers are som-only, so `roundShare` gives whole som and the last share is taken by
+  // subtraction: the lines add back to the typed figure to the som, with no dust to explain.
+  const applyGroupTransfer = !!paymentFormData.apply_transfer;
+  const transferIn = applyGroupTransfer ? parseFloat(paymentFormData.transfer_amount) || 0 : 0;
+  let transferLeft = transferIn;
   // Credit rides down to every line, and every line opens its own debt. That is deliberate:
   // profit on a credit sale is recognized against that line's own cost, so a group cannot share
   // one debt row without the payment split quietly deciding how much profit each line reports.
@@ -1138,6 +1188,11 @@ export function buildGroupCompleteRequests(groupSales, paymentFormData, meta, ex
     discountLeft -= discountShare;
     const fxShare = isLast ? fxLeft : roundShare(fxIn * weight);
     fxLeft -= fxShare;
+    // **Whole som, never `roundShare`.** That helper rounds to the sale's currency, which on a
+    // dollar-priced group is cents -- and a transfer is som whatever the goods were priced in,
+    // so a share of 83.33 would be a figure no bank can send and the server refuses outright.
+    const transferShare = isLast ? transferLeft : Math.round(transferIn * weight);
+    transferLeft -= transferShare;
 
     const childForm = {
       ...paymentFormData,
@@ -1156,6 +1211,12 @@ export function buildGroupCompleteRequests(groupSales, paymentFormData, meta, ex
       // of its own due after its own slice of the payment, which the server already computes.
       // Sending the group's figure to every line would credit it once per line.
       credit_amount: '',
+      // A line whose share rounds away is given no transfer at all: the server wants a named
+      // positive figure and refuses a zero. Nothing is left unexplained by that — the line's
+      // slice of the money is weighted the same way, so a transfer share that rounds to nothing
+      // belongs to a line whose due the cash share already covers.
+      apply_transfer: applyGroupTransfer && transferShare > 0,
+      transfer_amount: transferShare > 0 ? String(transferShare) : '',
       apply_change: wantChange && (changeUzsShare > 0 || changeUsdShare > 0),
       change_uzs: changeUzsShare > 0 ? String(changeUzsShare) : '',
       change_usd: changeUsdShare > 0 ? String(changeUsdShare) : '',
@@ -1358,4 +1419,35 @@ export function somBoxForTransfer(due, transferAmount) {
   if (due == null || !Number.isFinite(due)) return null;
   const wanted = Number.isFinite(transferAmount) && transferAmount > 0 ? transferAmount : 0;
   return String(Math.max(0, Math.round(due - wanted)));
+}
+
+/**
+ * The cash box, after a transfer has taken its share -- whichever box that is.
+ *
+ * The cross-filter the owner asked for on 2026-11-10 ("if the perechisleniye amount is going up,
+ * then the naqd amount should decrease") generalised to a sale that is not priced in som. The
+ * transfer is always typed in som; the cash that covers the rest is in the **sale's** currency,
+ * because that is the box the server reads a payment out of.
+ *
+ * Returns an object to merge into the form (`{ uzs }` or `{ usd }`), or `null` when the figure
+ * cannot be worked out -- no due yet, or no rate on a dollar sale. Null means *leave what the
+ * cashier typed alone*: filling a money box with a guess is worse than filling it late.
+ *
+ * The dollar side rounds to the cent, which is the smallest thing anybody can hand over. That
+ * leaves up to half a cent unexplained against a som figure carried at full precision, and the
+ * server's dollar tolerance is half a cent -- so the two agree by construction rather than by
+ * luck. The som side stays whole, as everything som does.
+ */
+export function cashBoxesForTransfer(due, saleCurrency, rate, transferSom) {
+  const sc = (saleCurrency || 'USD').toUpperCase();
+  if (sc === 'UZS') {
+    const uzs = somBoxForTransfer(due, transferSom);
+    return uzs === null ? null : { uzs };
+  }
+  if (due == null || !Number.isFinite(due)) return null;
+  const r = Number(rate);
+  if (!Number.isFinite(r) || r <= 0) return null;
+  const wanted = Number.isFinite(transferSom) && transferSom > 0 ? transferSom : 0;
+  const left = Math.max(0, Math.round((due - wanted / r) * 100) / 100);
+  return { usd: left.toFixed(2) };
 }

@@ -310,10 +310,11 @@
 /* -- the price summary, read across ------------------------------------------------------- */
 
 /*
-  Four readings of the same price. Stacked, they took a quarter of the window to say so; read
-  across, the relationship between them is the obvious thing rather than something to assemble.
-  Wraps rather than shrinks, so a long line breaks where it runs out of room instead of squeezing
-  the figures together.
+  Two readings of the same price -- the discount and the amount due. It was four until the owner
+  removed the list and final prices (2026-11-11); stacked, they took a quarter of the window to
+  say the same thing four ways. Read across, the relationship between what is left is the obvious
+  thing rather than something to assemble. Wraps rather than shrinks, so a long line breaks where
+  it runs out of room instead of squeezing the figures together.
 */
 .pay-summary {
   display: flex;

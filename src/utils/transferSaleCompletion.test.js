@@ -19,6 +19,8 @@
  */
 import {
   buildCompleteSaleRequest,
+  buildGroupCompleteRequests,
+  cashBoxesForTransfer,
   computePaymentDifferenceMeta,
   emptyPaymentFormState,
   somBoxForTransfer,
@@ -278,6 +280,182 @@ describe('the som box follows the transfer amount', () => {
     for (const transfer of [0, 1, 250000, 333333, 999999, 1000000]) {
       const som = Number(somBoxForTransfer(1000000, transfer));
       expect(som + transfer).toBe(1000000);
+    }
+  });
+});
+
+describe('a basket of several items settled by transfer', () => {
+  // 600 000 and 400 000 of goods -- a million in all, so the weights are 60% and 40% and the
+  // arithmetic can be read without a calculator.
+  const lineA = { ...soumSale, id: 801, selling_price: 600000, total_amount: 600000 };
+  const lineB = { ...soumSale, id: 802, selling_price: 400000, total_amount: 400000 };
+  const lines = [lineA, lineB];
+  const group = {
+    ...lineA, isSaleGroup: true, groupSales: lines, quantity: 2, total_amount: 1000000,
+  };
+  const build = (f) => buildGroupCompleteRequests(lines, f, meta(f, group), null);
+
+  test('the transfer is divided by each line’s due, never repeated whole', () => {
+    // The bug this exists for: `...paymentFormData` carries every field down to every line, so
+    // an un-apportioned figure would open 1 000 000 of receivable against 500 000 the bank
+    // holds -- and the server would not refuse it, because a transfer is a named figure rather
+    // than a write-off bounded by a remainder.
+    const reqs = build(onTransfer({ uzs: '500000', transfer_amount: '500000' }));
+
+    expect(reqs.map((r) => r.id)).toEqual([801, 802]);
+    expect(reqs[0].data.transfer_amount).toBe(300000);
+    expect(reqs[1].data.transfer_amount).toBe(200000);
+  });
+
+  test('the shares add back to the figure the cashier typed, to the som', () => {
+    // Awkward on purpose: 333 333 does not divide 60/40 into whole som, so the last line takes
+    // the remainder by subtraction rather than a second rounding.
+    for (const typed of [1, 7, 333333, 499999, 1000000]) {
+      const reqs = build(onTransfer({ transfer_amount: String(typed) }));
+      const shares = reqs.map((r) => r.data.transfer_amount || 0);
+      expect(shares.reduce((a, b) => a + b, 0)).toBe(typed);
+      shares.forEach((share) => expect(Number.isInteger(share)).toBe(true));
+    }
+  });
+
+  test('a line whose share rounds away carries no transfer at all', () => {
+    // The server wants a named positive figure and refuses a zero. Nothing is left unexplained:
+    // the line's slice of the money is weighted the same way.
+    // One som across a 60/40 basket: the first line rounds 0.6 up to the whole som and the last
+    // one is left with nothing by subtraction.
+    const reqs = build(onTransfer({ transfer_amount: '1' }));
+
+    expect(reqs[0].data.transfer_amount).toBe(1);
+    expect(reqs[1].data.transfer_amount).toBeUndefined();
+    expect(reqs[1].data.apply_transfer).toBeUndefined();
+  });
+
+  test('"Pul tushgan" rides down to every line that has a share', () => {
+    const reqs = build(onTransfer({ transfer_amount: '500000', transfer_received: true }));
+
+    reqs.forEach((r) => expect(r.data.transfer_received).toBe(true));
+  });
+
+  test('a basket with no transfer sends no transfer fields', () => {
+    const reqs = build(form({ uzs: '1000000' }));
+
+    reqs.forEach((r) => {
+      expect(r.data.transfer_amount).toBeUndefined();
+      expect(r.data.transfer_received).toBeUndefined();
+    });
+  });
+});
+
+describe('a dollar-priced sale settled by a som transfer', () => {
+  // The owner's rule of 2026-11-11: perechisleniye is som, dollars are cash only. $20 of goods
+  // and a rate of 12,000, so the whole sale is 240,000 som and the arithmetic reads by eye.
+  const dollarSale = {
+    id: 901,
+    quantity: 1,
+    selling_price: 20,
+    total_amount: 20,
+    sale_currency: 'USD',
+    sale_type: 'bought_from_shop',
+  };
+  const usdMeta = (f, rate = RATE) => computePaymentDifferenceMeta(dollarSale, f, rate);
+
+  test('the som is valued at the CBU rate and explains the dollar gap', () => {
+    const m = usdMeta(onTransfer({ transfer_amount: '240000' }));
+
+    // Two figures, and confusing them is the whole hazard: the customer wires som, the gap is
+    // in dollars.
+    expect(m.transferSom).toBe(240000);
+    expect(m.transferAmount).toBeCloseTo(20, 6);
+    expect(m.transferExplained).toBe(true);
+    expect(m.differenceNeedsClassification).toBe(false);
+  });
+
+  test('part in dollars at the till, the rest from the bank in som', () => {
+    const m = usdMeta(onTransfer({ usd: '12', transfer_amount: '96000' }));
+
+    expect(m.transferAmount).toBeCloseTo(8, 6);
+    expect(m.differenceNeedsClassification).toBe(false);
+  });
+
+  test('more som than the sale is worth is still refused', () => {
+    const m = usdMeta(onTransfer({ transfer_amount: '360000' }));
+
+    expect(m.sharesExceedGap).toBe(true);
+    expect(m.differenceNeedsClassification).toBe(true);
+  });
+
+  test('the whole-som rule reads the som, never the dollars it converts to', () => {
+    // 96,000 som is a perfectly whole som figure worth $8.00; 96,001 som is whole too and worth
+    // $8.0000833. Checking the converted figure would reject both.
+    expect(usdMeta(onTransfer({ transfer_amount: '96001' })).transferNotWholeSom).toBe(false);
+    expect(usdMeta(onTransfer({ transfer_amount: '96000.5' })).transferNotWholeSom).toBe(true);
+  });
+
+  test('without a rate the form says to wait rather than that it does not add up', () => {
+    const m = usdMeta(onTransfer({ transfer_amount: '240000' }), null);
+
+    expect(m.transferNeedsRate).toBe(true);
+    expect(m.differenceNeedsClassification).toBe(true);
+    // Not this: "these shares exceed the gap" would be a lie about a sum nobody has worked out.
+    expect(m.sharesExceedGap).toBe(false);
+  });
+
+  test('a som sale never needs a rate', () => {
+    const m = computePaymentDifferenceMeta(soumSale, onTransfer({ transfer_amount: '400000' }), null);
+
+    expect(m.transferNeedsRate).toBe(false);
+    expect(m.transferAmount).toBe(400000);
+  });
+
+  test('the request carries the rate the form showed', () => {
+    // Without it the server falls back to the latest CBU row, which is usually the same number
+    // and silently is not on the day the rate changes.
+    const f = onTransfer({ transfer_amount: '240000', sale_currency: 'USD' });
+    const data = buildCompleteSaleRequest(f, usdMeta(f), { rate: RATE });
+
+    expect(data.transfer_amount).toBe(240000);
+    expect(data.exchange_rate).toBe(RATE);
+  });
+
+  test('a som sale sends no rate for a transfer alone', () => {
+    const f = onTransfer({ transfer_amount: '400000', sale_currency: 'UZS' });
+    const data = buildCompleteSaleRequest(f, meta(f), { rate: RATE });
+
+    expect(data.exchange_rate).toBeUndefined();
+  });
+});
+
+describe('the cash box the transfer takes its share from', () => {
+  test('a som sale moves the som box', () => {
+    expect(cashBoxesForTransfer(1000000, 'UZS', RATE, 400000)).toEqual({ uzs: '600000' });
+  });
+
+  test('a dollar sale moves the dollar box, because dollars are cash only', () => {
+    expect(cashBoxesForTransfer(20, 'USD', RATE, 96000)).toEqual({ usd: '12.00' });
+  });
+
+  test('the whole price on the bank leaves nothing in either box', () => {
+    expect(cashBoxesForTransfer(20, 'USD', RATE, 240000)).toEqual({ usd: '0.00' });
+    expect(cashBoxesForTransfer(1000000, 'UZS', RATE, 1000000)).toEqual({ uzs: '0' });
+  });
+
+  test('more on the bank than the sale is worth never makes the drawer negative', () => {
+    expect(cashBoxesForTransfer(20, 'USD', RATE, 480000)).toEqual({ usd: '0.00' });
+  });
+
+  test('the boxes are left alone when the figure cannot be worked out', () => {
+    // Leaving what the cashier typed beats filling a money box with a guess.
+    expect(cashBoxesForTransfer(20, 'USD', null, 96000)).toBeNull();
+    expect(cashBoxesForTransfer(20, 'USD', 0, 96000)).toBeNull();
+    expect(cashBoxesForTransfer(null, 'USD', RATE, 96000)).toBeNull();
+    expect(cashBoxesForTransfer(null, 'UZS', RATE, 96000)).toBeNull();
+  });
+
+  test('the parts add back to the whole on a dollar sale too', () => {
+    for (const som of [0, 12000, 96000, 239999, 240000]) {
+      const { usd } = cashBoxesForTransfer(20, 'USD', RATE, som);
+      // To the cent, which is the smallest thing anybody can hand over.
+      expect(Number(usd) + som / RATE).toBeCloseTo(20, 2);
     }
   });
 });

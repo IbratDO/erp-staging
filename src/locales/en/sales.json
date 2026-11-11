@@ -100,6 +100,8 @@
     "transferOption": "Bank transfer",
     "transferAmountLabel": "Amount by bank transfer (som)",
     "transferAmountHint": "Whole som only. The rest is covered by the drawer.",
+    "transferInSaleCurrency": "≈ {{amount}} at today’s CBU rate",
+    "transferNeedsRate": "The CBU rate has not loaded yet, so a dollar-priced sale cannot be settled by bank transfer. Try again in a moment.",
     "transferExpected": "Keyin to'lanadi — the money is expected",
     "transferReceived": "Pul tushgan — the money is already in the bank",
     "transferReceivedNotPermitted": "You are not allowed to confirm that a transfer has already arrived. Record it as expected, or ask an Admin or the accountant.",

@@ -100,6 +100,8 @@
     "transferOption": "Bank o'tkazmasi",
     "transferAmountLabel": "Perechisleniye summasi (so'm)",
     "transferAmountHint": "Faqat butun so'm. Qolgani kassadan olinadi.",
+    "transferInSaleCurrency": "≈ {{amount}} — joriy CBU kursida",
+    "transferNeedsRate": "CBU kursi hali yuklanmadi — dollarlik sotuvni perechisleniye bilan yopib bo‘lmaydi. Bir ozdan keyin urinib ko‘ring.",
     "transferExpected": "Keyin to'lanadi — pul kutilmoqda",
     "transferReceived": "Pul tushgan — pul allaqachon bankda",
     "transferReceivedNotPermitted": "Pul tushganini tasdiqlash huquqingiz yo'q. Keyin to'lanadi deb yozing yoki Admin yoki buxgalterga murojaat qiling.",

@@ -100,6 +100,8 @@
     "transferOption": "Банковский перевод",
     "transferAmountLabel": "Сумма перечислением (сум)",
     "transferAmountHint": "Только целые сумы. Остальное покрывает касса.",
+    "transferInSaleCurrency": "≈ {{amount}} — по текущему курсу ЦБ",
+    "transferNeedsRate": "Курс ЦБ ещё не загрузился — долларовую продажу нельзя закрыть перечислением. Попробуйте через минуту.",
     "transferExpected": "Keyin toʻlanadi — деньги ожидаются",
     "transferReceived": "Pul tushgan — деньги уже в банке",
     "transferReceivedNotPermitted": "У вас нет права подтверждать, что перечисление уже поступило. Запишите как ожидаемое или обратитесь к администратору или бухгалтеру.",
