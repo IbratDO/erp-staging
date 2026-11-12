@@ -2325,6 +2325,7 @@ const Sales = () => {
         methods: {
           cash: t('receipt.methodCash', { ns: 'sales' }),
           click: t('receipt.methodClick', { ns: 'sales' }),
+          payme: t('receipt.methodPayme', { ns: 'sales' }),
           card: t('receipt.methodCard', { ns: 'sales' }),
         },
       });

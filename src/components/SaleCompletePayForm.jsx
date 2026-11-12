@@ -44,7 +44,7 @@ import {
   saleAcceptsChange,
   applyGiveawayToggle,
   shortfallOptionsVisible,
-  cashBoxesForTransfer,
+  transferInSaleCurrency,
 } from '../utils/saleCompletePayHelpers';
 
 /**
@@ -538,40 +538,42 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
   // Dollars take no part in the soum split: they are only ever cash, so this column mirrors the
   // box above rather than dividing anything.
   const usdPosted = methodAmount(paymentFormData.usd);
-  const cashDue = cashShare(uzsPosted, methodAmounts);
+  // The transfer, valued once and read by everything below. Som on a som sale; on a dollar sale
+  // the som still matters here, because the method row is the **som** arithmetic.
+  const transferPart = transferInSaleCurrency(paymentFormData, sc, cbuRate);
+  // **What the method row divides: the som total, less the part going to the bank.** The box
+  // above keeps the sale's full figure -- a cashier entering a transfer must not watch the
+  // amount due appear to change -- so the transfer's share is taken off here instead, and
+  // `Naqd (so'm)` falls out as the remainder exactly as it does for Click Pass and Payme.
+  const uzsForSplit = Math.max(0, uzsPosted - transferPart.som);
+  const cashDue = cashShare(uzsForSplit, methodAmounts);
   const clickTakenUzs = totalUsable(gatewayPayments);
   const methodState = methodsSettled({
-    uzsPosted, amounts: methodAmounts, cashConfirmed, clickTakenUzs,
+    uzsPosted: uzsForSplit, amounts: methodAmounts, cashConfirmed, clickTakenUzs,
     usdPosted, usdCashConfirmed,
   });
 
   /**
-   * Typing a transfer amount lowers the som box by the same amount, and raising it again puts it
-   * back.
+   * Typing a transfer amount leaves every money box exactly as the cashier left it.
    *
-   * **The two numbers are one decision seen twice.** The som box is what the drawer receives; a
-   * transfer is the part of the sale the drawer does *not* receive, so every som put on the bank
-   * is a som the customer does not hand over. Before this the cashier had to do that subtraction
-   * in their head and type the answer, and the form happily accepted a sale claiming both the
-   * full cash and the full transfer.
+   * **The total is not a number this form may move.** The som box is prefilled with what the sale
+   * is for, so that is the figure the cashier is reading; a transfer says how that total is
+   * *divided*, not what it is. It used to lower the box by the transfer amount, and the owner's
+   * report of it is the plainest statement of why that was wrong: "due amount is changing if I
+   * enter the Bank o'tkazmasi field -- it should not change unless I change it manually, it
+   * should be split only."
    *
-   * `Naqd (so'm)` follows for free, because it is `uzsPosted - enteredTotal` and nothing types
-   * into it -- which is the same cross-filtering Click Pass and Payme already had.
+   * `Naqd (so'm)` still falls by the same amount, because it is the remainder of `uzsForSplit`
+   * and nothing types into it -- the same cross-filtering Click Pass and Payme already had. So
+   * the split moves and the total does not, which is the whole of the fix.
    *
-   * **On a dollar-priced sale it is the USD box that moves**, not the som one: the transfer is
-   * som, the cash that covers the rest is dollars, and "usd should only work in naqd" is the
-   * owner's own sentence for it. `cashBoxesForTransfer` decides which box from the sale's
-   * currency so this does not have to.
-   *
-   * **It is set, not clamped.** The cashier can still overtype the som box afterwards, for the
-   * customer who hands over a different amount; the next change to the transfer figure takes it
-   * back to the derived value, because that is the number they are editing at the time.
+   * The money the shop actually receives is the total less this transfer, and that subtraction
+   * now happens once, in `buildCompleteSaleRequest`, on the way to the server. Keeping it there
+   * rather than in the boxes is what lets the screen show the sale's full figure while the books
+   * still record only what reached the drawer.
    */
   const setTransferAmount = (value) => {
-    const boxes = cashBoxesForTransfer(
-      shortfallMeta?.due, sc, cbuRate, methodAmount(value),
-    );
-    setPaymentFormData({ ...paymentFormData, ...(boxes || {}), transfer_amount: value });
+    setPaymentFormData({ ...paymentFormData, transfer_amount: value });
   };
 
   const setMethodAmount = (method, value) => {
@@ -969,16 +971,12 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   checked={onTransfer}
                   onChange={(e) => {
                     const checked = e.target.checked;
-                    // Unticking gives the som back, in **this same update**. Calling
-                    // `setTransferAmount('')` first and then setting the flag does not work:
-                    // both build their object from the current `paymentFormData`, React applies
-                    // them in order, and the second quietly restores the old `uzs`.
-                    const restored = checked
-                      ? {}
-                      : (cashBoxesForTransfer(shortfallMeta?.due, sc, cbuRate, 0) || {});
+                    // Nothing to give back: the money boxes were never touched, so unticking
+                    // only drops the transfer and `Naqd (so'm)` returns to the full som by
+                    // itself. This used to restore a `uzs` the tick had overwritten, which is
+                    // the behaviour that made the amount due look as though it moved.
                     setPaymentFormData({
                       ...paymentFormData,
-                      ...restored,
                       apply_transfer: checked,
                       transfer_amount: checked ? paymentFormData.transfer_amount : '',
                       // Clearing the confirmation with the box is what stops a cashier ticking
@@ -1227,7 +1225,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
               })}
             </div>
 
-            {overAllocated(uzsPosted, methodAmounts) ? (
+            {overAllocated(uzsForSplit, methodAmounts) ? (
               <div className="error-message" style={{ marginTop: 8 }}>
                 {t('gateway.overAllocated')}
               </div>

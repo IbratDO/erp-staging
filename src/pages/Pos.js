@@ -430,6 +430,7 @@ export default function Pos() {
         methods: {
           cash: tr('receipt.methodCash'),
           click: tr('receipt.methodClick'),
+          payme: tr('receipt.methodPayme'),
           card: tr('receipt.methodCard'),
         },
       });

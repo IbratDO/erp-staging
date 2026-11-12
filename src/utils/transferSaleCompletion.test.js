@@ -20,10 +20,9 @@
 import {
   buildCompleteSaleRequest,
   buildGroupCompleteRequests,
-  cashBoxesForTransfer,
   computePaymentDifferenceMeta,
   emptyPaymentFormState,
-  somBoxForTransfer,
+  transferInSaleCurrency,
 } from './saleCompletePayHelpers';
 
 const RATE = 12000;
@@ -39,6 +38,12 @@ const soumSale = {
   sale_type: 'bought_from_shop',
 };
 
+// **The money boxes hold the sale's total, not the cash.** `uzs` is everything the customer is
+// settling the som side with, the bank's share included; the cash is what is left once the
+// transfer comes off. So a sale paid 300 000 in notes and 700 000 by bank is `uzs: '1000000'`
+// with a 700 000 transfer, not `uzs: '300000'`. The boxes used to hold the cash figure, and the
+// form kept them that way by lowering the box as the transfer was typed -- which is the behaviour
+// the owner reported on 2026-11-12 and what these tests were rewritten away from.
 const form = (over) => ({ ...emptyPaymentFormState(), ...over });
 const onTransfer = (over) => form({ apply_transfer: true, ...over });
 const meta = (f, sale = soumSale) => computePaymentDifferenceMeta(sale, f, RATE);
@@ -61,7 +66,8 @@ describe('a transfer on its own', () => {
   });
 
   test('part cash, part transfer also adds up', () => {
-    const m = meta(onTransfer({ uzs: '300000', transfer_amount: '700000' }));
+    // A million on the som box, 700 000 of it by bank, so 300 000 in notes.
+    const m = meta(onTransfer({ uzs: '1000000', transfer_amount: '700000' }));
     expect(m.transferAmount).toBe(700000);
     expect(m.differenceNeedsClassification).toBe(false);
   });
@@ -84,7 +90,12 @@ describe('a transfer on its own', () => {
   test('a transfer on a fully paid sale is refused', () => {
     // Inventing an expected transfer against money already in the till is a receivable for
     // nothing — the same refusal credit gives, for the same reason.
-    const m = meta(onTransfer({ uzs: '1000000', transfer_amount: '500000' }));
+    //
+    // It takes an overpayment to reach this now: the transfer is carved out of the som box, so
+    // 1 500 000 on a 1 000 000 sale with 500 000 by bank still leaves the full price in notes and
+    // nothing owing for the transfer to be. Typing the due itself can no longer trigger it, which
+    // is the guard becoming structural rather than going away.
+    const m = meta(onTransfer({ uzs: '1500000', transfer_amount: '500000' }));
     expect(m.transferWithNothingOwing).toBe(true);
     expect(m.differenceNeedsClassification).toBe(true);
   });
@@ -98,7 +109,7 @@ describe('a transfer on its own', () => {
   });
 
   test('a whole-som amount passes', () => {
-    const m = meta(onTransfer({ transfer_amount: '500000', uzs: '500000' }));
+    const m = meta(onTransfer({ transfer_amount: '500000', uzs: '1000000' }));
     expect(m.transferNotWholeSom).toBe(false);
     expect(m.differenceNeedsClassification).toBe(false);
   });
@@ -113,7 +124,9 @@ describe('a transfer beside nasiya', () => {
     // 200,000 cash + 500,000 transfer on a 1,000,000 sale leaves 300,000 for the debt. Without
     // the transfer coming off first, credit would claim the whole 800,000 and the named shares
     // would add up to more than the gap.
-    const m = meta(both({ uzs: '200000', transfer_amount: '500000' }));
+    //
+    // 700 000 on the box is the 200 000 in notes plus the 500 000 the bank will send.
+    const m = meta(both({ uzs: '700000', transfer_amount: '500000' }));
     expect(m.transferAmount).toBe(500000);
     expect(m.creditAmount).toBe(300000);
     expect(m.sharesExceedGap).toBe(false);
@@ -122,7 +135,7 @@ describe('a transfer beside nasiya', () => {
 
   test('the three shares named together must not exceed the gap', () => {
     const m = meta(both({
-      uzs: '200000', transfer_amount: '500000', credit_amount: '600000',
+      uzs: '700000', transfer_amount: '500000', credit_amount: '600000',
     }));
     expect(m.sharesExceedGap).toBe(true);
     expect(m.differenceNeedsClassification).toBe(true);
@@ -131,7 +144,7 @@ describe('a transfer beside nasiya', () => {
   test('the owner worked example adds up exactly', () => {
     // 1,000,000 sale: 200,000 cash + 300,000 nasiya + 500,000 transfer.
     const m = meta(both({
-      uzs: '200000', transfer_amount: '500000', credit_amount: '300000',
+      uzs: '700000', transfer_amount: '500000', credit_amount: '300000',
     }));
     expect(m.creditAmount + m.transferAmount).toBe(800000);
     expect(m.differenceNeedsClassification).toBe(false);
@@ -139,7 +152,7 @@ describe('a transfer beside nasiya', () => {
 
   test('a discount can take a share too', () => {
     const m = meta(both({
-      uzs: '200000',
+      uzs: '700000',
       transfer_amount: '500000',
       credit_amount: '200000',
       balance_shortfall_type: 'discount',
@@ -229,58 +242,67 @@ describe('the strings the block needs', () => {
   });
 });
 
-describe('the som box follows the transfer amount', () => {
+describe('the total does not move when a transfer is entered', () => {
   /*
-    The cashier's complaint that produced this: the option was invisible, because it only
-    appeared once money was owing -- and the way you reach it is by having already typed the
-    amount due into the som box. You cannot choose how a sale is paid from a form that offers
-    the choice only after you have under-paid.
+    The owner's report, in his words: "due amount is changing if I enter the Bank o'tkazmasi
+    field. as I said, it should not change unless I change it manually. it should be split only."
 
-    Now it is always offered, and typing an amount into it *creates* the shortfall by lowering
-    the som box. `somBoxForTransfer` is that subtraction, extracted so it can be checked here
-    rather than only by eye.
+    The form used to lower the som box by the transfer amount. It had a real reason -- that box is
+    what the server reads as money received, and the bank's share has not reached the drawer -- but
+    it meant the figure the cashier reads as the amount due dropped the moment they named a
+    transfer. The total is left alone now and the subtraction happens on the way to the server, so
+    the screen shows what the sale is for and the books still record only what came in.
+
+    3 000 000 of goods with 1 000 000 wired is the example he used.
   */
-  test('a transfer of part of the sale leaves the rest for the drawer', () => {
-    expect(somBoxForTransfer(1000000, 400000)).toBe('600000');
+  const DUE = 3000000;
+  const bigSale = { ...soumSale, id: 702, selling_price: DUE, total_amount: DUE };
+  const typed = (transfer) => onTransfer({
+    uzs: String(DUE), transfer_amount: String(transfer), sale_currency: 'UZS',
+  });
+  const sent = (transfer) => buildCompleteSaleRequest(
+    typed(transfer), computePaymentDifferenceMeta(bigSale, typed(transfer), RATE), { rate: RATE },
+  );
+
+  test('the box the cashier typed in is untouched', () => {
+    // The whole complaint, asserted on the form state itself: naming a transfer changes the
+    // transfer field and nothing else.
+    const f = typed(1000000);
+    expect(f.uzs).toBe('3000000');
+    expect(f.usd).toBe('');
   });
 
-  test('a transfer of the whole sale leaves the drawer nothing', () => {
-    expect(somBoxForTransfer(1000000, 1000000)).toBe('0');
+  test('the shop is told it received the total less the transfer', () => {
+    // 3 000 000 on screen, 1 000 000 to the bank, so 2 000 000 reached the drawer.
+    expect(sent(1000000).uzs).toBe(2000000);
+    expect(sent(1000000).transfer_amount).toBe(1000000);
   });
 
-  test('clearing the transfer gives the som back', () => {
-    // What unticking the checkbox does. Without it the box keeps a figure that was only ever
-    // low because the bank was covering the rest, and the sale completes short.
-    expect(somBoxForTransfer(1000000, 0)).toBe('1000000');
-  });
-
-  test('a transfer larger than the sale never makes the drawer negative', () => {
-    // A mistake for the server to name -- it refuses an overpayment -- not one to express as a
-    // negative amount of cash.
-    expect(somBoxForTransfer(1000000, 1500000)).toBe('0');
-  });
-
-  test('the box is left alone when the due figure cannot be read', () => {
-    // A dollar-priced sale, or the CBU rate still loading. Filling the box with a guess is worse
-    // than leaving what the cashier typed.
-    expect(somBoxForTransfer(null, 400000)).toBeNull();
-    expect(somBoxForTransfer(undefined, 400000)).toBeNull();
-    expect(somBoxForTransfer(NaN, 400000)).toBeNull();
-  });
-
-  test('the answer is whole som', () => {
-    // The UZS ledger takes no tiyin, and the server refuses a fractional som outright.
-    expect(somBoxForTransfer(1000000.4, 333333.3)).toBe('666667');
-    expect(somBoxForTransfer(1000000, 333333)).toBe('666667');
+  test('a sale settled wholly by transfer records no cash at all', () => {
+    expect(sent(DUE).uzs).toBe(0);
+    expect(sent(DUE).transfer_amount).toBe(DUE);
   });
 
   test('the parts add back to the whole', () => {
-    // The property that matters: whatever is put on the bank, the two figures reconstitute the
-    // sale. A cashier should never be able to complete a sale claiming both.
-    for (const transfer of [0, 1, 250000, 333333, 999999, 1000000]) {
-      const som = Number(somBoxForTransfer(1000000, transfer));
-      expect(som + transfer).toBe(1000000);
+    // The property that matters: whatever is put on the bank, cash and transfer reconstitute the
+    // sale. A cashier must never be able to complete one claiming both.
+    for (const transfer of [0, 1, 250000, 333333, 999999, DUE]) {
+      const req = sent(transfer);
+      expect(req.uzs + (req.transfer_amount || 0)).toBe(DUE);
     }
+  });
+
+  test('more on the bank than the sale is for records no negative cash', () => {
+    // A mistake for the server to name, not one to express as a negative amount of money.
+    expect(sent(DUE + 500000).uzs).toBe(0);
+  });
+
+  test('the gap the form reasons about is still the transfer', () => {
+    // The validation chain is untouched by the move: it sees the same shortfall it always did,
+    // fully explained by the named transfer, so the cashier gets the same verdict as before.
+    const m = computePaymentDifferenceMeta(bigSale, typed(1000000), RATE);
+    expect(m.paid).toBe(DUE - 1000000);
+    expect(m.differenceNeedsClassification).toBe(false);
   });
 });
 
@@ -371,7 +393,8 @@ describe('a dollar-priced sale settled by a som transfer', () => {
   });
 
   test('part in dollars at the till, the rest from the bank in som', () => {
-    const m = usdMeta(onTransfer({ usd: '12', transfer_amount: '96000' }));
+    // $20 on the dollar box, 96 000 som ($8) by bank, so $12 in notes.
+    const m = usdMeta(onTransfer({ usd: '20', transfer_amount: '96000' }));
 
     expect(m.transferAmount).toBeCloseTo(8, 6);
     expect(m.differenceNeedsClassification).toBe(false);
@@ -425,37 +448,237 @@ describe('a dollar-priced sale settled by a som transfer', () => {
   });
 });
 
-describe('the cash box the transfer takes its share from', () => {
-  test('a som sale moves the som box', () => {
-    expect(cashBoxesForTransfer(1000000, 'UZS', RATE, 400000)).toEqual({ uzs: '600000' });
+describe('selling above a stale price, part of it by bank', () => {
+  /*
+    The owner's case of 2026-11-12: "the price of the item can be risen and the entered soum
+    amount is old price... the customer may have 700000 soums and 60$ in cash, and he wants to pay
+    the remaining 300000 by Bank o'tkazmasi, what is wrong with that?"
+
+    Nothing. A transfer used to be bounded by the unpaid remainder, which is right while the
+    figure on the product is the figure being charged, and wrong here: the customer hands over
+    more than the listed price *and* still owes a share of the raised one. Both at once -- the
+    receivable is real and the extra is additional profit.
+
+    A 1 000 000 product sold for 1 720 000: 700 000 and $60 in notes, 300 000 to come by bank.
+    The som box carries 1 000 000 (700 000 of notes plus the 300 000 wire) and the dollar box 60.
+  */
+  const entry = (over) => onTransfer({
+    uzs: '1000000', usd: '60', transfer_amount: '300000', sale_currency: 'UZS', ...over,
+  });
+  const m = (f) => computePaymentDifferenceMeta(soumSale, f, RATE);
+
+  test('the surplus is measured with the transfer already taken off', () => {
+    // The figure the form shows has to be the one the server computes. The server subtracts the
+    // transfer from the expected amount whatever the payment comes to, so 1 420 000 of cash
+    // against 700 000 still expected leaves 720 000 -- the raise. Valuing the transfer only
+    // against a shortfall left this at 420 000 and the two layers disagreed.
+    const meta = m(entry({ apply_additional_profit: true }));
+    expect(meta.paid).toBe(1420000);
+    expect(meta.transferAmount).toBe(300000);
+    expect(meta.additionalProfitAmount).toBe(720000);
   });
 
-  test('a dollar sale moves the dollar box, because dollars are cash only', () => {
-    expect(cashBoxesForTransfer(20, 'USD', RATE, 96000)).toEqual({ usd: '12.00' });
+  test('it completes once the raise is named', () => {
+    expect(m(entry({ apply_additional_profit: true })).differenceNeedsClassification).toBe(false);
   });
 
-  test('the whole price on the bank leaves nothing in either box', () => {
-    expect(cashBoxesForTransfer(20, 'USD', RATE, 240000)).toEqual({ usd: '0.00' });
-    expect(cashBoxesForTransfer(1000000, 'UZS', RATE, 1000000)).toEqual({ uzs: '0' });
+  test('the request carries both the wire and the profit', () => {
+    const f = entry({ apply_additional_profit: true });
+    const req = buildCompleteSaleRequest(f, m(f), { rate: RATE });
+    // 700 000 in the drawer: the som box less the wire.
+    expect(req.uzs).toBe(700000);
+    expect(req.usd).toBe(60);
+    expect(req.transfer_amount).toBe(300000);
+    expect(req.apply_additional_profit).toBe(true);
   });
 
-  test('more on the bank than the sale is worth never makes the drawer negative', () => {
-    expect(cashBoxesForTransfer(20, 'USD', RATE, 480000)).toEqual({ usd: '0.00' });
+  test('the raise must still be named, or the sale is stopped', () => {
+    // The control that replaced the old refusal. Ticking a transfer must not be a way to book an
+    // overpayment quietly, so with nothing named the form still blocks and still offers the
+    // Qo'shimcha foyda confirmation.
+    const meta = m(entry());
+    expect(meta.transferWithNothingOwing).toBe(true);
+    expect(meta.needsAdditionalProfitConfirm).toBe(true);
+    expect(meta.differenceNeedsClassification).toBe(true);
   });
 
-  test('the boxes are left alone when the figure cannot be worked out', () => {
-    // Leaving what the cashier typed beats filling a money box with a guess.
-    expect(cashBoxesForTransfer(20, 'USD', null, 96000)).toBeNull();
-    expect(cashBoxesForTransfer(20, 'USD', 0, 96000)).toBeNull();
-    expect(cashBoxesForTransfer(null, 'USD', RATE, 96000)).toBeNull();
-    expect(cashBoxesForTransfer(null, 'UZS', RATE, 96000)).toBeNull();
+  test('a conversion difference names it just as well', () => {
+    // Either explanation answers the question "where did the extra come from?".
+    expect(m(entry({ apply_currency_conversion_difference: true })).transferWithNothingOwing)
+      .toBe(false);
+  });
+
+  test('an ordinary shortfall by bank is unaffected', () => {
+    // The common case, with nothing over: no profit, nothing to name.
+    const meta = m(onTransfer({
+      uzs: '1000000', transfer_amount: '300000', sale_currency: 'UZS',
+    }));
+    expect(meta.transferAmount).toBe(300000);
+    expect(meta.additionalProfitAmount).toBeNull();
+    expect(meta.differenceNeedsClassification).toBe(false);
+  });
+
+  test('a transfer on a sale overpaid in cash alone is still refused', () => {
+    // Nothing explains the extra and nothing was asked to: the old refusal stands.
+    const meta = m(onTransfer({
+      uzs: '1500000', transfer_amount: '300000', sale_currency: 'UZS',
+    }));
+    expect(meta.transferWithNothingOwing).toBe(true);
+    expect(meta.differenceNeedsClassification).toBe(true);
+  });
+});
+
+describe('a sale settled in both currencies and by bank', () => {
+  /*
+    The hazard the ordering exists for. A transfer is som, so it comes off the som box first and
+    only the part the som box cannot cover converts and comes off the dollars.
+
+    It used to come off whichever box the *sale's* currency named, and that was wrong in both
+    directions as soon as one sale was settled in both currencies. Worse, the form said nothing:
+    its check adds the two boxes together before taking the transfer off, so it saw a payment that
+    balanced while the request sent more money than the shop had.
+  */
+  const RATE_SOM = RATE; // 12 000 som to the dollar, so $1 is 12 000 and 96 000 som is $8.
+  const dollarSale = {
+    ...soumSale, id: 905, selling_price: 20, total_amount: 20, sale_currency: 'USD',
+  };
+  const sentFor = (sale, f) => buildCompleteSaleRequest(
+    f, computePaymentDifferenceMeta(sale, f, RATE_SOM), { rate: RATE_SOM },
+  );
+  // What the shop was told it holds, valued back into the sale's currency, transfer included.
+  // The property every case here asserts: it reconstitutes the price.
+  const reconstructed = (sale, req) => (
+    sale.sale_currency === 'UZS'
+      ? req.uzs + req.usd * RATE_SOM + (req.transfer_amount || 0)
+      : req.usd + req.uzs / RATE_SOM + (req.transfer_amount || 0) / RATE_SOM
+  );
+
+  test('a dollar sale paid in notes of both kinds plus a wire', () => {
+    // $20 of goods: $5 in notes, 84 000 som in notes, 96 000 som ($8) wired. The wired som sits
+    // on the som box, which is where a cashier naturally puts it -- the transfer is som.
+    const f = onTransfer({
+      usd: '5', uzs: '180000', transfer_amount: '96000', sale_currency: 'USD',
+    });
+    const req = sentFor(dollarSale, f);
+    expect(req.uzs).toBe(84000);
+    expect(req.usd).toBe(5);
+    // Recorded $23 against a $20 sale before the som box was given precedence.
+    expect(reconstructed(dollarSale, req)).toBeCloseTo(20, 2);
+  });
+
+  test('a som sale paid partly in dollars plus a wire', () => {
+    // 1 000 000 of goods: $10 (120 000) in notes, 380 000 som in notes, 500 000 wired.
+    const f = onTransfer({
+      usd: '10', uzs: '880000', transfer_amount: '500000', sale_currency: 'UZS',
+    });
+    const req = sentFor(soumSale, f);
+    expect(req.uzs).toBe(380000);
+    expect(req.usd).toBe(10);
+    expect(reconstructed(soumSale, req)).toBeCloseTo(1000000, 0);
+  });
+
+  test('a wire larger than the som box spills onto the dollars', () => {
+    // 1 000 000 of goods: $50 on the box, 400 000 som on it, 600 000 wired. The som box covers
+    // 400 000 of the wire and the remaining 200 000 (about $16.67) comes off the dollars.
+    const f = onTransfer({
+      usd: '50', uzs: '400000', transfer_amount: '600000', sale_currency: 'UZS',
+    });
+    const req = sentFor(soumSale, f);
+    expect(req.uzs).toBe(0);
+    expect(req.usd).toBeCloseTo(33.33, 2);
+    // Recorded 1 200 000 against a 1 000 000 sale before the spill was handled. Whole cents on
+    // the dollar side leave it a few som short of exact, inside the half-cent the server allows.
+    expect(reconstructed(soumSale, req)).toBeCloseTo(1000000, -2);
+  });
+
+  test('the rate travels whenever som has to cross the currency line', () => {
+    // A som sale needs it too once the wire runs past the som box, or the server would value the
+    // spill at a rate the cashier never saw.
+    const spill = onTransfer({
+      usd: '50', uzs: '400000', transfer_amount: '600000', sale_currency: 'UZS',
+    });
+    expect(sentFor(soumSale, spill).exchange_rate).toBe(RATE_SOM);
+    // No spill, no crossing, no rate.
+    const noSpill = onTransfer({
+      uzs: '1000000', transfer_amount: '400000', sale_currency: 'UZS',
+    });
+    expect(sentFor(soumSale, noSpill).exchange_rate).toBeUndefined();
+  });
+
+  test('the parts add back to the whole across the currency line', () => {
+    // Swept across wires that fall short of, land on, and run past the som box.
+    for (const wire of [0, 100000, 400000, 400001, 600000, 1000000]) {
+      const f = onTransfer({
+        usd: '50', uzs: '400000', transfer_amount: String(wire), sale_currency: 'UZS',
+      });
+      const req = sentFor(soumSale, f);
+      expect(req.uzs).toBeGreaterThanOrEqual(0);
+      expect(req.usd).toBeGreaterThanOrEqual(0);
+      expect(reconstructed(soumSale, req)).toBeCloseTo(1000000, -2);
+    }
+  });
+});
+
+describe('which money the transfer comes out of', () => {
+  /*
+    The transfer is always som. What it comes off depends on the sale: a som sale pays the rest
+    from the som box, anything else from the dollar box, because dollars are cash only -- the
+    owner's rule of 2026-11-11. Either way the boxes themselves are never rewritten; what moves is
+    only what the server is told arrived.
+  */
+  const sentFor = (sale, f) => buildCompleteSaleRequest(
+    f, computePaymentDifferenceMeta(sale, f, RATE), { rate: RATE },
+  );
+
+  test('a som sale takes it off the som', () => {
+    const f = onTransfer({ uzs: '1000000', transfer_amount: '400000', sale_currency: 'UZS' });
+    expect(sentFor(soumSale, f).uzs).toBe(600000);
+    expect(f.uzs).toBe('1000000');
+  });
+
+  test('a dollar sale takes it off the dollars, at the rate on screen', () => {
+    // $20 of goods and 96 000 som wired: eight dollars of it, so twelve in cash.
+    const dollarSale = {
+      ...soumSale, id: 703, selling_price: 20, total_amount: 20, sale_currency: 'USD',
+    };
+    const f = onTransfer({ usd: '20', transfer_amount: '96000', sale_currency: 'USD' });
+    const req = sentFor(dollarSale, f);
+    expect(req.usd).toBe(12);
+    expect(req.uzs).toBe(0);
+    // The som figure is what the bank is sent, whatever the goods were priced in.
+    expect(req.transfer_amount).toBe(96000);
+    expect(f.usd).toBe('20');
+  });
+
+  test('valuing the som needs the rate, and says so rather than guessing', () => {
+    // A dollar sale with no rate yet: the transfer values at nothing and the form blocks on
+    // `transferNeedsRate`, which is a different thing to say than "these do not add up".
+    expect(transferInSaleCurrency(
+      onTransfer({ transfer_amount: '96000' }), 'USD', null,
+    )).toEqual({ som: 96000, inSc: 0, needsRate: true });
+  });
+
+  test('a som sale never needs a rate', () => {
+    expect(transferInSaleCurrency(
+      onTransfer({ transfer_amount: '400000' }), 'UZS', null,
+    )).toEqual({ som: 400000, inSc: 400000, needsRate: false });
+  });
+
+  test('no transfer, nothing taken off', () => {
+    expect(transferInSaleCurrency(form({ uzs: '1000000' }), 'UZS', RATE))
+      .toEqual({ som: 0, inSc: 0, needsRate: false });
+    expect(transferInSaleCurrency(onTransfer({ transfer_amount: '' }), 'UZS', RATE))
+      .toEqual({ som: 0, inSc: 0, needsRate: false });
   });
 
   test('the parts add back to the whole on a dollar sale too', () => {
+    const dollarSale = {
+      ...soumSale, id: 704, selling_price: 20, total_amount: 20, sale_currency: 'USD',
+    };
     for (const som of [0, 12000, 96000, 239999, 240000]) {
-      const { usd } = cashBoxesForTransfer(20, 'USD', RATE, som);
+      const f = onTransfer({ usd: '20', transfer_amount: String(som), sale_currency: 'USD' });
       // To the cent, which is the smallest thing anybody can hand over.
-      expect(Number(usd) + som / RATE).toBeCloseTo(20, 2);
+      expect(sentFor(dollarSale, f).usd + som / RATE).toBeCloseTo(20, 2);
     }
   });
 });

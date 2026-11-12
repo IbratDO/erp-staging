@@ -38,7 +38,9 @@ const labels = {
   // read as the total again rather than as a breakdown of it.
   paidWith: "To'lov usuli",
   changeGiven: 'Qaytim',
-  methods: { cash: 'Naqd', click: 'Click', card: 'Karta' },
+  methods: {
+    cash: 'Naqd', click: 'Click', payme: 'Payme', card: 'Karta',
+  },
 };
 
 const receipt = (over = {}) => ({
@@ -368,11 +370,24 @@ describe('how the purchase was paid', () => {
     expect(html).not.toContain(labels.paidWith);
   });
 
+  it('names each gateway separately rather than lumping them together', () => {
+    // Click and Payme share one table server-side, so a receipt that printed one combined gateway
+    // line would put Click's name on money Payme took. The provider's name is what the customer
+    // reads, and it has to be the one that actually took the money.
+    const html = paid([
+      { method: 'click', currency: 'UZS', amount: '400' },
+      { method: 'payme', currency: 'UZS', amount: '600' },
+    ]);
+    expect(html).toContain('Click');
+    expect(html).toContain('Payme');
+  });
+
   it('falls back to the code for a method it does not know', () => {
     // A new provider added server-side before the printer learns its name. An unlabelled amount is
-    // still information; a blank line is a bug nobody can read.
-    const html = paid([{ method: 'payme', currency: 'UZS', amount: '500' }]);
-    expect(html).toContain('payme');
+    // still information; a blank line is a bug nobody can read. This is what lets the server grow
+    // a third gateway without this module changing.
+    const html = paid([{ method: 'uzum', currency: 'UZS', amount: '500' }]);
+    expect(html).toContain('uzum');
   });
 
   it('escapes what it prints', () => {

@@ -448,6 +448,7 @@
     "methodCard": "Card",
     "methodCash": "Cash",
     "methodClick": "Click",
+    "methodPayme": "Payme",
     "netTotal": "Net total",
     "paidWith": "Paid with",
     "refundPending": "refund pending",

@@ -217,10 +217,13 @@ function summaryMarkup(receipt, labels) {
  * which is the one thing a receipt must not do. So a split sale can show two currencies, and that
  * is correct rather than untidy.
  *
- * The server sends `cash` / `click` / `card`; the word comes from `labels`, so this module holds no
- * language of its own and the chek prints in whatever the shop's interface is set to. A method it
- * does not recognise falls back to the code itself rather than printing an empty line -- an
- * unlabelled amount is still information, a blank one is a bug nobody can read.
+ * The server sends `cash` / `click` / `payme` / `card` -- one line per gateway, because the
+ * provider's name is what the customer reads, and `card` only for money no gateway accounts for.
+ * The word itself comes from `labels`, so this module holds no language of its own and the chek
+ * prints in whatever the shop's interface is set to. A method it does not recognise falls back to
+ * the code itself rather than printing an empty line -- an unlabelled amount is still information,
+ * a blank one is a bug nobody can read, and that fallback is what lets the server add a provider
+ * without this module changing.
  */
 function paymentsMarkup(receipt, labels) {
   const rows = [];
