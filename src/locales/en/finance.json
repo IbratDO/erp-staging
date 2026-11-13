@@ -39,6 +39,8 @@
     "delivery": "Delivery",
     "cargo": "Cargo",
     "smm": "SMM",
+    "fixed_asset_loss": "Fixed asset loss",
+    "stock_loss": "Inventory shortage",
     "other": "Other"
   },
   "targets": {

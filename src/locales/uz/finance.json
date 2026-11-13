@@ -39,6 +39,8 @@
     "delivery": "Yetkazib berish",
     "cargo": "Kargo",
     "smm": "SMM",
+    "fixed_asset_loss": "Asosiy vosita zarari",
+    "stock_loss": "Ombor kamomadi",
     "other": "Boshqa"
   },
   "targets": {

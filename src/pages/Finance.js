@@ -21,11 +21,28 @@ import FilterPanel from '../components/FilterPanel';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
 import ActionButton from '../components/ActionButton';
 
-const EXPENSE_TYPE_VALUES = [
+// **The expense types of this page, in two populations that differ on purpose.**
+//
+// `EXPENSE_TYPE_VALUES` is what a person may create in the form. `PAGE_ONLY_EXPENSE_TYPES` are
+// written by the system and land here as well: a fixed asset written off and a stock count's
+// shortage are both real period losses that move no cash, so they carry no order, sale or
+// dispatch and `OTHER_FINANCE_EXCLUDE_EXPENSE_TYPES` does not hold them back. They are
+// deliberately absent from the form -- everything else the system writes (`order`, `package`,
+// `fixed_asset`, `stock_purchase`, and `shortfall_loss` through its order link) is excluded
+// server-side by `scope=other` and must not be offered in either place.
+//
+// **The filter is the union, because a filter has to cover every value the table can show.** It
+// used to be a third, shorter list that dropped `delivery` and `cargo` -- two types the form
+// itself offers -- so a hand-typed Kargo or Yetkazib berish expense sat in the table with no way
+// to filter to it. Measured on the dev copy: 12 of the page's 123 rows.
+export const EXPENSE_TYPE_VALUES = [
   'salary', 'lunch', 'taxi', 'office_supplies', 'utilities', 'rent', 'delivery', 'cargo', 'smm', 'other',
 ];
-const EXPENSE_TARGET_VALUES = ['shop', 'warehouse', 'office', 'marketing', 'logistics', 'operations', 'other'];
-const FILTER_EXPENSE_TYPES = ['salary', 'lunch', 'taxi', 'office_supplies', 'utilities', 'rent', 'smm', 'other'];
+export const PAGE_ONLY_EXPENSE_TYPES = ['fixed_asset_loss', 'stock_loss'];
+export const FILTER_EXPENSE_TYPES = [...EXPENSE_TYPE_VALUES, ...PAGE_ONLY_EXPENSE_TYPES];
+// *Where* the money went, not *what* it was for -- a different question from the type above, and
+// the reason the two dropdowns in the form do not and should not carry the same values.
+export const EXPENSE_TARGET_VALUES = ['shop', 'warehouse', 'office', 'marketing', 'logistics', 'operations', 'other'];
 
 /** Signed value for the leg that matches this record, or null if not applicable. */
 function signedForFinanceRecordLeg(record, leg) {

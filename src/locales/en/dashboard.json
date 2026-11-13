@@ -17,7 +17,7 @@
   "salesAnalyticsTitle": "Sales analytics",
   "soldUnitsToday": "Units sold (today)",
   "onDemandMonthlyChart": "On-demand orders by month",
-  "onDemandMonthlyHint": "Each bar is the on-demand orders created that month. The segments add up, so the bar height is the month's total.",
+  "onDemandMonthlyHint": "Each bar is the items ordered on the on-demand orders created that month -- one order line can be several items. The segments add up, so the bar height is the month's total.",
   "onDemandSeriesTotal": "Total",
   "onDemandSeriesSold": "Sold",
   "salesRevenueToday": "Sales revenue (today)",

@@ -326,11 +326,19 @@ export function buildOnDemandMonthly(facts, labels) {
     const m = Number(fact.month);
     if (!Number.isFinite(m) || m < 1 || m > 12) continue;
     const row = byMonth.get(m);
-    const count = Number(fact.count) || 0;
-    row.total += count;
-    if (fact.status === 'sold') row[labels.sold] += count;
-    else if (fact.status === 'cancelled') row[labels.cancelled] += count;
-    else row[labels.inProcess] += count;
+    // **Items ordered, not order lines.** `fact.count` beside it is the number of `Order` rows,
+    // and one row is one product -- so a customer ordering a jacket and two pairs of socks is 3
+    // lines and 4 items. The bars plotted the lines, which read as a smaller number of orders
+    // than were actually placed and was never what the axis claimed to show.
+    //
+    // Read straight from `units` with no fall back to `count`: a backend too old to send it
+    // draws an empty chart, which someone reports, where falling back draws a plausible wrong
+    // number that nobody does.
+    const units = Number(fact.units) || 0;
+    row.total += units;
+    if (fact.status === 'sold') row[labels.sold] += units;
+    else if (fact.status === 'cancelled') row[labels.cancelled] += units;
+    else row[labels.inProcess] += units;
   }
 
   return {
