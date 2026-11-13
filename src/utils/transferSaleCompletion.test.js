@@ -448,6 +448,92 @@ describe('a dollar-priced sale settled by a som transfer', () => {
   });
 });
 
+describe('a som payment that rounds up over a dollar price', () => {
+  /*
+    The owner's report of 2026-11-13, and the commonest shape there is: a round number of som that
+    comes to slightly more than the dollar price, part of it by bank.
+
+        $408 sale at 11 973.44
+        posted   5 000 000 som = $417.59
+        wire     2 000 000 som = $167.04
+        cash     3 000 000 som = $250.55
+        over                     $  9.59   <- Konversiya farqi, already ticked
+
+    The gap is measured against the cash, so it was only $157.45 -- below the $167.04 wire by
+    exactly the amount the payment ran over. `sharesExceedGap` therefore fired on every sale that
+    rounded up, however little, and ticking Konversiya farqi could not clear it because that check
+    never looked at the classification. A dead end with the right answer already on screen.
+  */
+  const RATE_408 = 11973.44;
+  const usdSale = {
+    ...soumSale, id: 408, selling_price: 408, total_amount: 408, sale_currency: 'USD',
+  };
+  const entry = (over) => onTransfer({
+    uzs: '5000000',
+    transfer_amount: '2000000',
+    sale_currency: 'USD',
+    apply_currency_conversion_difference: true,
+    ...over,
+  });
+  const m = (f) => computePaymentDifferenceMeta(usdSale, f, RATE_408);
+
+  test('the figures are the ones the till showed', () => {
+    const meta = m(entry());
+    expect(meta.postedGross).toBeCloseTo(417.59, 2);
+    expect(meta.transferAmount).toBeCloseTo(167.04, 2);
+    expect(meta.paid).toBeCloseTo(250.55, 2);
+    expect(meta.conversionDifference).toBeCloseTo(9.59, 2);
+  });
+
+  test('it completes with the rate difference named', () => {
+    // The whole report: this was refused, with nothing the cashier could do about it.
+    expect(m(entry()).sharesExceedGap).toBe(false);
+    expect(m(entry()).differenceNeedsClassification).toBe(false);
+  });
+
+  test('the wire and the notes reach the server separately', () => {
+    const f = entry();
+    const req = buildCompleteSaleRequest(f, m(f), { rate: RATE_408 });
+    expect(req.uzs).toBe(3000000);
+    expect(req.usd).toBe(0);
+    expect(req.transfer_amount).toBe(2000000);
+    expect(req.exchange_rate).toBe(RATE_408);
+  });
+
+  test('the round-up must still be named', () => {
+    const meta = m(entry({ apply_currency_conversion_difference: false }));
+    expect(meta.differenceNeedsClassification).toBe(true);
+  });
+
+  test('the wire may not exceed what is being settled', () => {
+    // The owner's own rule, and the bound that replaced the gap test once the payment covers the
+    // price. 6 000 000 of wire against a 5 000 000 payment leaves the drawer owing money.
+    const meta = m(entry({ transfer_amount: '6000000' }));
+    expect(meta.transferExceedsPayment).toBe(true);
+    expect(meta.differenceNeedsClassification).toBe(true);
+  });
+
+  test('a wire equal to the whole payment is allowed', () => {
+    // Nothing in the drawer, all of it by bank: the boundary case of that rule, not past it.
+    const meta = m(entry({ transfer_amount: '5000000' }));
+    expect(meta.transferExceedsPayment).toBe(false);
+  });
+
+  test('a payment short of the price still bounds the wire', () => {
+    // The bound has to keep working where it was written for. 1 000 000 of som is $83.52 against
+    // a $408 price, so the sale is far short and a discount cannot take the wire past what is
+    // left unpaid.
+    const meta = m(onTransfer({
+      uzs: '3000000',
+      transfer_amount: '2000000',
+      sale_currency: 'USD',
+      balance_shortfall_type: 'discount',
+      balance_shortfall_amount: '200',
+    }));
+    expect(meta.sharesExceedGap).toBe(true);
+  });
+});
+
 describe('selling above a stale price, part of it by bank', () => {
   /*
     The owner's case of 2026-11-12: "the price of the item can be risen and the entered soum

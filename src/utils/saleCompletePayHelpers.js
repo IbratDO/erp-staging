@@ -719,8 +719,35 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
   // Naming shares that together exceed the gap invents money that was never owed. Guarded on
   // there *being* a gap: on a surplus `gap` is negative, and without the guard a payment with
   // no discount and no credit reads as 0 > −2.28 and every overpayment is rejected.
+  // **Whether the wire is a claim on the gap at all depends on the whole payment.**
+  //
+  // While the payment falls short of the price, the wire is one of the things covering what the
+  // customer did not hand over, and it belongs in this sum: discount forgives some, credit owes
+  // some, the bank sends some, and together they cannot come to more than the gap.
+  //
+  // Once the payment *exceeds* the price it is not. The gap is measured against cash only, so a
+  // payment over the price shrinks it below the wire by exactly the surplus -- and the check then
+  // fired on every such sale however small the overpayment. The owner's case of 2026-11-13: a
+  // $408 sale, 5 000 000 som (417.59 at 11 973.44) with 2 000 000 by bank. The wire is $167.04
+  // and the gap only $157.45, short by the $9.59 the form was already showing as the conversion
+  // difference. Ticking Konversiya farqi could not help, because this check never looked at it.
+  //
+  // So the wire leaves the sum once the payment covers the price. What bounds it then is
+  // `transferExceedsPayment` below -- the customer cannot wire more than they are paying -- and
+  // the surplus still has to be named before the sale will complete.
+  const paymentVsDue =
+    base.postedGross != null ? base.postedGross - base.due : -Infinity;
+  const transferClaimsTheGap = paymentVsDue <= tol;
   const sharesExceedGap =
-    gap > tol && discountAmount + creditAmount + transferAmount > gap + tol;
+    gap > tol
+    && discountAmount + creditAmount + (transferClaimsTheGap ? transferAmount : 0) > gap + tol;
+  // The owner's rule of 2026-11-12: the wire may never exceed the total being settled. It is the
+  // one bound on it that survives a surplus, and the only layer that can hold it -- the server is
+  // told the cash and the wire separately, so "more than the total" is always false there.
+  const transferExceedsPayment =
+    transferAmount > 0
+    && base.postedGross != null
+    && transferAmount > base.postedGross + tol;
   // Ticked on a payment that leaves nothing owing — there is no debt to open.
   const creditWithNothingOwing = wantCredit && gap <= tol;
   // The same refusal for a transfer, **unless the extra has been named**. Inventing an expected
@@ -780,6 +807,7 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
   const unexplained = explained ? 0 : remainingAfterDiscount;
   const differenceNeedsClassification =
     sharesExceedGap
+    || transferExceedsPayment
     || creditWithNothingOwing
     || transferWithNothingOwing
     || transferAmountMissing
@@ -817,6 +845,7 @@ export function computePaymentDifferenceMeta(sale, paymentFormData, cbuRate) {
     wantGiveaway,
     giveawayExplained,
     sharesExceedGap,
+    transferExceedsPayment,
     creditWithNothingOwing,
     wantTransfer,
     transferExplained,
@@ -963,6 +992,10 @@ export function computePaymentShortfallMeta(sale, paymentFormData, cbuRate) {
     hasAdvance,
     exceedsRemainingDue,
     paidGross,
+    // The payment *before* the transfer came off it -- the whole sum the customer is settling
+    // with, bank's share included. `paidGross` is net of the transfer, so it cannot answer
+    // "is the wire bigger than the payment?" or "does the payment cover the price?".
+    postedGross,
     changeInSc,
     changePending,
     wantChange,
