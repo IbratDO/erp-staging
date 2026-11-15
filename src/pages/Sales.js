@@ -1601,6 +1601,9 @@ const Sales = () => {
       const sc = (s.sale_currency || 'USD').toUpperCase();
       return {
         saleId: s.id,
+        // Carried on the line so the price cell can tint itself without finding the sale
+        // again. `sc` is already computed above for the uzs/usd prefill.
+        sale_currency: sc,
         product_detail: s.product_detail,
         quantity: parseInt(s.quantity, 10) || 0,
         orderedQuantity: s.order_ordered_quantity ?? null,
@@ -2242,6 +2245,13 @@ const Sales = () => {
     }
   };
 
+  // The currency of the sale being completed from its order, for the price field's tint. The
+  // form already looks this sale up where it needs the record; naming it once here keeps the
+  // lookup out of the JSX.
+  const completeFromOrderCurrency = (
+    sales.find((s) => s.id === completeFromOrderData.saleId)?.sale_currency || ''
+  ).toUpperCase();
+
   const sellReservedSaleForForm = showSellReservedForm
     ? sales.find((s) => s.id === sellReservedData.saleId)
     : null;
@@ -2682,6 +2692,7 @@ const Sales = () => {
               <div className="form-group">
                 <label>{t('dispatch.deliveryCost', { currency: dispatchFormData.currency })}</label>
                 <AmountInput
+                  currency={dispatchFormData.currency}
                   value={dispatchFormData.delivery_cost}
                   onChange={(e) => setDispatchFormData({ ...dispatchFormData, delivery_cost: e.target.value })}
                   required
@@ -2768,6 +2779,7 @@ const Sales = () => {
               <div className="form-group">
                 <label>{t('completeFromOrder.sellingPrice')}</label>
                 <AmountInput
+                  currency={completeFromOrderCurrency}
                   value={completeFromOrderData.selling_price ?? ''}
                   onChange={(e) => {
                     setCompleteFromOrderData({
@@ -2823,6 +2835,7 @@ const Sales = () => {
                       <div className="form-group">
                         <label>{t('completeFromOrder.depositAmount')}</label>
                         <AmountInput
+                          currency={completeFromOrderData.deposit_currency}
                           value={completeFromOrderData.deposit_amount ?? ''}
                           onChange={(e) => {
                             const depositAmount = parseFloat(e.target.value) || 0;
@@ -2887,13 +2900,13 @@ const Sales = () => {
                   </div>
                   <div className="form-group">
                     <label>{t('currency.uzs', { ns: 'common' })}</label>
-                    <AmountInput placeholder="0"
+                    <AmountInput currency="UZS" placeholder="0"
                       value={completeFromOrderData.now_uzs ?? ''}
                       onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, now_uzs: e.target.value })} />
                   </div>
                   <div className="form-group">
                     <label>{t('currency.usd', { ns: 'common' })}</label>
-                    <AmountInput placeholder="0"
+                    <AmountInput currency="USD" placeholder="0"
                       value={completeFromOrderData.now_usd ?? ''}
                       onChange={(e) => setCompleteFromOrderData({ ...completeFromOrderData, now_usd: e.target.value })} />
                   </div>
@@ -3042,6 +3055,7 @@ const Sales = () => {
                       <div className="form-group">
                         <label>{t('completeFromOrder.depositAmount')}</label>
                         <AmountInput
+                          currency={completeFromOrderGroupData.deposit_currency}
                           value={completeFromOrderGroupData.deposit_amount ?? ''}
                           onChange={(e) => setCompleteFromOrderGroupData((prev) => ({
                             ...prev, deposit_amount: e.target.value,
@@ -3109,6 +3123,7 @@ const Sales = () => {
                       <td className="batch-sale-lines__td--num">
                         <AmountInput
                           className="batch-sale-lines__control"
+                          currency={line.sale_currency}
                           value={line.selling_price ?? ''}
                           onChange={(e) => updateCompleteFromOrderGroupLine(line.saleId, 'selling_price', e.target.value)}
                         />
@@ -3133,7 +3148,7 @@ const Sales = () => {
                           is nothing to take here (see deliveryPaymentLater note above). */}
                       <td className="batch-sale-lines__td--num">
                         {completeFromOrderGroupData.sale_type === 'delivery' ? '—' : (
-                          <AmountInput
+                          <AmountInput currency="UZS"
                             className="batch-sale-lines__control"
                             placeholder="0"
                             value={line.uzs ?? ''}
@@ -3143,7 +3158,7 @@ const Sales = () => {
                       </td>
                       <td className="batch-sale-lines__td--num">
                         {completeFromOrderGroupData.sale_type === 'delivery' ? '—' : (
-                          <AmountInput
+                          <AmountInput currency="USD"
                             className="batch-sale-lines__control"
                             placeholder="0"
                             value={line.usd ?? ''}
@@ -3263,13 +3278,13 @@ const Sales = () => {
             <div className="form-grid">
               <div className="form-group">
                 <label>{t('currency.uzs', { ns: 'common' })}</label>
-                <AmountInput placeholder="0"
+                <AmountInput currency="UZS" placeholder="0"
                   value={sellReservedData.uzs ?? ''}
                   onChange={(e) => setSellReservedData({ ...sellReservedData, uzs: e.target.value })} />
               </div>
               <div className="form-group">
                 <label>{t('currency.usd', { ns: 'common' })}</label>
-                <AmountInput placeholder="0"
+                <AmountInput currency="USD" placeholder="0"
                   value={sellReservedData.usd ?? ''}
                   onChange={(e) => setSellReservedData({ ...sellReservedData, usd: e.target.value })} />
               </div>
@@ -3350,6 +3365,7 @@ const Sales = () => {
                       </label>
                       <AmountInput
                         step={sellReservedPayMeta.sc === 'UZS' ? '1' : '0.01'}
+                        currency={sellReservedPayMeta.sc}
                         value={sellReservedData.balance_shortfall_amount ?? ''}
                         onChange={(e) =>
                           setSellReservedData({
@@ -3406,6 +3422,7 @@ const Sales = () => {
                       </label>
                       <AmountInput
                         step={sellReservedPayMeta.sc === 'UZS' ? '1' : '0.01'}
+                        currency={sellReservedPayMeta.sc}
                         placeholder={
                           sellReservedPayMeta.creditAmount
                             ? (sellReservedPayMeta.sc === 'UZS'
@@ -3621,6 +3638,7 @@ const Sales = () => {
                           <td className="batch-sale-lines__td--num">
                             <AmountInput
                               className="batch-sale-lines__control"
+                              currency={batchDefaults.sale_currency}
                               value={line.selling_price ?? ''}
                               onChange={(e) => updateBatchLine(line.key, 'selling_price', e.target.value)}
                               title={t('batch.sellingPrice')}
@@ -3631,6 +3649,7 @@ const Sales = () => {
                           <td className="batch-sale-lines__td--num">
                             <AmountInput
                               className="batch-sale-lines__control"
+                              currency={batchDefaults.sale_currency}
                               value={line.discount_price ?? ''}
                               onChange={(e) => updateBatchLine(line.key, 'discount_price', e.target.value)}
                               title={t('batch.discountPrice')}

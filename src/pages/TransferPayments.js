@@ -528,6 +528,7 @@ const TransferPayments = () => {
                                   <AmountInput
                                     id={`transfer-amount-${row.id}`}
                                     wholeOnly
+                                    currency="UZS"
                                     value={form.amount}
                                     onChange={(e) => setForm({ ...form, amount: e.target.value })}
                                   />

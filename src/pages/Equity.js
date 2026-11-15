@@ -228,6 +228,7 @@ const Equity = () => {
                 <label>{t('form.amount')}</label>
                 <AmountInput
                   required
+                  currency={form.currency}
                   value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
                 />

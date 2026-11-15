@@ -38,6 +38,9 @@ import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
 import { formatAppDateTime, formatAppNumber } from '../utils/localeFormat';
 import AmountInput from '../components/AmountInput';
+import {
+  allocateOrderAdvance, orderLineTotals, lineCostTotals,
+} from '../utils/orderAdvanceAllocation';
 import orderLineTravelled, { cargoPoolCompanions } from '../utils/cargoLineTravelled';
 import {
   ORDER_TERMINAL_STATUSES,
@@ -420,6 +423,10 @@ const ORDER_SORT_ACCESSORS = {
   ordered_note: (o) =>
     String(`${o.ordered_note_role || ''} ${o.ordered_note || ''}`).toLowerCase(),
   order_date: (o) => new Date(o.order_date || o.created_at).getTime() || 0,
+  // **The row's insertion moment, read straight off `created_at`.** Deliberately not through
+  // `order_date`: that is a serializer method, and the whole point of this column is that it
+  // cannot be redefined to follow the workflow the way `order_date` once was.
+  created_at: (o) => new Date(o.created_at).getTime() || 0,
 };
 
 function formatOrderedNoteDisplay(order) {
@@ -512,11 +519,13 @@ const Orders = () => {
     [user],
   );
   const showCol = useCallback((key) => !hiddenOrderColumns.has(key), [hiddenOrderColumns]);
-  // 30 headers with Buyurtma turi, 29 without — counted from the table itself rather than
+  // 31 headers with Buyurtma turi, 30 without — counted from the table itself rather than
   // remembered, because the last two cargo columns were added without this being updated and
-  // the empty-table row has been two cells short ever since.
+  // the empty-table row was two cells short ever since. Both numbers went up by one with
+  // **Buyurtma berilgan sana**; so did `orderFooterLabelColSpan` below, because the new column
+  // sits inside the span that footer label covers.
   const orderTableColumnCount = useMemo(() => {
-    const base = canSeeStockOrders ? 30 : 29;
+    const base = canSeeStockOrders ? 31 : 30;
     let hidden = 0;
     for (const key of hiddenOrderColumns) {
       // Buyurtma turi only counts as removed if it was going to be there in the first place.
@@ -525,7 +534,7 @@ const Orders = () => {
     }
     return base - hidden;
   }, [canSeeStockOrders, hiddenOrderColumns]);
-  const orderFooterLabelColSpan = canSeeStockOrders ? 15 : 14;
+  const orderFooterLabelColSpan = canSeeStockOrders ? 16 : 15;
   /** Ledger totals for pay flows and move-to-inventory advance refunds (not bare status updates). */
   const needsLedgerForPayments = canPayOrder || canPayCargo || canMoveInventory;
 
@@ -585,9 +594,6 @@ const Orders = () => {
     // submitted with no eShop at all.
     eshop: DEFAULT_ESHOP_SLUG,
     client_eshop_notes: '',
-    // Two amounts, no currency: the label is derived server-side from which boxes were used.
-    advance_payment_amount: '',
-    advance_payment_amount_uzs: '',
   }), []);
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [batchCreating, setBatchCreating] = useState(false);
@@ -596,8 +602,29 @@ const Orders = () => {
     supplier_country: '',
     supplier_cargo: '',
     customer: '',
+    // **One advance for the whole order**, not one per line. A customer hands over a single sum
+    // and the shop works out what it covers; typing it per line asked the cashier to do that
+    // division by hand, in their head, at the counter. `allocateOrderAdvance` does it at submit.
+    //
+    // Two amounts and no currency, as before: the server derives the label from which boxes
+    // were used, so an order can never carry a currency its own columns contradict.
+    advance_payment_amount: '',
+    advance_payment_amount_uzs: '',
   });
   const [batchLines, setBatchLines] = useState([]);
+  // What the order adds up to, shown under the lines. Quantity and cost in each currency; the
+  // per-unit boxes are rates and are deliberately not summed.
+  const batchTotals = useMemo(() => orderLineTotals(batchLines), [batchLines]);
+  // How the advance would be divided, recomputed as the lines change so the cashier sees the
+  // split before pressing anything. The same call is made again at submit -- deriving it twice
+  // from the same inputs is cheaper than keeping a copy in state that can fall out of step.
+  const batchAdvanceSplit = useMemo(
+    () => allocateOrderAdvance(batchLines, {
+      usd: batchShared.advance_payment_amount,
+      uzs: batchShared.advance_payment_amount_uzs,
+    }),
+    [batchLines, batchShared.advance_payment_amount, batchShared.advance_payment_amount_uzs],
+  );
 
   const [paymentFormData, setPaymentFormData] = useState({
     orderId: null,
@@ -880,15 +907,19 @@ const Orders = () => {
         );
       }
     }
+    // **The date filters read `created_at`, never `order_date`.** "Show me August's orders"
+    // means the ones *placed* in August; `order_date` follows the last thing that happened to
+    // the order, so filtering by it would put a July order in September's list because that is
+    // when the goods turned up.
     if (filters.year) {
       filtered = filtered.filter(order => {
-        const orderYear = new Date(order.order_date || order.created_at).getFullYear();
+        const orderYear = new Date(order.created_at).getFullYear();
         return orderYear.toString() === filters.year;
       });
     }
     if (filters.month) {
       filtered = filtered.filter(order => {
-        const orderMonth = new Date(order.order_date || order.created_at).getMonth() + 1;
+        const orderMonth = new Date(order.created_at).getMonth() + 1;
         return orderMonth.toString() === filters.month;
       });
     }
@@ -944,8 +975,12 @@ const Orders = () => {
       const ob = orderLikeForDisplayRow(b);
       const active = compareActiveOrdersFirst(oa, ob);
       if (active !== 0) return active;
-      const ta = new Date(oa.order_date || oa.created_at).getTime() || 0;
-      const tb = new Date(ob.order_date || ob.created_at).getTime() || 0;
+      // `created_at`, so the table's own order is stable. Sorting the default view by a date
+      // that moves means the rows reshuffle as orders are worked on, under whoever is reading
+      // them. Clicking the Sana heading still sorts by the moving date -- that is a choice the
+      // reader made, not one made for them.
+      const ta = new Date(oa.created_at).getTime() || 0;
+      const tb = new Date(ob.created_at).getTime() || 0;
       return tb - ta;
     });
   }, [orderDisplayRows, orderSort]);
@@ -1107,35 +1142,50 @@ const Orders = () => {
         showNotification(t('notifications.clientNotesRequired'), 'error');
         return;
       }
-      if (isOnDemand) {
-        const sellingUsd = parseFloat(l.selling_usd_per_unit) || 0;
-        const advanceUsd = parseFloat(l.advance_payment_amount) || 0;
-        const advanceUzs = parseFloat(l.advance_payment_amount_uzs) || 0;
-        const sellingTotal = sellingUsd * qty;
-        // Both boxes filled: comparing the two legs against the line needs today's rate,
-        // which this page does not hold. A guess could disagree with the server and block a
-        // valid order, so the server is the only judge there and its message surfaces here.
-        const bothCurrencies = advanceUsd > 0 && advanceUzs > 0;
-        if (!bothCurrencies && advanceUsd > 0 && advanceUsd > sellingTotal + 0.01) {
-          showNotification(
-            t('notifications.advanceExceedsSelling', {
-              total: formatDisplayAmount(sellingTotal, 'USD'),
-            }),
-            'error',
-          );
-          return;
-        }
-        if (!bothCurrencies && advanceUzs > 0) {
-          // A som advance against a USD-priced line is allowed but worth a second look,
-          // since the two cannot be compared without a rate.
-          const ok = window.confirm(
-            t('confirm.advanceUzs', {
-              amount: formatDisplayAmount(advanceUzs, 'UZS'),
-              selling: formatDisplayAmount(sellingTotal, 'USD'),
-            }),
-          );
-          if (!ok) return;
-        }
+    }
+
+    // **The advance is checked against the whole order, because that is now what it is.**
+    //
+    // The per-line checks these replace asked the same questions of one line at a time, which
+    // was the right shape while the cashier typed a figure per line and is the wrong shape for
+    // one shared sum: an advance that is fine for the order can exceed any single line in it.
+    if (isOnDemand) {
+      const advanceUsd = parseFloat(batchShared.advance_payment_amount) || 0;
+      const advanceUzs = parseFloat(batchShared.advance_payment_amount_uzs) || 0;
+      const totals = orderLineTotals(withProduct);
+      // Both boxes filled: comparing the two legs against the order needs today's rate, which
+      // this page does not hold. A guess could disagree with the server and block a valid
+      // order, so the server is the only judge there and its message surfaces here.
+      const bothCurrencies = advanceUsd > 0 && advanceUzs > 0;
+      if (!bothCurrencies && advanceUsd > 0 && advanceUsd > totals.sellingUsd + 0.01) {
+        showNotification(
+          t('notifications.advanceExceedsSelling', {
+            total: formatDisplayAmount(totals.sellingUsd, 'USD'),
+          }),
+          'error',
+        );
+        return;
+      }
+      if (!bothCurrencies && advanceUzs > 0 && totals.sellingUzs <= 0) {
+        // A som advance against a dollar-priced order is allowed -- the server permits it --
+        // but the two cannot be compared without a rate, so it is worth a second look.
+        const ok = window.confirm(
+          t('confirm.advanceUzs', {
+            amount: formatDisplayAmount(advanceUzs, 'UZS'),
+            selling: formatDisplayAmount(totals.sellingUsd, 'USD'),
+          }),
+        );
+        if (!ok) return;
+      }
+      if (!bothCurrencies && advanceUzs > 0 && totals.sellingUzs > 0
+        && advanceUzs > totals.sellingUzs + 1) {
+        showNotification(
+          t('notifications.advanceExceedsSelling', {
+            total: formatDisplayAmount(totals.sellingUzs, 'UZS'),
+          }),
+          'error',
+        );
+        return;
       }
     }
     if (!batchShared.supplier_country.trim()) {
@@ -1143,7 +1193,16 @@ const Orders = () => {
       return;
     }
 
-    const items = withProduct.map((l) => {
+    // Apportioned over the lines that actually carry a product, in their own order, so the
+    // shares line up with `items` below index for index.
+    const advanceShares = isOnDemand
+      ? allocateOrderAdvance(withProduct, {
+        usd: batchShared.advance_payment_amount,
+        uzs: batchShared.advance_payment_amount_uzs,
+      }).shares
+      : [];
+
+    const items = withProduct.map((l, idx) => {
       const qty = parseInt(l.ordered_quantity, 10) || 0;
       const sellingUsd = parseFloat(l.selling_usd_per_unit) || 0;
       const sellingUzs = parseFloat(l.selling_uzs_per_unit) || 0;
@@ -1165,10 +1224,11 @@ const Orders = () => {
         supplier_cost_usd_cash: costUsd * qty,
         supplier_cost_usd_card: 0,
         ...(isOnDemand ? {
-          // No currency is sent: `encode_advance_legs` derives it from the two amounts, so
-          // an order can never carry a label its own columns contradict.
-          advance_payment_amount: parseFloat(l.advance_payment_amount) || 0,
-          advance_payment_amount_uzs: parseFloat(l.advance_payment_amount_uzs) || 0,
+          // This line's share of the order's one advance. No currency is sent:
+          // `encode_advance_legs` derives it from the two amounts, so an order can never carry
+          // a label its own columns contradict.
+          advance_payment_amount: advanceShares[idx]?.usd || 0,
+          advance_payment_amount_uzs: advanceShares[idx]?.uzs || 0,
           advance_payment_type: 'cash',
         } : {}),
       };
@@ -1185,7 +1245,16 @@ const Orders = () => {
       });
       showNotification(data.message || t('batch.created', { ns: 'orders', count: data.count }), 'success');
       setShowBatchForm(false);
-      setBatchShared({ order_type: canManageStockOrders ? 'stock' : 'on_demand', supplier_country: '', supplier_cargo: '', customer: '' });
+      setBatchShared({
+        order_type: canManageStockOrders ? 'stock' : 'on_demand',
+        supplier_country: '',
+        supplier_cargo: '',
+        customer: '',
+        // Named rather than left to fall out as `undefined`: the next order must not inherit
+        // the last one's advance, and that is too important to rest on an omission.
+        advance_payment_amount: '',
+        advance_payment_amount_uzs: '',
+      });
       setBatchLines([newBatchLine()]);
       fetchOrders();
     } catch (error) {
@@ -2489,6 +2558,14 @@ const Orders = () => {
       <tr key={rowKey ?? order.id} className={extraClassName}>
         <td>#{order.id}</td>
         <td>{formatAppDateTime(order.order_date || order.created_at)}</td>
+        {/* **Buyurtma berilgan sana: when the row was inserted, and nothing else.**
+            `created_at` is `auto_now_add`, so the database writes it once and no later save of
+            the order can move it -- not paying it, not receiving it, not a correction.
+            Read directly rather than through `order_date`, which is a serializer method and has
+            been redefined once already: it used to answer with the latest workflow step, so an
+            order placed on 3 August read as 20 September once the goods arrived. This column
+            exists so that question has an answer that cannot be changed by anything. */}
+        <td>{formatAppDateTime(order.created_at)}</td>
         <td>
           {/* `availableOrderSteps` decides which workflow buttons this row is waiting on —
               one at a time, except receiving and paying the supplier which are offered
@@ -2845,6 +2922,8 @@ const Orders = () => {
               setBatchShared({
                 order_type: canManageStockOrders ? 'stock' : 'on_demand',
                 supplier_country: '', supplier_cargo: '', customer: '',
+                advance_payment_amount: '',
+                advance_payment_amount_uzs: '',
               });
               setBatchLines([newBatchLine()]);
             }}
@@ -2920,13 +2999,13 @@ const Orders = () => {
             <div className="form-grid">
               <div className="form-group">
                 <label>{uzsLabel}</label>
-                <AmountInput placeholder="0"
+                <AmountInput currency="UZS" placeholder="0"
                   value={paymentFormData.uzs}
                   onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs: e.target.value })} />
               </div>
               <div className="form-group">
                 <label>{t('currency.usd', { ns: 'common' })}</label>
-                <AmountInput placeholder="0"
+                <AmountInput currency="USD" placeholder="0"
                   value={paymentFormData.usd}
                   onChange={(e) => setPaymentFormData({ ...paymentFormData, usd: e.target.value })} />
               </div>
@@ -2993,6 +3072,7 @@ const Orders = () => {
                             <label htmlFor="move-inv-return-amt">{t('moveForm.amount')}</label>
                             <AmountInput
                               id="move-inv-return-amt"
+                              currency={invOrder.advance_payment_currency}
                               style={{ width: '100%', boxSizing: 'border-box', display: 'block', marginTop: '4px' }}
                               value={moveToInventoryData.return_advance_amount}
                               onChange={(e) =>
@@ -3071,7 +3151,7 @@ const Orders = () => {
             <div className="form-grid">
               <div className="form-group">
                 <label>{uzsLabel}</label>
-                <AmountInput
+                <AmountInput currency="UZS"
                   placeholder="0"
                   value={cargoFormData.uzs}
                   onChange={(e) => setCargoFormData({ ...cargoFormData, uzs: e.target.value })}
@@ -3079,7 +3159,7 @@ const Orders = () => {
               </div>
               <div className="form-group">
                 <label>{t('currency.usd', { ns: 'common' })}</label>
-                <AmountInput
+                <AmountInput currency="USD"
                   placeholder="0"
                   value={cargoFormData.usd}
                   onChange={(e) => setCargoFormData({ ...cargoFormData, usd: e.target.value })}
@@ -3214,7 +3294,7 @@ const Orders = () => {
             <div className="form-grid">
               <div className="form-group">
                 <label>{uzsLabel}</label>
-                <AmountInput
+                <AmountInput currency="UZS"
                   placeholder="0"
                   value={cargoGroupData.uzs}
                   onChange={(e) => setCargoGroupData({ ...cargoGroupData, uzs: e.target.value })}
@@ -3222,7 +3302,7 @@ const Orders = () => {
               </div>
               <div className="form-group">
                 <label>{t('currency.usd', { ns: 'common' })}</label>
-                <AmountInput
+                <AmountInput currency="USD"
                   placeholder="0"
                   value={cargoGroupData.usd}
                   onChange={(e) => setCargoGroupData({ ...cargoGroupData, usd: e.target.value })}
@@ -3430,7 +3510,7 @@ const Orders = () => {
                               </label>
                               {line.refunded ? (
                                 <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                                  <AmountInput
+                                  <AmountInput currency="UZS"
                                     className="batch-sale-lines__control"
                                     placeholder={t('batch.refundUzs', { ns: 'orders' })}
                                     value={line.refundUzs}
@@ -3438,7 +3518,7 @@ const Orders = () => {
                                       updateReceiveLine(line.orderId, { refundUzs: e.target.value })
                                     }
                                   />
-                                  <AmountInput
+                                  <AmountInput currency="USD"
                                     className="batch-sale-lines__control"
                                     placeholder={t('batch.refundUsd', { ns: 'orders' })}
                                     value={line.refundUsd}
@@ -3521,14 +3601,14 @@ const Orders = () => {
                         )}
                       </td>
                       <td className="batch-sale-lines__td--num">
-                        <AmountInput
+                        <AmountInput currency="UZS"
                           className="batch-sale-lines__control"
                           value={line.uzs ?? ''}
                           onChange={(e) => updatePayOrderGroupLine(line.orderId, 'uzs', e.target.value)}
                         />
                       </td>
                       <td className="batch-sale-lines__td--num">
-                        <AmountInput
+                        <AmountInput currency="USD"
                           className="batch-sale-lines__control"
                           value={line.usd ?? ''}
                           onChange={(e) => updatePayOrderGroupLine(line.orderId, 'usd', e.target.value)}
@@ -3631,7 +3711,47 @@ const Orders = () => {
                 </div>
               </div>
               )}
+              {/* **One advance for the order, not one per line.** The customer hands over a
+                  single sum; working out what it covers is the system's job, not something to
+                  be divided in somebody's head at the counter. Apportioned at submit by
+                  `allocateOrderAdvance`, and previewed below as you type. */}
+              {batchShared.order_type === 'on_demand' && (
+                <>
+                  <div className="form-group">
+                    <label>{t('batch.advanceUsdLabel', { ns: 'orders' })}</label>
+                    <AmountInput
+                      currency="USD"
+                      placeholder="0.00"
+                      value={batchShared.advance_payment_amount}
+                      onChange={(e) => setBatchShared({
+                        ...batchShared, advance_payment_amount: e.target.value,
+                      })}
+                      aria-label={t('batch.advanceUsdLabel', { ns: 'orders' })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>{t('batch.advanceUzsLabel', { ns: 'orders' })}</label>
+                    <AmountInput
+                      currency="UZS"
+                      /* The som ledger takes no tiyin, and a fractional som advance is refused
+                         by the server outright -- see `whole_soum.TYPED_SOUM_KEYS`. */
+                      wholeOnly
+                      placeholder="0"
+                      value={batchShared.advance_payment_amount_uzs}
+                      onChange={(e) => setBatchShared({
+                        ...batchShared, advance_payment_amount_uzs: e.target.value,
+                      })}
+                      aria-label={t('batch.advanceUzsLabel', { ns: 'orders' })}
+                    />
+                  </div>
+                </>
+              )}
             </div>
+            {batchShared.order_type === 'on_demand' && (
+              <p className="orders-field-hint" style={{ marginTop: 0 }}>
+                {t('batch.advanceSharedHint', { ns: 'orders' })}
+              </p>
+            )}
             <div className="batch-sale-lines-block">
               <div className="batch-sale-lines-block__label" id="batch-order-lines-label">
                 {t('batch.lineItems', { ns: 'orders' })}
@@ -3649,10 +3769,11 @@ const Orders = () => {
                     <col className="batch-col-qty" />
                     <col className="batch-col-price" />
                     <col className="batch-col-price" />
+                    {/* Jami tannarx -- read-only, so no room for a caret is needed */}
+                    <col className="batch-col-price" />
                     <col className="batch-col-price" />
                     <col className="batch-col-price" />
                     <col className="batch-col-eshop" />
-                    {batchShared.order_type === 'on_demand' && <col className="batch-col-advance" />}
                     <col className="batch-col-row" />
                   </colgroup>
                   <thead>
@@ -3663,12 +3784,10 @@ const Orders = () => {
                       <th className="batch-sale-lines__th--num">{t('batch.qty', { ns: 'orders' })}</th>
                       <th className="batch-sale-lines__th--num">{t('batch.costUsd', { ns: 'orders' })}</th>
                       <th className="batch-sale-lines__th--num">{t('batch.costUzs', { ns: 'orders' })}</th>
+                      <th className="batch-sale-lines__th--num">{t('batch.lineCostTotal', { ns: 'orders' })}</th>
                       <th className="batch-sale-lines__th--num">{t('batch.sellingUsd', { ns: 'orders' })}</th>
                       <th className="batch-sale-lines__th--num">{t('batch.sellingUzs', { ns: 'orders' })}</th>
                       <th scope="col">{t('form.eshop')} <span style={{ color: '#e53e3e' }}>*</span></th>
-                      {batchShared.order_type === 'on_demand' && (
-                        <th className="batch-sale-lines__th--num">{t('form.advanceAmount')}</th>
-                      )}
                       <th className="batch-sale-lines__th--action" aria-label={t('actions.delete', { ns: 'common' })} />
                     </tr>
                   </thead>
@@ -3730,7 +3849,7 @@ const Orders = () => {
                             />
                           </td>
                           <td className="batch-sale-lines__td--num">
-                            <AmountInput
+                            <AmountInput currency="USD"
                               className="batch-sale-lines__control"
                               value={line.cost_usd_per_unit ?? ''}
                               onChange={(e) => updateBatchLine(line.key, 'cost_usd_per_unit', e.target.value)}
@@ -3739,7 +3858,7 @@ const Orders = () => {
                             />
                           </td>
                           <td className="batch-sale-lines__td--num">
-                            <AmountInput
+                            <AmountInput currency="UZS"
                               className="batch-sale-lines__control"
                               step="1"
                               value={line.cost_uzs_per_unit ?? ''}
@@ -3748,8 +3867,30 @@ const Orders = () => {
                               aria-label={t('batch.costUzs', { ns: 'orders' })}
                             />
                           </td>
+                          {/* **This line's own cost: quantity times the rate beside it.** Both
+                              currencies, because a line really can be paid partly in each and
+                              the four buckets exist to keep the legs apart -- folding them into
+                              one figure would need a rate this page does not hold. */}
+                          <td className="batch-sale-lines__td--num batch-order-lines__total-cell">
+                            {(() => {
+                              const lineCost = lineCostTotals(line);
+                              if (!lineCost.usd && !lineCost.uzs) {
+                                return <span className="orders-field-hint">&mdash;</span>;
+                              }
+                              return (
+                                <>
+                                  {lineCost.usd ? (
+                                    <div>{formatDisplayAmount(lineCost.usd, 'USD')}</div>
+                                  ) : null}
+                                  {lineCost.uzs ? (
+                                    <div>{formatDisplayAmount(lineCost.uzs, 'UZS')}</div>
+                                  ) : null}
+                                </>
+                              );
+                            })()}
+                          </td>
                           <td className="batch-sale-lines__td--num">
-                            <AmountInput
+                            <AmountInput currency="USD"
                               className="batch-sale-lines__control"
                               value={line.selling_usd_per_unit ?? ''}
                               onChange={(e) => updateBatchLine(line.key, 'selling_usd_per_unit', e.target.value)}
@@ -3758,7 +3899,7 @@ const Orders = () => {
                             />
                           </td>
                           <td className="batch-sale-lines__td--num">
-                            <AmountInput
+                            <AmountInput currency="UZS"
                               className="batch-sale-lines__control"
                               step="1"
                               value={line.selling_uzs_per_unit ?? ''}
@@ -3791,29 +3932,6 @@ const Orders = () => {
                               />
                             )}
                           </td>
-                          {batchShared.order_type === 'on_demand' && (
-                          <td className="batch-sale-lines__td--num">
-                            <div className="batch-order-lines-advance-cell">
-                              {/* One box per currency, both always shown. There is no mode
-                                  to pick: type what the customer handed over, in whichever
-                                  currencies they used, and the server labels it. */}
-                              <AmountInput
-                                className="batch-sale-lines__control"
-                                value={line.advance_payment_amount ?? ''}
-                                onChange={(e) => updateBatchLine(line.key, 'advance_payment_amount', e.target.value)}
-                                placeholder={t('form.advanceUsd')}
-                                aria-label={t('form.advanceUsd')}
-                              />
-                              <AmountInput
-                                className="batch-sale-lines__control"
-                                value={line.advance_payment_amount_uzs ?? ''}
-                                onChange={(e) => updateBatchLine(line.key, 'advance_payment_amount_uzs', e.target.value)}
-                                placeholder={t('form.advanceUzs')}
-                                aria-label={t('form.advanceUzs')}
-                              />
-                            </div>
-                          </td>
-                          )}
                           <td className="batch-sale-lines__td--action">
                             {batchLines.length > 1 ? (
                               <button
@@ -3831,8 +3949,60 @@ const Orders = () => {
                       );
                     })}
                   </tbody>
+                  {/* **What the order comes to.** The two per-unit columns stay blank on
+                      purpose: a sum of rates ("$12.50 each" plus "$8.00 each") is not a figure
+                      that means anything, and showing one would invite it to be read as a
+                      total. Quantity and the cost totals are the two real sums. */}
+                  <tfoot>
+                    <tr className="batch-order-lines__totals">
+                      <td colSpan={3}>{t('batch.totals', { ns: 'orders' })}</td>
+                      <td className="batch-sale-lines__td--num">{batchTotals.quantity || 0}</td>
+                      <td />
+                      <td />
+                      <td className="batch-sale-lines__td--num batch-order-lines__total-cell">
+                        {batchTotals.costUsd ? (
+                          <div>{formatDisplayAmount(batchTotals.costUsd, 'USD')}</div>
+                        ) : null}
+                        {batchTotals.costUzs ? (
+                          <div>{formatDisplayAmount(batchTotals.costUzs, 'UZS')}</div>
+                        ) : null}
+                        {!batchTotals.costUsd && !batchTotals.costUzs ? (
+                          <span className="orders-field-hint">&mdash;</span>
+                        ) : null}
+                      </td>
+                      <td />
+                      <td />
+                      <td />
+                      <td />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
+              {/* How the one advance came out per line, shown while it is being typed rather
+                  than discovered on the orders list afterwards. */}
+              {batchShared.order_type === 'on_demand'
+                && (parseFloat(batchShared.advance_payment_amount) > 0
+                  || parseFloat(batchShared.advance_payment_amount_uzs) > 0) ? (
+                <p className="orders-field-hint batch-order-lines__advance-split">
+                  <strong>{t('batch.advanceSplitLabel', { ns: 'orders' })}</strong>{' '}
+                  {batchLines.map((line, idx) => {
+                    const share = batchAdvanceSplit.shares[idx];
+                    if (!share || (!share.usd && !share.uzs)) return null;
+                    const parts = [];
+                    if (share.usd) parts.push(formatDisplayAmount(share.usd, 'USD'));
+                    if (share.uzs) parts.push(formatDisplayAmount(share.uzs, 'UZS'));
+                    const product = products.find((p) => String(p.id) === String(line.product));
+                    const name = product
+                      ? `${product.brand} ${product.model}`
+                      : t('batch.lineNumber', { ns: 'orders', number: idx + 1 });
+                    return (
+                      <span key={line.key} className="batch-order-lines__advance-share">
+                        {name}: {parts.join(' + ')}
+                      </span>
+                    );
+                  })}
+                </p>
+              ) : null}
             </div>
             <div className="form-actions batch-sale-lines-actions">
               <button type="button" className="btn-edit" onClick={addBatchLine}>
@@ -3939,11 +4109,11 @@ const Orders = () => {
             onFiltersChange={setFilters}
             options={getCascadedFilterOptions(orders, filters, (o) => o.product_detail, null, (order, _excl) => {
               if (filters.year) {
-                const y = new Date(order.order_date).getFullYear().toString();
+                const y = new Date(order.created_at).getFullYear().toString();
                 if (y !== filters.year) return false;
               }
               if (filters.month) {
-                const m = (new Date(order.order_date).getMonth() + 1).toString();
+                const m = (new Date(order.created_at).getMonth() + 1).toString();
                 if (m !== filters.month) return false;
               }
               return true;
@@ -4028,7 +4198,9 @@ const Orders = () => {
             />
           </div>
           {(() => {
-            const dateOpts = getCascadedDateOptions(orders, filters, (o) => o.order_date, (o) => o.product_detail);
+            // Same reason as the filters themselves: the options offered must be the years and
+            // months orders were *placed* in, or the list disagrees with what filtering does.
+            const dateOpts = getCascadedDateOptions(orders, filters, (o) => o.created_at, (o) => o.product_detail);
             return (
               <>
                 <div className="filter-field">
@@ -4103,6 +4275,7 @@ const Orders = () => {
             <tr>
               <SortableTh columnId="id" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.id', { ns: 'common' })}</SortableTh>
               <SortableTh columnId="order_date" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.date', { ns: 'orders' })}</SortableTh>
+              <SortableTh columnId="created_at" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.createdDate', { ns: 'orders' })}</SortableTh>
               <th>{t('table.actions', { ns: 'orders' })}</th>
               <SortableTh columnId="status" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.status', { ns: 'orders' })}</SortableTh>
               <SortableTh columnId="category_type" sortCol={orderSort.sortCol} sortDir={orderSort.sortDir} onSort={orderSort.onHeaderClick}>{t('table.categoryType', { ns: 'orders' })}</SortableTh>
@@ -4200,6 +4373,10 @@ const Orders = () => {
                     >
                       <td>{agg.idsLabel}</td>
                       <td>{formatAppDateTime(first?.order_date || first?.created_at)}</td>
+                      {/* Every line of a batch is inserted in the same breath, so the group's
+                          placed-date is its first line's. The cell is here above all so the
+                          group row keeps the same number of cells as the lines under it. */}
+                      <td>{formatAppDateTime(first?.created_at)}</td>
                       <td onClick={(e) => e.stopPropagation()}>
                         {groupSteps.includes('mark_ordered') && canMarkAsOrdered && (
                           <button

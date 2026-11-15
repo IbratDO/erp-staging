@@ -1480,10 +1480,6 @@
   number with its left half cut off is exactly what "the separators aren't working" looks like --
   `AmountInput` had been inserting them all along.
 */
-.batch-sale-lines col.batch-col-advance {
-  width: 14rem;
-}
-
 /*
   One floor per editable table: the sum of the widths above for the columns it declares, plus a
   little slack. Set per table rather than on `.batch-sale-lines`, because the order summaries share
@@ -1558,16 +1554,42 @@
   align-items: stretch;
 }
 
-/* An even split, stated rather than inferred. Both boxes carry `width: 100%` from
-   `.batch-sale-lines__control`, so without a flex basis they each ask for the whole cell and the
-   browser settles it by shrinking them -- which happens to come out even here, but only because
-   they are the same kind of box. `flex: 1 1 0` is the behaviour that was actually wanted.
+/* **Jami tannarx** -- the read-only per-line cost, and the totals row under the lines.
 
-   (The rule that used to sit here sized a currency `select`. There is no select in this cell any
-   more -- it became one box per currency, both always shown -- so it was styling nothing.) */
-.batch-order-lines-advance-cell > .amount-input {
-  flex: 1 1 0;
-  min-width: 0;
+   A value, not a field: no border, no background, and the same tabular figures the inputs use so
+   a column of them lines up digit for digit. Two lines when a line is paid in both currencies,
+   which is why it is a block rather than inline text.
+
+   (Two rules sized the per-line advance column and its two boxes and were removed with it: the
+   advance is one figure for the whole order now, apportioned at submit.) */
+.batch-order-lines__total-cell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #2c3e50;
+}
+
+.batch-sale-lines tfoot .batch-order-lines__totals > td {
+  background: #f8f9fa;
+  border-top: 2px solid #cbd5e0;
+  font-weight: 600;
+  padding: 10px;
+  color: #2c3e50;
+}
+
+/* How the one advance came out per line. Wraps, and each share keeps its name and figure
+   together -- a list that breaks between "Krossovka:" and "$50.00" is unreadable. */
+.batch-order-lines__advance-split {
+  margin-top: 8px;
+  line-height: 1.7;
+}
+
+.batch-order-lines__advance-share {
+  white-space: nowrap;
+}
+
+.batch-order-lines__advance-share:not(:last-child)::after {
+  content: ' \00b7 ';
+  white-space: pre;
 }
 
 .batch-sale-lines thead th {
@@ -2084,6 +2106,40 @@ input.batch-sale-lines__control[type='number']::-webkit-outer-spin-button {
    which fits "1 200 000" without forcing the 6-column order grids to overflow. */
 .amount-input {
   font-variant-numeric: tabular-nums;
+}
+
+/* **The currency tint: pale green for dollars, pale yellow for som.**
+
+   The same two colours as the Kassa currency picker (`.pos__currency--usd` / `--uzs` in
+   Pos.css), deliberately, because that is where staff first learned them. One pair of colours
+   across the app means a field's currency is readable without reading its label -- which is the
+   whole point in the line tables, where the heading is one row away and off screen as soon as a
+   long table is scrolled.
+
+   Form inputs only. Read-only table cells are left alone: tinting a whole list page is a
+   different decision and was not asked for.
+
+   `!important` is not used and must not be: these fields also carry state colours (invalid,
+   disabled, focus) from the shared input rules, and a currency should never win over "this
+   value is wrong". The specificity here is one class, so anything more specific still wins. */
+.amount-input--usd {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.amount-input--uzs {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+/* A disabled or read-only money box is not inviting a number, so it drops the tint and reads
+   as a value. Without this the colour says "type here" on a field that cannot be typed in. */
+.amount-input--usd:disabled,
+.amount-input--uzs:disabled,
+.amount-input--usd[readonly],
+.amount-input--uzs[readonly] {
+  background: #f7fafc;
+  border-color: #e2e8f0;
 }
 
 .amount-input--wide {

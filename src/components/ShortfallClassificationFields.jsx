@@ -67,6 +67,7 @@ export default function ShortfallClassificationFields({
           </label>
           <AmountInput
             step={meta.sc === 'UZS' ? '1' : '0.01'}
+            currency={meta.sc}
             value={form.balance_shortfall_amount ?? ''}
             onChange={(e) => setForm((prev) => ({ ...prev, balance_shortfall_amount: e.target.value }))}
           />
@@ -109,6 +110,7 @@ export default function ShortfallClassificationFields({
               </label>
               <AmountInput
                 step={(meta.sc || 'USD').toUpperCase() === 'UZS' ? '1' : '0.01'}
+                currency={meta.sc}
                 placeholder={
                   meta.creditAmount != null
                     ? ((meta.sc || 'USD').toUpperCase() === 'UZS'
@@ -203,6 +205,7 @@ export function SurplusClassificationFields({ form, setForm, meta, t }) {
           </label>
           <AmountInput
             step={sc === 'UZS' ? '1' : '0.01'}
+            currency={sc}
             value={form.currency_conversion_difference_amount ?? ''}
             onChange={(e) =>
               set({ currency_conversion_difference_amount: e.target.value })

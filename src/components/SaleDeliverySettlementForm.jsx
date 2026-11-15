@@ -76,7 +76,7 @@ function DeliveryPaymentAmountFields({ form, setForm, meta, t, disabled = false,
     <>
       <div className="form-group">
         <label>{t('currency.uzs', { ns: 'common' })}</label>
-        <AmountInput
+        <AmountInput currency="UZS"
           placeholder="0"
           disabled={disabled}
           value={form.uzs ?? ''}
@@ -85,7 +85,7 @@ function DeliveryPaymentAmountFields({ form, setForm, meta, t, disabled = false,
       </div>
       <div className="form-group">
         <label>{t('currency.usd', { ns: 'common' })}</label>
-        <AmountInput
+        <AmountInput currency="USD"
           placeholder="0"
           disabled={disabled}
           value={form.usd ?? ''}
@@ -1534,14 +1534,14 @@ export default function SaleDeliverySettlementForm({
                   </div>
                   <div className="form-group">
                     <label>{t('deliverySettlement.step1TotalUzsLabel')}</label>
-                    <AmountInput
+                    <AmountInput currency="UZS"
                       value={step1Total.uzs}
                       onChange={(e) => applyStep1Total({ ...step1Total, uzs: e.target.value })}
                     />
                   </div>
                   <div className="form-group">
                     <label>{t('deliverySettlement.step1TotalUsdLabel')}</label>
-                    <AmountInput
+                    <AmountInput currency="USD"
                       value={step1Total.usd}
                       onChange={(e) => applyStep1Total({ ...step1Total, usd: e.target.value })}
                     />
@@ -1803,14 +1803,14 @@ export default function SaleDeliverySettlementForm({
                   <div className="form-grid">
                     <div className="form-group">
                       <label>{t('currency.uzs', { ns: 'common' })}</label>
-                      <AmountInput
+                      <AmountInput currency="UZS"
                         value={step2Combined.uzs}
                         onChange={(e) => setStep2Combined((prev) => ({ ...prev, uzs: e.target.value }))}
                       />
                     </div>
                     <div className="form-group">
                       <label>{t('currency.usd', { ns: 'common' })}</label>
-                      <AmountInput
+                      <AmountInput currency="USD"
                         value={step2Combined.usd}
                         onChange={(e) => setStep2Combined((prev) => ({ ...prev, usd: e.target.value }))}
                       />
@@ -1987,14 +1987,14 @@ export default function SaleDeliverySettlementForm({
               <div className="form-grid">
                 <div className="form-group">
                   <label>{t('currency.uzs', { ns: 'common' })}</label>
-                  <AmountInput
+                  <AmountInput currency="UZS"
                     value={step3Combined.uzs}
                     onChange={(e) => setStep3Combined((prev) => ({ ...prev, uzs: e.target.value }))}
                   />
                 </div>
                 <div className="form-group">
                   <label>{t('currency.usd', { ns: 'common' })}</label>
-                  <AmountInput
+                  <AmountInput currency="USD"
                     value={step3Combined.usd}
                     onChange={(e) => setStep3Combined((prev) => ({ ...prev, usd: e.target.value }))}
                   />
@@ -2054,7 +2054,7 @@ export default function SaleDeliverySettlementForm({
                       </div>
                       <div className="form-group">
                         <label>{t('currency.uzs', { ns: 'common' })}</label>
-                        <AmountInput
+                        <AmountInput currency="UZS"
                           value={pay.uzs}
                           onChange={(e) =>
                             setStep3PayByLine((prev) => ({ ...prev, [line.id]: { ...prev[line.id], uzs: e.target.value } }))
@@ -2063,7 +2063,7 @@ export default function SaleDeliverySettlementForm({
                       </div>
                       <div className="form-group">
                         <label>{t('currency.usd', { ns: 'common' })}</label>
-                        <AmountInput
+                        <AmountInput currency="USD"
                           value={pay.usd}
                           onChange={(e) =>
                             setStep3PayByLine((prev) => ({ ...prev, [line.id]: { ...prev[line.id], usd: e.target.value } }))

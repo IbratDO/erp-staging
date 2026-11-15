@@ -428,6 +428,7 @@ const Finance = () => {
               <div className="form-group">
                 <label>{t('expenseForm.amount')}</label>
                 <AmountInput
+                  currency={expenseFormData.currency}
                   value={expenseFormData.amount}
                   onChange={(e) => setExpenseFormData({ ...expenseFormData, amount: e.target.value })}
                   required
@@ -514,6 +515,7 @@ const Finance = () => {
               <div className="form-group">
                 <label>{t('incomeForm.amount')}</label>
                 <AmountInput
+                  currency={incomeFormData.currency}
                   value={incomeFormData.amount}
                   onChange={(e) => setIncomeFormData({ ...incomeFormData, amount: e.target.value })}
                   required

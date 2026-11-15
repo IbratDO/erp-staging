@@ -1094,6 +1094,7 @@ const ReceivablesPayables = () => {
                     </label>
                     <AmountInput
                       placeholder="0"
+                      currency={collectTarget.currency || collectTarget.sale_detail?.sale_currency}
                       value={collectForm.amount}
                       onChange={(e) => setCollectForm({ ...collectForm, amount: e.target.value })}
                       required

@@ -774,6 +774,7 @@ const Inventory = () => {
                             <div className="batch-money-currency">
                               <AmountInput
                                 className="batch-sale-lines__control"
+                                currency={line.selling_price_currency}
                                 placeholder={
                                   line.selling_price_currency === 'UZS'
                                     ? t('form.uzsPerUnit')
@@ -806,6 +807,7 @@ const Inventory = () => {
                             <div className="batch-money-currency">
                               <AmountInput
                                 className="batch-sale-lines__control"
+                                currency={line.unit_supplier_cost_currency}
                                 placeholder={
                                   line.unit_supplier_cost_currency === 'UZS'
                                     ? t('form.uzsPerUnit')

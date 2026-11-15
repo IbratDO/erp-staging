@@ -187,8 +187,12 @@ describe('the avans boxes in the order form', () => {
   });
 
   it('carries the class the table cell sizes it with', () => {
-    // `.batch-order-lines-advance-cell > .amount-input` is what splits the cell evenly between
-    // the two boxes, so losing this class would collapse one of them.
+    // `.batch-sale-lines input.amount-input` right-aligns the digits and
+     // `.batch-sale-lines__control` is what stretches the box to its cell, so losing either
+     // class leaves a money box that does not fit the column it sits in.
+     //
+     // (This used to name the per-line advance cell, which no longer exists: the advance became
+     // one figure for the whole order, apportioned across the lines at submit.)
     const input = render({ value: '', className: 'batch-sale-lines__control' });
     expect(input.className).toContain('amount-input');
     expect(input.className).toContain('batch-sale-lines__control');
@@ -237,5 +241,51 @@ describe('the whole-soum mask', () => {
     // Asserted by its ending rather than against a literal: the thousands separator is a
     // thin space, so a literal written with an ordinary space differs invisibly.
     expect(formatAmount('1200000.5').endsWith('.5')).toBe(true);
+  });
+});
+
+describe('the currency tint', () => {
+  /*
+   * The owner's instruction of 2026-11-15: every som field pale yellow, every dollar field pale
+   * green, the same two colours the Kassa currency picker uses. One prop on this component is
+   * the whole mechanism, so these four tests cover every money box in every form.
+   *
+   * It is a class rather than an inline style on purpose: the fields also carry state colours
+   * (focus, invalid, disabled) from the shared input rules, and a currency must never win over
+   * "this value is wrong".
+   */
+  it('tints a dollar field green', () => {
+    expect(render({ value: '', currency: 'USD' }).className).toContain('amount-input--usd');
+  });
+
+  it('tints a som field yellow', () => {
+    expect(render({ value: '', currency: 'UZS' }).className).toContain('amount-input--uzs');
+  });
+
+  it('reads the currency whatever case it arrives in', () => {
+    // Call sites pass live values -- `sale.sale_currency`, a form's dropdown -- and those are
+    // not reliably upper case.
+    expect(render({ value: '', currency: 'uzs' }).className).toContain('amount-input--uzs');
+    expect(render({ value: '', currency: 'usd' }).className).toContain('amount-input--usd');
+  });
+
+  it('leaves a field alone when the currency is not known', () => {
+    // Omitted means "this box's currency cannot be told from here", which must look like an
+    // ordinary field rather than being guessed at. A wrong colour on a money box is worse than
+    // no colour: it is read as fact.
+    const plain = render({ value: '' }).className;
+    expect(plain).not.toContain('amount-input--usd');
+    expect(plain).not.toContain('amount-input--uzs');
+    const mixed = render({ value: '', currency: 'MIXED' }).className;
+    expect(mixed).not.toContain('amount-input--usd');
+    expect(mixed).not.toContain('amount-input--uzs');
+  });
+
+  it('keeps the classes the call site asked for', () => {
+    const cls = render({ value: '', currency: 'UZS', className: 'batch-sale-lines__control' })
+      .className;
+    expect(cls).toContain('amount-input--uzs');
+    expect(cls).toContain('batch-sale-lines__control');
+    expect(cls).toContain('amount-input');
   });
 });

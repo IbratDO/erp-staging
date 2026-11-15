@@ -609,6 +609,7 @@ export default function Pos() {
                       <AmountInput
                         className="pos__line-price pos__line-price--unit"
                         wide={false}
+                        currency={saleCurrency}
                         value={line.selling_price}
                         onChange={(e) => repriceLine(line.key, 'selling_price', e.target.value)}
                         aria-label={tr('pos.colPrice', { currency: unitName })}
@@ -620,6 +621,7 @@ export default function Pos() {
                       <AmountInput
                         className="pos__line-price pos__line-price--off"
                         wide={false}
+                        currency={saleCurrency}
                         placeholder="0"
                         value={line.discount_price || ''}
                         onChange={(e) => repriceLine(line.key, 'discount_price', e.target.value)}

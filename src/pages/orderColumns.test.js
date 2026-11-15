@@ -68,18 +68,27 @@ const groupRowBlock = () => {
 
 describe('every row has a cell for every heading', () => {
   test('the header still has the number of columns this file assumes', () => {
-    // 30 with Buyurtma turi. `orderTableColumnCount` is written against this number, and the
+    // 31 with Buyurtma turi. `orderTableColumnCount` is written against this number, and the
     // empty-table row spans it.
-    expect(countCells(headerBlock(), '              ')).toBe(30);
-    expect(SOURCE).toContain('const base = canSeeStockOrders ? 30 : 29;');
+    //
+    // 30 until **Buyurtma berilgan sana** was added beside Sana on 2026-11-16. These three
+    // tests are what caught the counts being left behind, which is the whole reason the number
+    // is asserted against the source string as well as counted: the count alone would have
+    // passed with `orderTableColumnCount` still saying 30 and only the empty-table row short.
+    expect(countCells(headerBlock(), '              ')).toBe(31);
+    expect(SOURCE).toContain('const base = canSeeStockOrders ? 31 : 30;');
+    // The footer label spans everything before the first totalled column, so it moves with any
+    // column added ahead of Miqdor -- which was missed once before and left the totals row one
+    // cell out of line with its own headings.
+    expect(SOURCE).toContain('canSeeStockOrders ? 16 : 15;');
   });
 
   test('a single order row matches the header', () => {
-    expect(countCells(singleRowBlock(), '        ')).toBe(30);
+    expect(countCells(singleRowBlock(), '        ')).toBe(31);
   });
 
   test('a group heading row matches the header', () => {
-    expect(countCells(groupRowBlock(), '                      ')).toBe(30);
+    expect(countCells(groupRowBlock(), '                      ')).toBe(31);
   });
 });
 

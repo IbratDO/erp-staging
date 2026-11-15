@@ -22,7 +22,12 @@
   },
   "due": {
     "overdueBy": "{{days}} days overdue",
-    "inDays": "{{days}} days left"
+    "inDays": "{{days}} days left",
+    "editTitle": "Repayment date — debt #{{id}}",
+    "editHint": "Leave it empty to remove the date; the reminder then stops. The date it was first promised for is kept.",
+    "originally": "originally {{date}}",
+    "clearConfirm": "Remove the repayment date? The reminder for this debt will stop.",
+    "save": "Save"
   },
   "table": {
     "title": "Debts",
@@ -43,7 +48,8 @@
     "waive": "Waive",
     "totalsLine": "total {{principal}} · paid {{paid}} · remaining {{remaining}}",
     "principalUzs": "Total debt (UZS)",
-    "groupCount": "({{open}} open / {{total}} total)"
+    "groupCount": "({{open}} open / {{total}} total)",
+    "editDue": "Change date"
   },
   "collect": {
     "title": "Credit payment #{{id}}",

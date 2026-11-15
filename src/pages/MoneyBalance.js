@@ -161,6 +161,15 @@ const MoneyBalance = () => {
     operation: 'add',
     notes: '',
   });
+  // Which currency the adjustment box holds, for its tint. Every `uzs_*` bucket holds som and
+  // every `usd_*` one holds dollars -- the naming rule the whole of `payment_routing` is built
+  // on -- so the prefix answers it without a lookup, and anything unrecognised leaves the field
+  // untinted rather than guessing.
+  const adjustBucket = String(adjustFormData.balance_type || '');
+  const adjustCurrency = adjustBucket.startsWith('usd')
+    ? 'USD'
+    : (adjustBucket.startsWith('uzs') ? 'UZS' : '');
+
   const [filter, setFilter] = useState({
     balance_type: '',
     transaction_type: '',
@@ -505,6 +514,11 @@ const MoneyBalance = () => {
               <div className="form-group">
                 <label>{t('amount')}</label>
                 <AmountInput
+                  // The bucket decides the currency: every `uzs_*` bucket holds som and every
+                  // `usd_*` one holds dollars, which is the naming rule `payment_routing` is
+                  // built on. Read off the prefix rather than looked up, so no selection at all
+                  // leaves the field untinted instead of guessing one.
+                  currency={adjustCurrency}
                   value={adjustFormData.amount}
                   onChange={(e) => setAdjustFormData({ ...adjustFormData, amount: e.target.value })}
                   required

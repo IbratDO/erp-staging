@@ -629,7 +629,7 @@ const Packages = () => {
               </div>
               <div className="form-group">
                 <label>{t('form.costUzs')}</label>
-                <AmountInput
+                <AmountInput currency="UZS"
                   value={formData.cost_per_unit_uzs}
                   onChange={(e) => setFormData({ ...formData, cost_per_unit_uzs: e.target.value })}
                   placeholder="0"
@@ -637,7 +637,7 @@ const Packages = () => {
               </div>
               <div className="form-group">
                 <label>{t('form.costUsd')}</label>
-                <AmountInput
+                <AmountInput currency="USD"
                   value={formData.cost_per_unit_usd}
                   onChange={(e) => setFormData({ ...formData, cost_per_unit_usd: e.target.value })}
                   placeholder={formData.package_type === 'L' ? '2.00' : '1.00'}
@@ -706,7 +706,7 @@ const Packages = () => {
                 <>
                   <div className="form-group">
                     <label>{t('paymentForm.uzsPayment')}</label>
-                    <AmountInput
+                    <AmountInput currency="UZS"
                       value={paymentFormData.payment_uzs}
                       onChange={(e) =>
                         setPaymentFormData({
@@ -718,7 +718,7 @@ const Packages = () => {
                   </div>
                   <div className="form-group">
                     <label>{t('paymentForm.usdPayment')}</label>
-                    <AmountInput
+                    <AmountInput currency="USD"
                       value={paymentFormData.payment_usd}
                       onChange={(e) =>
                         setPaymentFormData({

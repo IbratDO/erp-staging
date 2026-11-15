@@ -109,8 +109,21 @@ export default function AmountInput({
   // rejecting it later -- a field that will not take a character is a clearer rule than an error
   // message after the fact, and the server refuses it too (see `whole_soum.TYPED_SOUM_KEYS`).
   wholeOnly = false,
+  // **Which currency this field holds, for the tint.** 'USD' is pale green, 'UZS' pale yellow --
+  // the same two colours the Kassa currency picker already uses, so a cashier who has learned
+  // them there reads them the same way in every form.
+  //
+  // It is a prop rather than something inferred from the field name because plenty of these
+  // boxes change currency as you use them: the Finance expense amount follows its own dropdown,
+  // and a sale's boxes follow the sale. Passing the live value means the colour follows too.
+  // Omitted means "the currency is not known here", which is left untinted rather than guessed.
+  currency = '',
   ...rest
 }) {
+  const tint = {
+    USD: ' amount-input--usd',
+    UZS: ' amount-input--uzs',
+  }[String(currency || '').toUpperCase()] || '';
   const ref = useRef(null);
   const caret = useRef(null);
 
@@ -153,7 +166,7 @@ export default function AmountInput({
       // decimal point the field will not accept.
       inputMode={wholeOnly ? 'numeric' : 'decimal'}
       autoComplete="off"
-      className={`amount-input${wide ? ' amount-input--wide' : ''}${className ? ` ${className}` : ''}`}
+      className={`amount-input${wide ? ' amount-input--wide' : ''}${tint}${className ? ` ${className}` : ''}`}
       value={formatAmount(wholeOnly ? toWholeAmount(value ?? '') : (value ?? ''))}
       onChange={handleChange}
     />

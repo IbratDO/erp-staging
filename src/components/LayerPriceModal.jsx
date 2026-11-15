@@ -88,6 +88,7 @@ export default function LayerPriceModal({ layer, open, onClose, onSaved }) {
             <AmountInput
               id="layer-price"
               placeholder={t('layerPrice.placeholder')}
+              currency={currency}
               value={price}
               onChange={(e) => setPrice(e.target.value)}
             />

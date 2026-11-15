@@ -1674,13 +1674,13 @@ const Returns = () => {
             <div className="form-grid">
               <div className="form-group">
                 <label>{t('refundForm.uzsRefund')}</label>
-                <AmountInput placeholder="0"
+                <AmountInput currency="UZS" placeholder="0"
                   value={refundFormData.uzs}
                   onChange={(e) => setRefundFormData({ ...refundFormData, uzs: e.target.value })} />
               </div>
               <div className="form-group">
                 <label>{t('refundForm.usdRefund')}</label>
-                <AmountInput placeholder="0"
+                <AmountInput currency="USD" placeholder="0"
                   value={refundFormData.usd}
                   onChange={(e) => setRefundFormData({ ...refundFormData, usd: e.target.value })} />
               </div>
@@ -1733,6 +1733,7 @@ const Returns = () => {
                     </label>
                     <AmountInput
                       placeholder={Math.abs(refundGap).toFixed(2)}
+                      currency={refundMeta.sc}
                       value={refundDifference.plAmount}
                       onChange={(e) =>
                         setRefundDifference((prev) => ({ ...prev, plAmount: e.target.value }))

@@ -359,6 +359,7 @@ const FixedAssets = () => {
                 <label>{t('form.purchaseCost')}</label>
                 <AmountInput
                   required
+                  currency={form.currency}
                   value={form.purchase_cost}
                   onChange={(e) => setForm({ ...form, purchase_cost: e.target.value })}
                 />
@@ -366,6 +367,7 @@ const FixedAssets = () => {
               <div className="form-group">
                 <label>{t('form.currentValue')}</label>
                 <AmountInput
+                  currency={form.currency}
                   value={form.current_value}
                   onChange={(e) => setForm({ ...form, current_value: e.target.value })}
                 />
@@ -373,6 +375,7 @@ const FixedAssets = () => {
               <div className="form-group">
                 <label>{t('form.depreciation')}</label>
                 <AmountInput
+                  currency={form.currency}
                   value={form.depreciation}
                   onChange={(e) => setForm({ ...form, depreciation: e.target.value })}
                 />
@@ -454,7 +457,7 @@ const FixedAssets = () => {
               <div className="form-grid">
                 <div className="form-group">
                   <label>{t('payment.uzsPayment')}</label>
-                  <AmountInput
+                  <AmountInput currency="UZS"
                     value={paymentForm.payment_uzs}
                     onChange={(e) =>
                       setPaymentForm({
@@ -466,7 +469,7 @@ const FixedAssets = () => {
                 </div>
                 <div className="form-group">
                   <label>{t('payment.usdPayment')}</label>
-                  <AmountInput
+                  <AmountInput currency="USD"
                     value={paymentForm.payment_usd}
                     onChange={(e) =>
                       setPaymentForm({

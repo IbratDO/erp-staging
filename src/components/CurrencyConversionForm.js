@@ -207,6 +207,7 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
             <label>{t('conversion.sourceAmount', { currency: srcCur })}</label>
             <AmountInput
               step={form.direction === 'usd_to_uzs' ? '0.01' : '1'}
+              currency={srcCur}
               value={form.source_amount}
               onChange={(e) => {
                 setTargetManual(false);
@@ -219,6 +220,7 @@ export default function CurrencyConversionForm({ onSuccess, onCancel }) {
             <label>{t('conversion.convertedAmount', { currency: tgtCur })}</label>
             <AmountInput
               step={form.direction === 'usd_to_uzs' ? '1' : '0.01'}
+              currency={tgtCur}
               value={form.target_amount}
               onChange={(e) => {
                 setTargetManual(true);

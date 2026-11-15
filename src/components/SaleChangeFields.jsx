@@ -96,7 +96,7 @@ export default function SaleChangeFields({ form, setForm, sc, required, cbuRate,
               <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>
                 {t('completePay.changeUzs')}
               </label>
-              <AmountInput
+              <AmountInput currency="UZS"
                 step="1"
                 placeholder="0"
                 value={form.change_uzs ?? ''}
@@ -107,7 +107,7 @@ export default function SaleChangeFields({ form, setForm, sc, required, cbuRate,
               <label style={{ display: 'block', marginBottom: 4, fontSize: '0.9em' }}>
                 {t('completePay.changeUsd')}
               </label>
-              <AmountInput
+              <AmountInput currency="USD"
                 step="0.01"
                 placeholder="0"
                 value={form.change_usd ?? ''}

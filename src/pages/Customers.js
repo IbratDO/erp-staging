@@ -510,8 +510,13 @@ const Customers = () => {
                         : '—'}
                     </td>
                     <td style={{ fontSize: '0.9em' }}>
+                      {/* Formatted, not printed raw. `Receivable.amount` is `decimal_places=12`
+                          and the serializer hands the figure over as a string, so a $5 debt
+                          arrived as `5.000000000000` and anything with arithmetic behind it
+                          brought twelve digits of dust into the column. Two places, like the
+                          total under it and like every other money cell on the page. */}
                       {parseFloat(customer.on_credit_outstanding || 0) > 0
-                        ? customer.on_credit_outstanding
+                        ? formatPlainAmount(customer.on_credit_outstanding)
                         : '—'}
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
@@ -623,7 +628,7 @@ const Customers = () => {
                 <div>
                   <strong>{t('history.onCreditOutstanding')}</strong>{' '}
                   {parseFloat(customerHistory.summary.on_credit_outstanding || 0) > 0
-                    ? customerHistory.summary.on_credit_outstanding
+                    ? formatPlainAmount(customerHistory.summary.on_credit_outstanding)
                     : '0'}
                 </div>
               </div>

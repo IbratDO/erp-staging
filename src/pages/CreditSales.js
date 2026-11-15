@@ -154,6 +154,10 @@ export default function CreditSales() {
   const [collectTarget, setCollectTarget] = useState(null);
   const [collectForm, setCollectForm] = useState({ amount: '', notes: '' });
   const [waiveTarget, setWaiveTarget] = useState(null);
+  // The debt whose promised day is being moved, and the day being typed. `''` is a real value
+  // here -- it clears the date, which is what a debt with no promised day already looks like.
+  const [dueTarget, setDueTarget] = useState(null);
+  const [dueValue, setDueValue] = useState('');
   const [waiveReason, setWaiveReason] = useState('');
 
   // "Qarzdorlik qo'shish" — money handed over with no sale behind it.
@@ -409,6 +413,43 @@ export default function CreditSales() {
     setWaiveReason('');
   };
 
+  const beginEditDue = (row) => {
+    setCollectTarget(null);
+    setWaiveTarget(null);
+    setDueTarget(row);
+    // Prefilled with what the debt says now, so the common case -- nudging a date a few days --
+    // is a small edit rather than a figure to be retyped from scratch.
+    setDueValue(row.due_date || '');
+  };
+
+  // Cancel, the dialog's X and Esc all come through here, so none of them leaves a stale date
+  // behind to reappear over the next debt.
+  const closeDueForm = () => {
+    setDueTarget(null);
+    setDueValue('');
+  };
+
+  const handleDueSubmit = async (e) => {
+    e.preventDefault();
+    if (!dueTarget) return;
+    const next = dueValue || null;
+    if ((dueTarget.due_date || null) === next) {
+      closeDueForm();
+      return;
+    }
+    if (!next && !window.confirm(t('due.clearConfirm'))) return;
+    try {
+      // `due_date` is always sent, `null` included: leaving the field out means "do not touch
+      // it" and the server refuses that, so clearing cannot be confused with a no-op.
+      await api.post(`/credit-sales/${dueTarget.id}/set_due_date/`, { due_date: next });
+      closeDueForm();
+      await fetchRows();
+    } catch (error) {
+      console.error('Error changing the credit due date:', error);
+      alert(apiErrorText(error));
+    }
+  };
+
   const handleWaiveSubmit = async (e) => {
     e.preventDefault();
     if (!waiveTarget) return;
@@ -446,13 +487,34 @@ export default function CreditSales() {
     return [p.brand, p.model, p.size].filter(Boolean).join(' ');
   };
 
-  const dueLabel = (row) => {
+  const dueText = (row) => {
     if (!row.due_date) return '—';
     const days = row.days_until_due;
     const date = formatAppDate(dateOnlyToLocalDate(row.due_date));
     if (row.status === 'paid' || row.status === 'waived' || days == null) return date;
     if (days < 0) return `${date} · ${t('due.overdueBy', { days: Math.abs(days) })}`;
     return `${date} · ${t('due.inDays', { days })}`;
+  };
+
+  /**
+   * The promised day, and underneath it the day it was first promised for if it has moved.
+   *
+   * `original_due_date` is null until the date is changed, so the second line appears only on a
+   * debt that really was moved -- which is the point: a date that has been renegotiated is a
+   * different fact from one that was agreed once and kept.
+   */
+  const dueLabel = (row) => {
+    if (!row.original_due_date) return dueText(row);
+    return (
+      <>
+        {dueText(row)}
+        <small style={{ display: 'block', color: '#888' }}>
+          {t('due.originally', {
+            date: formatAppDate(dateOnlyToLocalDate(row.original_due_date)),
+          })}
+        </small>
+      </>
+    );
   };
 
   const dash = <span style={{ color: '#cbd5e0' }}>—</span>;
@@ -510,6 +572,13 @@ export default function CreditSales() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button type="button" className="btn-edit" onClick={() => toggleHistory(row)}>
                 {expandedId === row.id ? t('table.hideHistory') : t('table.history')}
+              </button>
+              {/* Offered on a settled debt too, deliberately: the commonest date to be wrong is
+                  one nobody looked at until the money came in. No permission of its own -- a
+                  promised day moves no money, and whoever is chasing the debt is who finds out
+                  it has slipped (the owner's call, 2026-11-15). */}
+              <button type="button" className="btn-edit" onClick={() => beginEditDue(row)}>
+                {t('table.editDue')}
               </button>
               {isOpen && canCollect && (
                 <ActionButton type="button" className="btn-primary" onClick={() => beginCollect(row)}>
@@ -702,7 +771,7 @@ export default function CreditSales() {
               </div>
               <div className="form-group">
                 <label>{t('create.amountUzs')}</label>
-                <AmountInput
+                <AmountInput currency="UZS"
                   placeholder="0"
                   value={createForm.amount_uzs}
                   disabled={createCcy === 'USD'}
@@ -711,7 +780,7 @@ export default function CreditSales() {
               </div>
               <div className="form-group">
                 <label>{t('create.amountUsd')}</label>
-                <AmountInput
+                <AmountInput currency="USD"
                   placeholder="0"
                   value={createForm.amount_usd}
                   disabled={createCcy === 'UZS'}
@@ -779,7 +848,7 @@ export default function CreditSales() {
                 <>
                   <div className="form-group">
                     <label>{t('collect.amountUzs')}</label>
-                    <AmountInput
+                    <AmountInput currency="UZS"
                       placeholder="0"
                       value={collectForm.amount_uzs}
                       disabled={(collectTarget.currency || 'USD').toUpperCase() !== 'UZS'}
@@ -790,7 +859,7 @@ export default function CreditSales() {
                   </div>
                   <div className="form-group">
                     <label>{t('collect.amountUsd')}</label>
-                    <AmountInput
+                    <AmountInput currency="USD"
                       placeholder="0"
                       value={collectForm.amount_usd}
                       disabled={(collectTarget.currency || 'USD').toUpperCase() !== 'USD'}
@@ -809,6 +878,7 @@ export default function CreditSales() {
                   </label>
                   <AmountInput
                     placeholder="0"
+                    currency={collectTarget.currency}
                     value={collectForm.amount}
                     onChange={(e) => setCollectForm({ ...collectForm, amount: e.target.value })}
                     required
@@ -875,6 +945,46 @@ export default function CreditSales() {
                 className="btn-edit"
                 onClick={closeWaiveForm}
               >
+                {t('actions.cancel', { ns: 'common' })}
+              </button>
+            </div>
+          </BusyForm>
+        </Modal>
+      )}
+
+      {dueTarget && (
+        <Modal
+          open={!!dueTarget}
+          onClose={closeDueForm}
+          closeLabel={t('actions.close', { ns: 'common' })}
+          closeOnBackdrop={false}
+          title={t('due.editTitle', { id: dueTarget.id })}
+        >
+          <BusyForm onSubmit={handleDueSubmit}>
+            <div className="form-grid">
+              <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                <label htmlFor="credit-due-date">{t('table.due')}</label>
+                <input
+                  id="credit-due-date"
+                  type="date"
+                  value={dueValue}
+                  onChange={(e) => setDueValue(e.target.value)}
+                />
+                <small style={{ color: '#666', display: 'block', marginTop: 5 }}>
+                  {t('due.editHint')}
+                </small>
+                {dueTarget.original_due_date ? (
+                  <small style={{ color: '#666', display: 'block', marginTop: 5 }}>
+                    {t('due.originally', {
+                      date: formatAppDate(dateOnlyToLocalDate(dueTarget.original_due_date)),
+                    })}
+                  </small>
+                ) : null}
+              </div>
+            </div>
+            <div className="form-actions">
+              <SubmitButton className="btn-primary">{t('due.save')}</SubmitButton>
+              <button type="button" className="btn-edit" onClick={closeDueForm}>
                 {t('actions.cancel', { ns: 'common' })}
               </button>
             </div>

@@ -242,6 +242,7 @@ const Jarimalar = () => {
               <div className="form-group">
                 <label>{t('form.amount')}</label>
                 <AmountInput
+                  currency={form.currency}
                   value={form.amount}
                   onChange={(e) => setForm({ ...form, amount: e.target.value })}
                   required

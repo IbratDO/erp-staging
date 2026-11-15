@@ -22,7 +22,12 @@
   },
   "due": {
     "overdueBy": "{{days}} kun kechikkan",
-    "inDays": "{{days}} kun qoldi"
+    "inDays": "{{days}} kun qoldi",
+    "editTitle": "To‘lov sanasi — qarz #{{id}}",
+    "editHint": "Sanani olib tashlash uchun bo‘sh qoldiring — shunda eslatma to‘xtaydi. Dastlab belgilangan sana saqlanadi.",
+    "originally": "dastlab {{date}}",
+    "clearConfirm": "To‘lov sanasi olib tashlansinmi? Bu qarz uchun eslatma to‘xtaydi.",
+    "save": "Saqlash"
   },
   "table": {
     "title": "Qarzlar ro‘yxati",
@@ -43,7 +48,8 @@
     "waive": "Kechirish",
     "totalsLine": "jami {{principal}} · to‘langan {{paid}} · qolgan {{remaining}}",
     "principalUzs": "Jami qarz (so‘m)",
-    "groupCount": "({{open}} ta ochiq / {{total}} ta jami)"
+    "groupCount": "({{open}} ta ochiq / {{total}} ta jami)",
+    "editDue": "Sanani o‘zgartirish"
   },
   "collect": {
     "title": "Nasiya to‘lovi #{{id}}",

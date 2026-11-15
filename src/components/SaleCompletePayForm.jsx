@@ -701,7 +701,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           )}
           <div className="form-group">
             <label>{t('currency.uzs', { ns: 'common' })}</label>
-            <AmountInput
+            <AmountInput currency="UZS"
               placeholder="0"
               // Som is whole. The field will not take a decimal point, and the server refuses
               // one too -- the same rule in two layers, because a mask is not a guard.
@@ -712,7 +712,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
           </div>
           <div className="form-group">
             <label>{t('currency.usd', { ns: 'common' })}</label>
-            <AmountInput
+            <AmountInput currency="USD"
               placeholder="0"
               value={paymentFormData.usd ?? ''}
               onChange={(e) => setPaymentFormData({ ...paymentFormData, usd: e.target.value })}
@@ -804,6 +804,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                     // `step` does nothing on a text input, so the intent it was expressing --
                     // whole som, cents on a dollar sale -- is now actually enforced.
                     wholeOnly={shortfallMeta.sc === 'UZS'}
+                    currency={shortfallMeta.sc}
                     value={paymentFormData.balance_shortfall_amount ?? ''}
                     onChange={(e) =>
                       setPaymentFormData({
@@ -921,6 +922,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   <AmountInput
                     step={shortfallMeta.sc === 'UZS' ? '1' : '0.01'}
                     wholeOnly={shortfallMeta.sc === 'UZS'}
+                    currency={shortfallMeta.sc}
                     placeholder={
                       shortfallMeta.creditAmount != null
                         ? (shortfallMeta.sc === 'UZS'
@@ -997,6 +999,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                     <AmountInput
                       // Always som: there is one bank account and it takes one currency.
                       wholeOnly
+                      currency="UZS"
                       value={paymentFormData.transfer_amount ?? ''}
                       onChange={(e) => setTransferAmount(e.target.value)}
                       required
@@ -1095,6 +1098,7 @@ export default function SaleCompletePayForm({ sale, onClose, onSuccess, showNoti
                   })}
                 </label>
                 <AmountInput
+                  currency={paymentFormData.dispatch_payment_currency}
                   value={paymentFormData.dispatch_payment_amount ?? ''}
                   onChange={(e) =>
                     setPaymentFormData({ ...paymentFormData, dispatch_payment_amount: e.target.value })
