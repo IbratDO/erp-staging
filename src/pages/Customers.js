@@ -17,6 +17,34 @@ import TableDownloadButton from '../components/TableDownloadButton';
 import SimpleImportModal from '../components/SimpleImportModal';
 import { customerImportApi } from '../utils/simpleImportApi';
 
+/**
+ * A money figure that is really two, one per currency.
+ *
+ * **So'm carries no decimals and dollars carry two** (the owner's instruction of 2026-11-16),
+ * which `formatDisplayAmount` already knows per currency -- so this is about *which* figures
+ * exist, not about rounding. Every one of these used to be a single number adding dollars to
+ * som: a $20 sale plus a 250 000 som sale read as 250 020. Measured on the dev copy, 6 of 131
+ * customers with completed sales have them in both currencies, so those rows were wrong.
+ *
+ * Nothing is converted. A customer's history is a record of what happened, and a figure that
+ * moved with today's rate would not match what was printed last month.
+ *
+ * Shows only the legs that are non-zero, so a shop that sells in one currency sees one number
+ * and is none the wiser; a dash when both are empty.
+ */
+function MoneyPair({ usd, uzs }) {
+  const u = parseFloat(usd) || 0;
+  const s = parseFloat(uzs) || 0;
+  if (!u && !s) return <>&mdash;</>;
+  return (
+    <>
+      {u ? formatDisplayAmount(u, 'USD') : null}
+      {u && s ? <br /> : null}
+      {s ? formatDisplayAmount(s, 'UZS') : null}
+    </>
+  );
+}
+
 function customerProductLine(detail, t) {
   if (!detail) return '';
   return t('history.productLine', {
@@ -34,7 +62,19 @@ const CUSTOMER_SORT_ACCESSORS = {
   region: (c) => String(c.region ?? '').toLowerCase(),
   total_sales: (c) => parseInt(c.sales_count, 10) || 0,
   returned: (c) => parseInt(c.returned_count, 10) || 0,
-  on_credit: (c) => parseFloat(c.on_credit_outstanding) || 0,
+  // **Dollars first, som as the tie-break**, as one sortable key.
+  //
+  // Adding the two legs would sort by a number that means nothing, and som figures run to six
+  // digits where dollars run to two, so a sum would simply order the column by whoever happens
+  // to owe som. `compareForSort` takes one value and no array, so the two legs are composed
+  // into a zero-padded string instead: equal field widths make string order the same as numeric
+  // order, and the `|` keeps the value off that helper's numeric path. Both legs are pending
+  // receivables, so neither can be negative and no sign handling is needed.
+  on_credit: (c) => {
+    const cents = Math.round((parseFloat(c.on_credit_outstanding_usd) || 0) * 100);
+    const som = Math.round(parseFloat(c.on_credit_outstanding_uzs) || 0);
+    return `${String(cents).padStart(14, '0')}|${String(som).padStart(16, '0')}`;
+  },
 };
 
 const RECEIVABLE_SORT_ACCESSORS = {
@@ -233,13 +273,15 @@ const Customers = () => {
   const customerListTotals = useMemo(() => {
     let totalSalesCount = 0;
     let returnedCount = 0;
-    let onCreditSum = 0;
+    let onCreditUsd = 0;
+    let onCreditUzs = 0;
     for (const c of filteredCustomers) {
       totalSalesCount += parseInt(c.sales_count, 10) || 0;
       returnedCount += parseInt(c.returned_count, 10) || 0;
-      onCreditSum += parseFloat(c.on_credit_outstanding) || 0;
+      onCreditUsd += parseFloat(c.on_credit_outstanding_usd) || 0;
+      onCreditUzs += parseFloat(c.on_credit_outstanding_uzs) || 0;
     }
-    return { totalSalesCount, returnedCount, onCreditSum };
+    return { totalSalesCount, returnedCount, onCreditUsd, onCreditUzs };
   }, [filteredCustomers]);
 
   const handleSubmit = async (e) => {
@@ -510,14 +552,15 @@ const Customers = () => {
                         : '—'}
                     </td>
                     <td style={{ fontSize: '0.9em' }}>
-                      {/* Formatted, not printed raw. `Receivable.amount` is `decimal_places=12`
-                          and the serializer hands the figure over as a string, so a $5 debt
-                          arrived as `5.000000000000` and anything with arithmetic behind it
-                          brought twelve digits of dust into the column. Two places, like the
-                          total under it and like every other money cell on the page. */}
-                      {parseFloat(customer.on_credit_outstanding || 0) > 0
-                        ? formatPlainAmount(customer.on_credit_outstanding)
-                        : '—'}
+                      {/* One figure per currency. Besides being a sum of two different things,
+                          the old combined field printed raw: `Receivable.amount` is
+                          `decimal_places=12` and arrives as a string, so a $5 debt read
+                          `5.000000000000`. `formatDisplayAmount` gives som no decimals and
+                          dollars two. */}
+                      <MoneyPair
+                        usd={customer.on_credit_outstanding_usd}
+                        uzs={customer.on_credit_outstanding_uzs}
+                      />
                     </td>
                     <td onClick={(e) => e.stopPropagation()}>
                       {canUpdate && (
@@ -556,9 +599,10 @@ const Customers = () => {
                     : '—'}
                 </td>
                 <td style={{ fontWeight: 600 }}>
-                  {customerListTotals.onCreditSum > 0
-                    ? customerListTotals.onCreditSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    : '—'}
+                  <MoneyPair
+                    usd={customerListTotals.onCreditUsd}
+                    uzs={customerListTotals.onCreditUzs}
+                  />
                 </td>
                 <td>—</td>
               </tr>
@@ -620,16 +664,24 @@ const Customers = () => {
                 </div>
                 <div title={t('history.completedHint')}>
                   <strong>{t('history.totalCompleted')}</strong>{' '}
-                  {formatPlainAmount(customerHistory.summary.total_amount || 0)}
+                  <MoneyPair
+                    usd={customerHistory.summary.total_amount_usd}
+                    uzs={customerHistory.summary.total_amount_uzs}
+                  />
                 </div>
                 <div title={t('history.paidHint')}>
-                  <strong>{t('history.totalPaid')}</strong> {formatPlainAmount(customerHistory.summary.total_paid || 0)}
+                  <strong>{t('history.totalPaid')}</strong>{' '}
+                  <MoneyPair
+                    usd={customerHistory.summary.total_paid_usd}
+                    uzs={customerHistory.summary.total_paid_uzs}
+                  />
                 </div>
                 <div>
                   <strong>{t('history.onCreditOutstanding')}</strong>{' '}
-                  {parseFloat(customerHistory.summary.on_credit_outstanding || 0) > 0
-                    ? formatPlainAmount(customerHistory.summary.on_credit_outstanding)
-                    : '0'}
+                  <MoneyPair
+                    usd={customerHistory.summary.on_credit_outstanding_usd}
+                    uzs={customerHistory.summary.on_credit_outstanding_uzs}
+                  />
                 </div>
               </div>
             </div>

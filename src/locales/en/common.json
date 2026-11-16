@@ -67,12 +67,12 @@
     "topUpHint": " Add funds under Money Balance, then try again."
   },
   "roles": {
-    "founder": "Asoschi",
+    "founder": "Founder",
     "admin": "Admin",
-    "ceo": "Bosh direktor",
-    "senior_sales_manager": "Katta sotuv menejeri",
-    "sales_manager": "Sotuv menejeri",
-    "dispatcher": "Yetkazib beruvchi",
+    "ceo": "CEO",
+    "senior_sales_manager": "Senior sales manager",
+    "sales_manager": "Sales manager",
+    "dispatcher": "Courier",
     "investor": "Investor",
     "targetolog": "Targetolog",
     "purchasing_agent": "Purchasing Agent"
@@ -103,35 +103,35 @@
     "downloadExcelHint": "Download this table as a CSV file for Excel"
   },
   "table": {
-    "actions": "Amallar",
+    "actions": "Actions",
     "id": "ID",
-    "date": "Sana",
-    "status": "Holat",
-    "notes": "Izoh",
-    "createdBy": "Yaratgan",
-    "noData": "Ma’lumot topilmadi",
-    "netThisView": "Jami (shu ko‘rinish)",
-    "previous": "Oldingi",
-    "next": "Keyingi",
-    "sortAsc": "O‘sish",
-    "sortDesc": "Kamayish"
+    "date": "Date",
+    "status": "Status",
+    "notes": "Notes",
+    "createdBy": "Created by",
+    "noData": "No data found",
+    "netThisView": "Total (this view)",
+    "previous": "Previous",
+    "next": "Next",
+    "sortAsc": "Ascending",
+    "sortDesc": "Descending"
   },
   "filters": {
     "show": "Show filters",
     "hide": "Hide filters",
-    "title": "Filtrlar",
-    "year": "Yil",
-    "month": "Oy",
-    "day": "Kun",
-    "allYears": "Barcha yillar",
-    "allMonths": "Barcha oylar",
-    "allDays": "Barcha kunlar",
-    "allTypes": "Barcha turlar",
+    "title": "Filters",
+    "year": "Year",
+    "month": "Month",
+    "day": "Day",
+    "allYears": "All years",
+    "allMonths": "All months",
+    "allDays": "All days",
+    "allTypes": "All types",
     "modelSearch": "Search model…",
     "modelSearchApply": "Search for \"{{query}}\"",
     "searchApply": "Search for \"{{query}}\"",
-    "currency": "Valyuta",
-    "all": "Hammasi"
+    "currency": "Currency",
+    "all": "All"
   },
   "months": {
     "1": "Yanvar",
@@ -167,13 +167,13 @@
     "uzs": "UZS"
   },
   "language": {
-    "label": "Til",
-    "uz": "O‘zbekcha",
-    "en": "Inglizcha"
+    "label": "Language",
+    "uz": "Uzbek",
+    "en": "English"
   },
   "confirm": {
-    "delete": "Haqiqatan ham o‘chirmoqchimisiz?",
-    "unsaved": "Saqlanmagan o‘zgarishlar yo‘qoladi. Davom etasizmi?"
+    "delete": "Are you sure you want to delete this?",
+    "unsaved": "Unsaved changes will be lost. Continue?"
   },
   "notifications": {
     "success": "Success",

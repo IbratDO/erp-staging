@@ -222,6 +222,9 @@ const DashboardModern = () => {
   // Its own window rather than sharing the per-item toggle beside it: one control silently
   // changing its neighbour's period reads as a bug, not a feature.
   const [marketingCustomerGranularity, setMarketingCustomerGranularity] = useState('weekly');
+  // Ombor's inventory-value chart. Monthly by default: a year of month-end values is what
+  // answers "is the shelf growing", and the weekly view is for looking closely at a few weeks.
+  const [inventoryValueGranularity, setInventoryValueGranularity] = useState('monthly');
   // Both margin series arrive in one payload, so this only picks which to draw — no refetch.
   const [managerMarginGranularity, setManagerMarginGranularity] = useState('monthly');
   // Changes what each weekday bar is an average *of* — months, or single weeks. The bars stay
@@ -272,6 +275,7 @@ const DashboardModern = () => {
     marketingGranularity,
     topProductsGranularity,
     marketingCustomerGranularity,
+    inventoryValueGranularity,
     enabled: canViewMarketing,
     marketingOnly: mgmtMarketingOnly,
     errorMessage: t('mgmt.loadError', { ns: 'dashboard' }),
@@ -777,7 +781,10 @@ const DashboardModern = () => {
 
       {activeTab === TAB_INVENTORY && canViewMgmt && (
         <section className="mgmt-section">
-          <InventoryCharts data={mgmtData} />
+          <InventoryCharts
+            data={mgmtData}
+            onInventoryValueGranularityChange={setInventoryValueGranularity}
+          />
         </section>
       )}
     </div>

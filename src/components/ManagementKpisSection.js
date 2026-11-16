@@ -1,8 +1,11 @@
 import React, { useMemo } from 'react';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -236,6 +239,35 @@ export function FinanceCharts({ data, expensesGranularity, setExpensesGranularit
               dot={{ r: 3 }}
             />
           </LineChart>
+        </ResponsiveContainer>
+      </MgmtChart>
+
+      <MgmtChart title={t('mgmt.cashFlowMonthly')}>
+        {/* **Money in, money out, and the net of the two.** Both bars are positive numbers so
+            they can be compared by height; the line carries the sign. Read from the ledger, so
+            every movement of cash appears exactly once whatever caused it. */}
+        <p className="dash-section-hint">{t('mgmt.cashFlowHint')}</p>
+        <ResponsiveContainer width="100%" height={chartHeight(narrow, 260)}>
+          <ComposedChart data={data?.cash_flow_monthly || []}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <XAxis dataKey="month_label" tick={axisTick(narrow, 11)} />
+            <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              formatter={(value, name) => [fmtUsd(value), name]}
+            />
+            <Legend wrapperStyle={{ fontSize: narrow ? 11 : 12 }} />
+            <Bar dataKey="cash_in_usd" name={t('mgmt.cashIn')} fill="#10b981" />
+            <Bar dataKey="cash_out_usd" name={t('mgmt.cashOut')} fill="#ef4444" />
+            <Line
+              type="monotone"
+              dataKey="net_usd"
+              name={t('mgmt.cashNet')}
+              stroke="#2563eb"
+              strokeWidth={2}
+              dot={false}
+            />
+          </ComposedChart>
         </ResponsiveContainer>
       </MgmtChart>
 
@@ -557,7 +589,7 @@ export function ManagerMarginChart({
   );
 }
 
-export function InventoryCharts({ data }) {
+export function InventoryCharts({ data, onInventoryValueGranularityChange }) {
   const { t } = useAppTranslation(['dashboard', 'common']);
   // Phone sizing. Above 600px `narrow` is false and every figure below is the desktop
   // one, so this tab renders exactly as it did.
@@ -572,6 +604,45 @@ export function InventoryCharts({ data }) {
         />
       </div>
       <div className="mgmt-charts-grid">
+        <MgmtChart
+          title={t('mgmt.inventoryValue')}
+          controls={
+            <ToggleGroup
+              value={data?.inventory_value_series?.granularity || 'monthly'}
+              onChange={onInventoryValueGranularityChange}
+              options={[
+                { value: 'weekly', label: t('mgmt.weekly') },
+                { value: 'monthly', label: t('mgmt.monthly') },
+              ]}
+            />
+          }
+        >
+          {/* The value of the shelf at each period **end**, from the same FIFO valuation the
+              balance sheet's inventory line uses. The current period is deliberately absent: it
+              has not finished, and a closing figure for a period that has not closed is not one.
+              The toggle reads its own state from the answer rather than from the local toggle, so
+              the chart cannot label a weekly series as monthly while a request is in flight. */}
+          <p className="dash-section-hint">{t('mgmt.inventoryValueHint')}</p>
+          <ResponsiveContainer width="100%" height={chartHeight(narrow, 260)}>
+            <AreaChart data={data?.inventory_value_series?.points || []}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="period" tick={axisTick(narrow, 11)} />
+              <YAxis width={axisWidth(narrow)} tick={axisTick(narrow, 12)} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                formatter={(value) => [fmtUsd(value), t('mgmt.inventoryValue')]}
+              />
+              <Area
+                type="monotone"
+                dataKey="value_usd"
+                stroke="#0ea5e9"
+                fill="#e0f2fe"
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </MgmtChart>
+
         <MgmtChart title={t('mgmt.slowInventory')}>
           <ResponsiveContainer width="100%" height={chartHeight(narrow, 240)}>
             <BarChart data={data?.inventory_aging_monthly || []}>

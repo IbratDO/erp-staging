@@ -105,7 +105,14 @@
     "roiLabel": "ROI:",
     "top5Products": "Top 5 products (selected period)",
     "noSalesInPeriod": "No sales in period",
-    "noSales": "No sales"
+    "noSales": "No sales",
+    "cashFlowMonthly": "Monthly cash flow",
+    "cashFlowHint": "Every movement of cash in the month, from the ledger. So'm converted at the rate of the day it moved. A currency exchange shows on both bars, because som really does leave one account and dollars enter another.",
+    "cashIn": "Money in",
+    "cashOut": "Money out",
+    "cashNet": "Net",
+    "inventoryValue": "Value of stock on hand",
+    "inventoryValueHint": "What the shelf was worth at the end of each period, valued the same way the balance sheet values it. The current period is not shown — it has not finished yet."
   },
   "onDemandSeriesInProcess": "In process",
   "onDemandSeriesCancelled": "Cancelled",

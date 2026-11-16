@@ -105,7 +105,14 @@
     "roiLabel": "ROI:",
     "top5Products": "Top 5 mahsulot (tanlangan davr)",
     "noSalesInPeriod": "Tanlangan davrda sotuv yo‘q",
-    "noSales": "Sotuv yo‘q"
+    "noSales": "Sotuv yo‘q",
+    "cashFlowMonthly": "Oylik pul harakati",
+    "cashFlowHint": "Oy ichidagi barcha pul harakatlari, jurnaldan olingan. So‘m harakat bo‘lgan kun kursida hisoblangan. Valyuta ayirboshlash ikkala ustunda ko‘rinadi — so‘m haqiqatan bir hisobdan chiqadi, dollar boshqasiga kiradi.",
+    "cashIn": "Kirim",
+    "cashOut": "Chiqim",
+    "cashNet": "Sof",
+    "inventoryValue": "Ombordagi tovar qiymati",
+    "inventoryValueHint": "Har bir davr oxirida ombor qancha turgani — balansdagi kabi hisoblangan. Hozirgi davr ko‘rsatilmaydi, chunki u hali tugamagan."
   },
   "onDemandSeriesInProcess": "Jarayonda",
   "onDemandSeriesCancelled": "Bekor qilingan",

@@ -8,6 +8,7 @@ export default function useManagementKpisData({
   marketingGranularity,
   topProductsGranularity,
   marketingCustomerGranularity,
+  inventoryValueGranularity,
   enabled,
   marketingOnly = false,
   errorMessage = 'Failed to load management KPIs',
@@ -28,6 +29,7 @@ export default function useManagementKpisData({
       marketing_sold_granularity: marketingGranularity,
       top_products_granularity: topProductsGranularity,
       marketing_customer_granularity: marketingCustomerGranularity,
+      inventory_value_granularity: inventoryValueGranularity,
       include_turnover: false,
     };
     try {
@@ -66,7 +68,12 @@ export default function useManagementKpisData({
     }
   }, [
     year, month, expensesGranularity, marketingGranularity, topProductsGranularity,
-    marketingCustomerGranularity, enabled, marketingOnly, errorMessage,
+    // Every granularity belongs here: the window is a request parameter, so a toggle left out
+    // of this list changes the local state, re-renders, and shows the same data back. The
+    // linter caught `inventoryValueGranularity` missing, which would have been a toggle that
+    // visibly moves and does nothing.
+    marketingCustomerGranularity, inventoryValueGranularity,
+    enabled, marketingOnly, errorMessage,
   ]);
 
   useEffect(() => {
