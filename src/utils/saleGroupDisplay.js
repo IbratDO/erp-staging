@@ -64,6 +64,7 @@ export function aggregateGroupSales(groupSales) {
       activeStatuses: [],
       declinedCount: 0,
       saleCurrency: 'USD',
+      sharedNote: '',
     };
   }
   const first = groupSales[0];
@@ -98,6 +99,16 @@ export function aggregateGroupSales(groupSales) {
   const activeStatuses = [...new Set(activeSales.map((s) => s.status))];
   const declinedCount = groupSales.filter((s) => !!s.delivery_customer_declined_at).length;
   const currencies = [...new Set(groupSales.map((s) => s.sale_currency || 'USD'))];
+  // **The group's Izoh.** One Complete & Pay form settles the whole basket and
+  // `buildGroupCompleteRequests` sends every line the same note, so in practice there is one
+  // note and this is it. The lines can still disagree — a single line cancelled later carries
+  // its own reason — so distinct notes are joined rather than one of them being picked: showing
+  // only the first would hide that a line was cancelled, and showing nothing would hide the
+  // note the basket was sold with. Duplicates collapse, which is what makes the usual case read
+  // as the single sentence somebody typed.
+  const sharedNote = [
+    ...new Set(groupSales.map((s) => String(s.notes || '').trim()).filter(Boolean)),
+  ].join(' | ');
   return {
     first,
     ids,
@@ -116,6 +127,7 @@ export function aggregateGroupSales(groupSales) {
     activeStatuses,
     declinedCount,
     saleCurrency: currencies.length === 1 ? currencies[0] : null,
+    sharedNote,
     // Mixed only among still-active lines — a group with one cancelled/declined line and the
     // rest sharing one status should still show that shared status, not a generic "pending".
     hasMixedStatus: activeStatuses.length > 1,
@@ -177,6 +189,10 @@ export function saleLikeForDisplayRow(row) {
     id: agg.first?.id ?? 0,
     status: displayStatus,
     declinedCount: agg.declinedCount,
+    // Sorting reads the same string the cell prints. `agg.first.notes` would arrive through the
+    // spread above and sort a group by one line's note while the row displayed all of them —
+    // the mistake `groupDisplayStatus` was written to stop, one column along.
+    notes: agg.sharedNote,
     quantity: agg.quantity,
     total_amount: agg.totalAmount,
     total_discount_amount: agg.totalDiscountAll,

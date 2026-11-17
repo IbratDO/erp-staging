@@ -153,6 +153,7 @@ const SALE_SORT_ACCESSORS = {
     return String(d.dispatcher_name ?? '').toLowerCase();
   },
   sale_date: (s) => new Date(s.display_date || s.sale_date).getTime() || 0,
+  notes: (s) => String(s.notes || '').trim().toLowerCase(),
 };
 
 const SALE_DISPLAY_SORT_ACCESSORS = Object.fromEntries(
@@ -163,9 +164,39 @@ const SALE_DISPLAY_SORT_ACCESSORS = Object.fromEntries(
 );
 
 /** Main sales grid column count (must match thead). */
-const SALES_TABLE_COLUMN_COUNT = 22;
+const SALES_TABLE_COLUMN_COUNT = 23;
 /** Footer label spans id → package (inclusive); quantity is the next column. */
 const SALES_FOOTER_LABEL_COL_SPAN = 12;
+
+/**
+ * The **Izoh** cell: what a person wrote about this sale.
+ *
+ * Clipped to one line with the full text in `title`, rather than wrapped. A note is free text and
+ * one long sentence would set the height of a row 23 columns wide, pushing every other sale off
+ * the screen — and the column exists to be glanced along, not read in.
+ *
+ * The whole note stays in the DOM, so the Excel download carries it complete: `tableToMatrix`
+ * reads `textContent`, which CSS clipping does not touch.
+ */
+function renderSaleNoteCell(note) {
+  const text = String(note || '').trim();
+  if (!text) return <span style={{ color: '#bbb' }}>—</span>;
+  return (
+    <span
+      title={text}
+      style={{
+        display: 'inline-block',
+        maxWidth: 220,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        verticalAlign: 'bottom',
+      }}
+    >
+      {text}
+    </span>
+  );
+}
 
 /**
  * Quantity being sold, shown as "3 / 5" when a from-order sale covers only part of what was
@@ -2557,6 +2588,7 @@ const Sales = () => {
         <td className={detailClass}>{sale.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
         <td className={detailClass}>{sale.salesman_detail?.username || '-'}</td>
         <td className={detailClass}>{renderDispatcherCell(sale)}</td>
+        <td className={detailClass}>{renderSaleNoteCell(sale.notes)}</td>
       </>
     );
   };
@@ -3980,6 +4012,7 @@ const Sales = () => {
               <SortableTh columnId="phone" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>{t('table.phone')}</SortableTh>
               <SortableTh columnId="salesman" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>{t('table.salesman')}</SortableTh>
               <SortableTh columnId="dispatcher" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>{t('table.dispatcher')}</SortableTh>
+              <SortableTh columnId="notes" sortCol={saleSort.sortCol} sortDir={saleSort.sortDir} onSort={saleSort.onHeaderClick}>{t('table.notes', { ns: 'common' })}</SortableTh>
             </tr>
           </thead>
           <tbody>
@@ -4094,6 +4127,7 @@ const Sales = () => {
                       <td>{sale?.customer_detail?.telephone || <span style={{ color: '#bbb' }}>—</span>}</td>
                       <td>{sale?.salesman_detail?.username || '-'}</td>
                       <td>{renderDispatcherCell(sale)}</td>
+                      <td>{renderSaleNoteCell(agg.sharedNote)}</td>
                     </tr>
                     {expanded &&
                       row.sales.map((item) => (

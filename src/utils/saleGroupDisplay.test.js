@@ -18,9 +18,11 @@
  * this visible survived in the first place.
  */
 import {
+  aggregateGroupSales,
   compareSaleDisplayRows,
   displayRowIsFinished,
   displayRowStageRank,
+  saleLikeForDisplayRow,
 } from './saleGroupDisplay';
 
 /** A single-sale row, as `buildSaleDisplayRows` emits one. */
@@ -161,5 +163,53 @@ describe('the finished rows', () => {
     ];
 
     expect(order(rows)).toEqual(['sale-2', 'sale-1']);
+  });
+});
+
+/**
+ * The **Izoh** a multi-item group shows (owner's request, 2026-11-17).
+ *
+ * One Complete & Pay form settles the whole basket and `buildGroupCompleteRequests` sends every
+ * line the same note, so the usual case is several identical notes that must read as the one
+ * sentence somebody typed — not as that sentence repeated once per item.
+ */
+describe('the group note', () => {
+  const lines = (...notes) => notes.map((notes_, i) => ({ id: i + 1, status: 'completed', notes: notes_ }));
+
+  test('reads as one sentence when every line carries the same one', () => {
+    expect(aggregateGroupSales(lines('karta orqali', 'karta orqali', 'karta orqali')).sharedNote)
+      .toBe('karta orqali');
+  });
+
+  test('is empty when nobody wrote anything', () => {
+    expect(aggregateGroupSales(lines('', null, undefined)).sharedNote).toBe('');
+  });
+
+  test('keeps a line that disagrees rather than hiding it', () => {
+    // A line cancelled later carries its own reason. Showing only the first note would hide it;
+    // showing nothing would hide the note the basket was sold with.
+    expect(aggregateGroupSales(lines('karta orqali', 'mijoz voz kechdi')).sharedNote)
+      .toBe('karta orqali | mijoz voz kechdi');
+  });
+
+  test('ignores whitespace-only notes and trims the rest', () => {
+    expect(aggregateGroupSales(lines('  karta  ', '   ')).sharedNote).toBe('karta');
+  });
+
+  test('an empty group answers with an empty note rather than undefined', () => {
+    expect(aggregateGroupSales([]).sharedNote).toBe('');
+  });
+
+  test('the row sorts by the note it displays, not by the first line’s', () => {
+    // `saleLikeForDisplayRow` spreads the first line, so without an explicit `notes` the column
+    // would sort a group by one line's note while printing all of them.
+    const row = {
+      type: 'group',
+      key: 'group-9',
+      groupId: 9,
+      sales: lines('bbb', 'aaa'),
+    };
+
+    expect(saleLikeForDisplayRow(row).notes).toBe('bbb | aaa');
   });
 });
