@@ -75,7 +75,9 @@
     "dispatcher": "Yetkazib beruvchi",
     "investor": "Investor",
     "targetolog": "Targetolog",
-    "purchasing_agent": "Xarid agenti"
+    "purchasing_agent": "Xarid agenti",
+    "order_viewer": "Buyurtma ko‘ruvchi",
+    "buxgalter": "Buxgalter"
   },
   "actions": {
     "add": "Qo‘shish",

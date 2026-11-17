@@ -75,7 +75,9 @@
     "dispatcher": "Courier",
     "investor": "Investor",
     "targetolog": "Targetolog",
-    "purchasing_agent": "Purchasing Agent"
+    "purchasing_agent": "Purchasing Agent",
+    "order_viewer": "Order viewer",
+    "buxgalter": "Accountant"
   },
   "actions": {
     "add": "Add",

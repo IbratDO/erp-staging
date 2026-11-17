@@ -75,7 +75,9 @@
     "dispatcher": "Курьер",
     "investor": "Инвестор",
     "targetolog": "Таргетолог",
-    "purchasing_agent": "Закупщик"
+    "purchasing_agent": "Закупщик",
+    "order_viewer": "Наблюдатель заказов",
+    "buxgalter": "Бухгалтер"
   },
   "actions": {
     "add": "Добавить",

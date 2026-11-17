@@ -71,6 +71,10 @@ export const ROLE_VISIBLE_MENU_PATHS = {
   dispatcher: ['/dispatchers', '/change-password'],
   targetolog: ['/dashboard', '/change-password'],
   purchasing_agent: ['/orders', '/change-password'],
+  // One page, plus the means to change their own password -- this account never reaches the
+  // Users tab, so without it nobody could ever change it but an Admin. Mirrors
+  // `ROLE_VISIBLE_MENU_PATHS['order_viewer']` on the server.
+  order_viewer: ['/orders', '/change-password'],
 };
 
 /** Paths hidden for a role even when a permission would allow them. */
