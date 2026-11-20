@@ -16,6 +16,7 @@ import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import { usePermissions } from '../hooks/usePermissions';
 import AmountInput from '../components/AmountInput';
+import AccountSelect from '../components/AccountSelect';
 import FilterPanel from '../components/FilterPanel';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
 import ActionButton from '../components/ActionButton';
@@ -380,6 +381,8 @@ const ReceivablesPayables = () => {
   const [collectTarget, setCollectTarget] = useState(null);
   const [collectForm, setCollectForm] = useState({
     amount: '',
+    // Phase 2: which account the money arrived in. Blank is the drawer, as it always was.
+    payment_account: '',
     notes: '',
   });
   const [filter, setFilter] = useState({
@@ -491,6 +494,7 @@ const ReceivablesPayables = () => {
       rem > 0 ? (ccy === 'UZS' ? String(Math.round(rem)) : rem.toFixed(2)) : '';
     setCollectForm({
       amount: defAmount,
+      payment_account: '',
       notes: '',
     });
   };
@@ -498,7 +502,7 @@ const ReceivablesPayables = () => {
   // Used by Cancel and by the dialog's own X and Esc, so all three leave the same clean slate.
   const closeCollectForm = () => {
     setCollectTarget(null);
-    setCollectForm({ amount: '', notes: '' });
+    setCollectForm({ amount: '', payment_account: '', notes: '' });
   };
 
   const handleCollectReceivableSubmit = async (e) => {
@@ -531,6 +535,10 @@ const ReceivablesPayables = () => {
           uzs_card: 0,
           usd_cash,
           usd_card: 0,
+          // Only the leg's own currency key is read, so sending the matching one is enough.
+          ...(ccy === 'UZS'
+            ? { uzs_account: collectForm.payment_account || '' }
+            : { usd_account: collectForm.payment_account || '' }),
           notes: String(collectForm.notes || '').trim(),
         });
       }
@@ -538,6 +546,7 @@ const ReceivablesPayables = () => {
       setCollectTarget(null);
       setCollectForm({
         amount: '',
+        payment_account: '',
         notes: '',
       });
       await fetchReceivables();
@@ -1100,6 +1109,19 @@ const ReceivablesPayables = () => {
                       required
                     />
                   </div>
+                  {/* Where the money arrived. Hidden for a settle-the-finance-record
+                      collection, which posts to a different endpoint that takes no account. */}
+                  {!collectTarget.finance_record && (
+                    <AccountSelect
+                      id="rcv-collect-account"
+                      currency={(collectTarget.currency
+                        || collectTarget.sale_detail?.sale_currency || 'USD').toUpperCase()}
+                      value={collectForm.payment_account}
+                      onChange={(v) => setCollectForm({ ...collectForm, payment_account: v })}
+                      label={t('account.label', { ns: 'common' })}
+                      incoming
+                    />
+                  )}
                   <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                     <label>{t('collect.notesOptional')}</label>
                     <textarea rows={2} value={collectForm.notes} onChange={(e) => setCollectForm({ ...collectForm, notes: e.target.value })} />

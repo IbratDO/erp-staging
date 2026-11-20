@@ -20,6 +20,8 @@
     "addNewOwner": "Yangi egasi qo‘shish",
     "ownerRequired": "Egasini tanlang yoki yangisini qo‘shing.",
     "currency": "Valyuta",
+    "account": "Hisob",
+    "accountHint": "Pul aynan qaysi hisobga tushdi yoki qaysi hisobdan chiqdi.",
     "amount": "Summa",
     "notes": "Izoh"
   },

@@ -193,5 +193,12 @@
   "phone": "Phone",
   "login": "Login",
   "password": "Password",
-  "optional": "optional"
+  "optional": "optional",
+  "account": {
+    "label": "Account",
+    "auto": "Automatic (cash, then card)",
+    "hint": "Choose the account the money actually left.",
+    "autoIncoming": "Automatic (cash)",
+    "hintIncoming": "Choose the account the money actually arrived in."
+  }
 }

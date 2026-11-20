@@ -57,5 +57,23 @@
   "noTransactions": "No transactions found",
   "footerHint": "Amounts roll up by currency; bucket column shows the underlying ledger row.",
   "saleRef": "Sale #{{id}}",
-  "orderRef": "Order #{{id}}"
+  "orderRef": "Order #{{id}}",
+  "transfer": {
+    "button": "Transfer between accounts",
+    "title": "Move money between accounts",
+    "from": "From account",
+    "to": "To account",
+    "choose": "— Choose —",
+    "amount": "Amount",
+    "fee": "Fee (optional)",
+    "feeHint": "What the bank or gateway kept. What arrives is the amount less the fee.",
+    "date": "Transfer date",
+    "dateHint": "The day the money actually moved, not the day it was typed.",
+    "notes": "Notes",
+    "sameCurrencyHint": "Same-currency accounts only. Changing currency is a conversion.",
+    "closedReason": "Reason for posting into a closed month",
+    "closedReasonHint": "This month is closed. Give a reason — it is recorded in the register.",
+    "record": "Record transfer",
+    "failed": "The transfer was not made."
+  }
 }

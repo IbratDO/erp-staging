@@ -17,9 +17,23 @@ import './TablePage.css';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import AmountInput from '../components/AmountInput';
+import { accountsForCurrency, accountAfterCurrencyChange } from '../utils/moneyAccounts';
 import FilterPanel from '../components/FilterPanel';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
 import ActionButton from '../components/ActionButton';
+
+/**
+ * One DRF field error as a sentence.
+ *
+ * DRF wraps every value of a `ValidationError` dict in a list, so the account refusal arrives as
+ * `{ payment_account: ["Account \"uzs_transfer\" holds ..."] }`. Shown unwrapped it reads with
+ * brackets and quotes around it, which looks like a crash rather than an answer.
+ */
+function asMessage(value) {
+  if (!value) return null;
+  if (Array.isArray(value)) return value.length ? String(value[0]) : null;
+  return String(value);
+}
 
 // **The expense types of this page, in two populations that differ on purpose.**
 //
@@ -147,11 +161,24 @@ const Finance = () => {
     expense_type: 'lunch',
     target: '',
     currency: 'USD',
+    // Blank is "the route the shop has always used" — cash, then card — and it stays the default
+    // so that not touching this field records what it recorded before Phase 2 existed.
+    payment_account: '',
     amount: '',
     recipient: '',
     notes: '',
     pay_immediately: true,
   });
+
+  /**
+   * The account rows for a currency, labelled from the `moneyBalance` namespace so an account is
+   * called the same thing here as on Pul balansi.
+   */
+  const accountOptions = (currency) =>
+    accountsForCurrency(currency).map((b) => ({
+      value: b.value,
+      label: t(b.labelKey, { ns: 'moneyBalance' }),
+    }));
 
   const expenseTargetOptions = useMemo(
     () => EXPENSE_TARGET_VALUES.map((value) => ({ value, label: t(`targets.${value}`) })),
@@ -160,6 +187,7 @@ const Finance = () => {
 
   const [incomeFormData, setIncomeFormData] = useState({
     currency: 'USD',
+    payment_account: '',
     amount: '',
     notes: '',
     pay_immediately: true,
@@ -260,6 +288,7 @@ const Finance = () => {
         target: expenseFormData.target || null,
         amount: expenseFormData.amount || 0,
         currency: expenseFormData.currency,
+        payment_account: expenseFormData.payment_account || '',
         payment_type: 'cash',
         recipient: expenseFormData.recipient || null,
         notes: String(expenseFormData.notes || '').trim(),
@@ -272,6 +301,7 @@ const Finance = () => {
         expense_type: 'lunch',
         target: '',
         currency: 'USD',
+        payment_account: '',
         amount: '',
         recipient: '',
         notes: '',
@@ -284,7 +314,11 @@ const Finance = () => {
     } catch (error) {
       console.error('Error creating expense:', error);
       // Handle validation errors from DRF
-      const errorMessage = error.response?.data?.detail || 
+      // `payment_account` is read first because it is the most specific thing that can be wrong,
+      // and because DRF wraps a `ValidationError` dict's values in lists — so without the `[0]`
+      // the user would be shown `["Account ... holds 0.00 UZS ..."]`, brackets and all.
+      const errorMessage = asMessage(error.response?.data?.payment_account) ||
+                          error.response?.data?.detail ||
                           error.response?.data?.non_field_errors?.[0] ||
                           (Array.isArray(error.response?.data) ? error.response.data[0] : null) ||
                           t('notifications.createExpenseFailed');
@@ -303,15 +337,19 @@ const Finance = () => {
         record_type: 'income',
         amount: incomeFormData.amount || 0,
         currency: incomeFormData.currency,
+        payment_account: incomeFormData.payment_account || '',
         payment_type: 'cash',
         notes: String(incomeFormData.notes || '').trim(),
         pay_immediately: incomeFormData.pay_immediately,
       });
       setShowIncomeForm(false);
-      setIncomeFormData({ currency: 'USD', amount: '', notes: '', pay_immediately: true });
+      setIncomeFormData({
+        currency: 'USD', payment_account: '', amount: '', notes: '', pay_immediately: true,
+      });
       fetchRecords();
     } catch (error) {
       const errorMessage =
+        asMessage(error.response?.data?.payment_account) ||
         error.response?.data?.detail ||
         error.response?.data?.non_field_errors?.[0] ||
         error.response?.data?.error ||
@@ -418,12 +456,42 @@ const Finance = () => {
                 <label>{t('expenseForm.currency')}</label>
                 <select
                   value={expenseFormData.currency}
-                  onChange={(e) => setExpenseFormData({ ...expenseFormData, currency: e.target.value })}
+                  onChange={(e) =>
+                    setExpenseFormData({
+                      ...expenseFormData,
+                      currency: e.target.value,
+                      // Drop the account if it does not belong to the new currency. Without this
+                      // the form would post the som bank account against a dollar expense: the
+                      // server refuses it, correctly, and the user gets an error about a field
+                      // they cannot see is still set.
+                      payment_account: accountAfterCurrencyChange(
+                        expenseFormData.payment_account,
+                        e.target.value,
+                      ),
+                    })
+                  }
                   required
                 >
                   <option value="USD">{usdLabel}</option>
                   <option value="UZS">{uzsLabel}</option>
                 </select>
+              </div>
+              <div className="form-group">
+                <label>{t('expenseForm.account')}</label>
+                <select
+                  value={expenseFormData.payment_account}
+                  onChange={(e) =>
+                    setExpenseFormData({ ...expenseFormData, payment_account: e.target.value })
+                  }
+                >
+                  <option value="">{t('expenseForm.accountAuto')}</option>
+                  {accountOptions(expenseFormData.currency).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <small className="form-hint">{t('expenseForm.accountHint')}</small>
               </div>
               <div className="form-group">
                 <label>{t('expenseForm.amount')}</label>
@@ -505,12 +573,38 @@ const Finance = () => {
                 <label>{t('incomeForm.currency')}</label>
                 <select
                   value={incomeFormData.currency}
-                  onChange={(e) => setIncomeFormData({ ...incomeFormData, currency: e.target.value })}
+                  onChange={(e) =>
+                    setIncomeFormData({
+                      ...incomeFormData,
+                      currency: e.target.value,
+                      payment_account: accountAfterCurrencyChange(
+                        incomeFormData.payment_account,
+                        e.target.value,
+                      ),
+                    })
+                  }
                   required
                 >
                   <option value="USD">{usdLabel}</option>
                   <option value="UZS">{uzsLabel}</option>
                 </select>
+              </div>
+              <div className="form-group">
+                <label>{t('incomeForm.account')}</label>
+                <select
+                  value={incomeFormData.payment_account}
+                  onChange={(e) =>
+                    setIncomeFormData({ ...incomeFormData, payment_account: e.target.value })
+                  }
+                >
+                  <option value="">{t('incomeForm.accountAuto')}</option>
+                  {accountOptions(incomeFormData.currency).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <small className="form-hint">{t('incomeForm.accountHint')}</small>
               </div>
               <div className="form-group">
                 <label>{t('incomeForm.amount')}</label>

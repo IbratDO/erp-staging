@@ -35,6 +35,7 @@ import {
   useProductCategoryTypes,
 } from '../utils/productCategoryTypes';
 import AmountInput from '../components/AmountInput';
+import AccountSelect from '../components/AccountSelect';
 import FilterPanel from '../components/FilterPanel';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
 import TableDownloadButton from '../components/TableDownloadButton';
@@ -243,6 +244,10 @@ const Returns = () => {
     returnId: null,
     uzs: '',
     usd: '',
+    // Phase 2 slice 7: which account each leg of the refund leaves. Blank is the drawer, which
+    // is where every refund has come from until now.
+    uzs_account: '',
+    usd_account: '',
   });
   const [showRefundForm, setShowRefundForm] = useState(false);
   /** How the cashier is accounting for a refund settled for other than the amount owed. */
@@ -327,7 +332,7 @@ const Returns = () => {
   // Used by Cancel and by the dialog's own X and Esc, so all three leave the same clean slate.
   const closeRefundForm = () => {
     setShowRefundForm(false);
-    setRefundFormData({ returnId: null, uzs: '', usd: '' });
+    setRefundFormData({ returnId: null, uzs: '', usd: '', uzs_account: '', usd_account: '' });
     setRefundDifference({ pl: false, fx: false, plAmount: '' });
   };
 
@@ -921,12 +926,14 @@ const Returns = () => {
       const balanceResponse = await apiGetAll('/cash-balance/');
       const balanceList = balanceResponse.data.results || balanceResponse.data;
       const balChecks = [
-        { amount: uzs, currency: 'UZS' },
-        { amount: usd, currency: 'USD' },
+        { amount: uzs, currency: 'UZS', account: refundFormData.uzs_account },
+        { amount: usd, currency: 'USD', account: refundFormData.usd_account },
       ];
-      for (const { amount, currency } of balChecks) {
+      for (const { amount, currency, account } of balChecks) {
         if (amount > 0) {
-          const available = cashBalanceTotalByCurrency(balanceList, currency);
+          // The named account, when there is one — the same question the server asks before it
+          // debits. Summing cash + card here would refuse a bank refund the bank can afford.
+          const available = cashBalanceTotalByCurrency(balanceList, currency, account);
           if (available < amount) {
             showNotification(
               formatInsufficientLedgerMessage(currency, available, amount, { context: 'refund' }),
@@ -945,7 +952,7 @@ const Returns = () => {
       });
       await api.post(`/returns/${refundFormData.returnId}/mark_refunded/`, requestData);
       setShowRefundForm(false);
-      setRefundFormData({ returnId: null, uzs: '', usd: '' });
+      setRefundFormData({ returnId: null, uzs: '', usd: '', uzs_account: '', usd_account: '' });
       setRefundDifference({ pl: false, fx: false, plAmount: '' });
       showNotification(t('notifications.markedRefunded'), 'success');
       fetchReturns();
@@ -1678,12 +1685,30 @@ const Returns = () => {
                   value={refundFormData.uzs}
                   onChange={(e) => setRefundFormData({ ...refundFormData, uzs: e.target.value })} />
               </div>
+              {/* Shown only once an amount is typed, so an ordinary cash refund looks exactly as
+                  it did. A sale paid by perechisleniye is refunded out of the bank here. */}
+              {(parseFloat(refundFormData.uzs) || 0) > 0 && (
+                <AccountSelect
+                  id="refund-uzs-account"
+                  currency="UZS"
+                  value={refundFormData.uzs_account}
+                  onChange={(v) => setRefundFormData({ ...refundFormData, uzs_account: v })}
+                />
+              )}
               <div className="form-group">
                 <label>{t('refundForm.usdRefund')}</label>
                 <AmountInput currency="USD" placeholder="0"
                   value={refundFormData.usd}
                   onChange={(e) => setRefundFormData({ ...refundFormData, usd: e.target.value })} />
               </div>
+              {(parseFloat(refundFormData.usd) || 0) > 0 && (
+                <AccountSelect
+                  id="refund-usd-account"
+                  currency="USD"
+                  value={refundFormData.usd_account}
+                  onChange={(v) => setRefundFormData({ ...refundFormData, usd_account: v })}
+                />
+              )}
             </div>
             {/*
               Shown only when the two sides differ. The cashier says where the difference goes

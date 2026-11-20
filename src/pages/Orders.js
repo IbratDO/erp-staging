@@ -38,6 +38,7 @@ import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
 import { formatAppDateTime, formatAppNumber } from '../utils/localeFormat';
 import AmountInput from '../components/AmountInput';
+import AccountSelect from '../components/AccountSelect';
 import {
   allocateOrderAdvance, orderLineTotals, lineCostTotals,
 } from '../utils/orderAdvanceAllocation';
@@ -630,6 +631,9 @@ const Orders = () => {
     orderId: null,
     uzs: '',
     usd: '',
+    // Phase 2: which account each currency's leg leaves. Blank is the historical route.
+    uzs_account: '',
+    usd_account: '',
     is_pay_order: false,
     is_received_and_pay: false,
     status_notes: '',
@@ -640,6 +644,8 @@ const Orders = () => {
     orderId: null,
     uzs: '',
     usd: '',
+    uzs_account: '',
+    usd_account: '',
     weight: '',
     // Ids of items that came in the same delivery and have not paid their freight. Only used
     // to warn — this form settles the one line it was opened for, whatever else is listed.
@@ -1373,7 +1379,7 @@ const Orders = () => {
   const closePaymentForm = () => {
     setShowPaymentForm(false);
     setPaymentFormData({
-      orderId: null, uzs: '', usd: '', is_pay_order: false,
+      orderId: null, uzs: '', usd: '', uzs_account: '', usd_account: '', is_pay_order: false,
       is_received_and_pay: false, status_notes: '',
     });
   };
@@ -1388,7 +1394,10 @@ const Orders = () => {
 
   const closeCargoForm = () => {
     setShowCargoForm(false);
-    setCargoFormData({ orderId: null, uzs: '', usd: '', weight: '', sharedWith: [] });
+    setCargoFormData({
+      orderId: null, uzs: '', usd: '', uzs_account: '', usd_account: '',
+      weight: '', sharedWith: [],
+    });
   };
 
   const closeMarkOrderedForm = () => {
@@ -2164,7 +2173,11 @@ const Orders = () => {
           }
         }
         const paidOrderId = paymentFormData.orderId;
-        const res = await api.post(`/orders/${paidOrderId}/pay_order/`, { uzs, usd });
+        const res = await api.post(`/orders/${paidOrderId}/pay_order/`, {
+          uzs, usd,
+          uzs_account: paymentFormData.uzs_account || '',
+          usd_account: paymentFormData.usd_account || '',
+        });
         const paidStatus = res.data?.status || 'order_paid';
         setOrders((prev) => {
           const next = prev.map((o) =>
@@ -2182,7 +2195,10 @@ const Orders = () => {
           return next;
         });
         setShowPaymentForm(false);
-        setPaymentFormData({ orderId: null, uzs: '', usd: '', is_pay_order: false, is_received_and_pay: false, status_notes: '' });
+        setPaymentFormData({
+        orderId: null, uzs: '', usd: '', uzs_account: '', usd_account: '',
+        is_pay_order: false, is_received_and_pay: false, status_notes: '',
+      });
         await fetchOrders();
         showNotification(t('notifications.orderPaidSuccess'), 'success');
         return;
@@ -2234,7 +2250,10 @@ const Orders = () => {
       await fetchOrders();
 
       setShowPaymentForm(false);
-      setPaymentFormData({ orderId: null, uzs: '', usd: '', is_pay_order: false, is_received_and_pay: false, status_notes: '' });
+      setPaymentFormData({
+        orderId: null, uzs: '', usd: '', uzs_account: '', usd_account: '',
+        is_pay_order: false, is_received_and_pay: false, status_notes: '',
+      });
       showNotification(t('notifications.paymentSuccess'), 'success');
     } catch (error) {
       console.error('Error updating order payment:', error);
@@ -2274,9 +2293,16 @@ const Orders = () => {
         return;
       }
 
-      const res = await api.post(`/orders/${cargoFormData.orderId}/pay_cargo/`, { uzs, usd, weight });
+      const res = await api.post(`/orders/${cargoFormData.orderId}/pay_cargo/`, {
+        uzs, usd, weight,
+        uzs_account: cargoFormData.uzs_account || '',
+        usd_account: cargoFormData.usd_account || '',
+      });
       setShowCargoForm(false);
-      setCargoFormData({ orderId: null, uzs: '', usd: '', weight: '', sharedWith: [] });
+      setCargoFormData({
+      orderId: null, uzs: '', usd: '', uzs_account: '', usd_account: '',
+      weight: '', sharedWith: [],
+    });
       await fetchOrders();
       showNotification(res.data?.message || t('notifications.cargoPaidSuccess'), 'success');
     } catch (error) {
@@ -3003,12 +3029,31 @@ const Orders = () => {
                   value={paymentFormData.uzs}
                   onChange={(e) => setPaymentFormData({ ...paymentFormData, uzs: e.target.value })} />
               </div>
+              {/* Phase 2: shown only once an amount is typed, so the common cash-only payment
+                  looks exactly as it did. One picker per currency, because an account is
+                  currency-specific and a supplier bill can carry both legs at once. */}
+              {(parseFloat(paymentFormData.uzs) || 0) > 0 && (
+                <AccountSelect
+                  id="pay-order-uzs-account"
+                  currency="UZS"
+                  value={paymentFormData.uzs_account}
+                  onChange={(v) => setPaymentFormData({ ...paymentFormData, uzs_account: v })}
+                />
+              )}
               <div className="form-group">
                 <label>{t('currency.usd', { ns: 'common' })}</label>
                 <AmountInput currency="USD" placeholder="0"
                   value={paymentFormData.usd}
                   onChange={(e) => setPaymentFormData({ ...paymentFormData, usd: e.target.value })} />
               </div>
+              {(parseFloat(paymentFormData.usd) || 0) > 0 && (
+                <AccountSelect
+                  id="pay-order-usd-account"
+                  currency="USD"
+                  value={paymentFormData.usd_account}
+                  onChange={(v) => setPaymentFormData({ ...paymentFormData, usd_account: v })}
+                />
+              )}
               {!paymentFormData.is_pay_order && (
                 <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                   <label>{t('paymentForm.notes')} *</label>
@@ -3157,6 +3202,14 @@ const Orders = () => {
                   onChange={(e) => setCargoFormData({ ...cargoFormData, uzs: e.target.value })}
                 />
               </div>
+              {(parseFloat(cargoFormData.uzs) || 0) > 0 && (
+                <AccountSelect
+                  id="pay-cargo-uzs-account"
+                  currency="UZS"
+                  value={cargoFormData.uzs_account}
+                  onChange={(v) => setCargoFormData({ ...cargoFormData, uzs_account: v })}
+                />
+              )}
               <div className="form-group">
                 <label>{t('currency.usd', { ns: 'common' })}</label>
                 <AmountInput currency="USD"
@@ -3165,6 +3218,14 @@ const Orders = () => {
                   onChange={(e) => setCargoFormData({ ...cargoFormData, usd: e.target.value })}
                 />
               </div>
+              {(parseFloat(cargoFormData.usd) || 0) > 0 && (
+                <AccountSelect
+                  id="pay-cargo-usd-account"
+                  currency="USD"
+                  value={cargoFormData.usd_account}
+                  onChange={(v) => setCargoFormData({ ...cargoFormData, usd_account: v })}
+                />
+              )}
               <div className="form-group">
                 <label>
                   {t('batch.weightKgTotal', { ns: 'orders' })}

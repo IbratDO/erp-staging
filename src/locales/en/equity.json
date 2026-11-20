@@ -20,6 +20,8 @@
     "addNewOwner": "Add new owner",
     "ownerRequired": "Select or add the owner this transaction belongs to.",
     "currency": "Currency",
+    "account": "Account",
+    "accountHint": "The account the money actually arrived in or left from.",
     "amount": "Amount",
     "notes": "Notes"
   },

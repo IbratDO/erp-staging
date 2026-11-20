@@ -8,6 +8,7 @@ import PageTitle from '../components/PageTitle';
 import { formatAppDateTime, formatAppNumber } from '../utils/localeFormat';
 import './TablePage.css';
 import AmountInput from '../components/AmountInput';
+import { accountsForCurrency, accountAfterCurrencyChange } from '../utils/moneyAccounts';
 import FormSearchableSelect from '../components/FormSearchableSelect';
 import BusyForm, { SubmitButton } from '../components/BusyForm';
 
@@ -216,13 +217,34 @@ const Equity = () => {
                     setForm({
                       ...form,
                       currency: e.target.value,
-                      balance_type: e.target.value === 'UZS' ? 'uzs_cash' : 'usd_cash',
+                      // Phase 2: keep the chosen account when it belongs to the new currency and
+                      // fall back to that currency's cash bucket when it does not. Unlike the
+                      // Finance forms there is no blank option — `EquityTransaction.balance_type`
+                      // is required, so capital always names its account and the only question is
+                      // which. The server refuses a mismatch with `wrong_currency`.
+                      balance_type:
+                        accountAfterCurrencyChange(form.balance_type, e.target.value) ||
+                        (e.target.value === 'UZS' ? 'uzs_cash' : 'usd_cash'),
                     })
                   }
                 >
                   <option value="USD">{t('currency.usd', { ns: 'common' })}</option>
                   <option value="UZS">{uzsLabel}</option>
                 </select>
+              </div>
+              <div className="form-group">
+                <label>{t('form.account')}</label>
+                <select
+                  value={form.balance_type}
+                  onChange={(e) => setForm({ ...form, balance_type: e.target.value })}
+                >
+                  {accountsForCurrency(form.currency).map((b) => (
+                    <option key={b.value} value={b.value}>
+                      {t(b.labelKey, { ns: 'moneyBalance' })}
+                    </option>
+                  ))}
+                </select>
+                <small className="form-hint">{t('form.accountHint')}</small>
               </div>
               <div className="form-group">
                 <label>{t('form.amount')}</label>

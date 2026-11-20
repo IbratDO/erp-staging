@@ -57,9 +57,19 @@ export function formatPlainAmount(amount, fractionDigits = 2) {
 }
 
 /** Sum ledger rows for SPA balance checks (matches Money Balance totals). */
-export function cashBalanceTotalByCurrency(balances, currency) {
+export function cashBalanceTotalByCurrency(balances, currency, account = '') {
   const c = String(currency || 'USD').toUpperCase();
   const list = Array.isArray(balances) ? balances : [];
+  // Phase 2: with an account named this answers for that account alone, because the server will
+  // debit that account alone and never fall through. Left summing cash + card, a page that
+  // offered the bank would refuse a payment the bank could cover — and the user would be told
+  // they are short while looking at the money on the same screen.
+  const named = String(account || '').trim().toLowerCase();
+  if (named) {
+    return list
+      .filter((b) => b.balance_type === named)
+      .reduce((s, b) => s + (parseFloat(b.balance) || 0), 0);
+  }
   if (c === 'USD') {
     return list
       .filter((b) => b.balance_type === 'usd_cash' || b.balance_type === 'usd_card')

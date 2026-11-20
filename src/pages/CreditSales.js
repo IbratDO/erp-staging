@@ -3,6 +3,7 @@ import api from '../utils/api';
 import Modal from '../components/Modal';
 import apiGetAll from '../utils/fetchAllPages';
 import AmountInput from '../components/AmountInput';
+import AccountSelect from '../components/AccountSelect';
 import CustomerQuickAddModal from '../components/CustomerQuickAddModal';
 import CustomerSearchableSelect from '../components/CustomerSearchableSelect';
 import FilterPanel from '../components/FilterPanel';
@@ -152,7 +153,7 @@ export default function CreditSales() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const [collectTarget, setCollectTarget] = useState(null);
-  const [collectForm, setCollectForm] = useState({ amount: '', notes: '' });
+  const [collectForm, setCollectForm] = useState({ amount: '', payment_account: '', notes: '' });
   const [waiveTarget, setWaiveTarget] = useState(null);
   // The debt whose promised day is being moved, and the day being typed. `''` is a real value
   // here -- it clears the date, which is what a debt with no promised day already looks like.
@@ -290,6 +291,8 @@ export default function CreditSales() {
       // A hand-entered debt can be owed in both currencies at once, so it gets a box each.
       amount_uzs: remUzs > 0 ? String(Math.round(remUzs)) : '',
       amount_usd: remUsd > 0 ? remUsd.toFixed(2) : '',
+      // Phase 2: blank means the drawer, which is where every repayment has landed so far.
+      payment_account: '',
       notes: '',
     });
   };
@@ -318,11 +321,14 @@ export default function CreditSales() {
         const res = await api.post(`/credit-sales/${collectTarget.id}/collect_payment/`, {
           amount_uzs: uzs,
           amount_usd: usd,
+          // Phase 2: where the repayment lands. One key, not the per-currency pair the sale
+          // path uses — a hand-entered debt is owed in exactly one currency.
+          payment_account: collectForm.payment_account || '',
           notes: String(collectForm.notes || '').trim(),
         });
         alert(res.data?.message || t('collect.recorded'));
         setCollectTarget(null);
-        setCollectForm({ amount: '', amount_uzs: '', amount_usd: '', notes: '' });
+        setCollectForm({ amount: '', amount_uzs: '', amount_usd: '', payment_account: '', notes: '' });
         setExpandedId(null);
         setHistory(null);
         await fetchRows();
@@ -350,11 +356,16 @@ export default function CreditSales() {
         uzs_card: 0,
         usd_cash: ccy === 'USD' ? pay : 0,
         usd_card: 0,
+        // Only the leg's own currency key is read by the server, so sending the one that
+        // matches the receivable is both necessary and sufficient.
+        ...(ccy === 'UZS'
+          ? { uzs_account: collectForm.payment_account || '' }
+          : { usd_account: collectForm.payment_account || '' }),
         notes: String(collectForm.notes || '').trim(),
       });
       alert(res.data?.message || t('collect.recorded'));
       setCollectTarget(null);
-      setCollectForm({ amount: '', notes: '' });
+      setCollectForm({ amount: '', payment_account: '', notes: '' });
       setExpandedId(null);
       setHistory(null);
       await fetchRows();
@@ -884,6 +895,23 @@ export default function CreditSales() {
                     required
                   />
                 </div>
+              )}
+              {/* Where the money arrived. Offered on the debt's own currency, since that is
+                  the only currency it can be repaid in — `record_manual_debt_repayment` and the
+                  receivable path both refuse the other one rather than pick a rate. A
+                  hand-entered debt owed in *both* currencies has no single answer, so it keeps
+                  the historical route. */}
+              {!(collectTarget.is_manual
+                 && num(collectTarget.remaining_uzs) > 0
+                 && num(collectTarget.remaining_usd) > 0) && (
+                <AccountSelect
+                  id="collect-account"
+                  currency={(collectTarget.currency || 'USD').toUpperCase()}
+                  value={collectForm.payment_account}
+                  onChange={(v) => setCollectForm({ ...collectForm, payment_account: v })}
+                  label={t('account.label', { ns: 'common' })}
+                  incoming
+                />
               )}
               <div className="form-group" style={{ gridColumn: '1 / -1' }}>
                 <label>{t('collect.notes')}</label>

@@ -193,5 +193,12 @@
   "phone": "Telefon",
   "login": "Login",
   "password": "Parol",
-  "optional": "ixtiyoriy"
+  "optional": "ixtiyoriy",
+  "account": {
+    "label": "Hisob",
+    "auto": "Avtomatik (naqd, keyin karta)",
+    "hint": "Pul aynan qaysi hisobdan chiqqanini tanlang.",
+    "autoIncoming": "Avtomatik (naqd)",
+    "hintIncoming": "Pul aynan qaysi hisobga tushganini tanlang."
+  }
 }

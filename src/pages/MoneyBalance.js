@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import SortableTh from '../components/SortableTh';
 import { useClientTableSort } from '../utils/tableSort';
 import CurrencyConversionForm from '../components/CurrencyConversionForm';
+import AccountTransferForm from '../components/AccountTransferForm';
 import useAppTranslation from '../hooks/useAppTranslation';
 import PageTitle from '../components/PageTitle';
 import { formatAppDateTime } from '../utils/localeFormat';
@@ -146,11 +147,15 @@ const MoneyBalance = () => {
   const canAdjustBalance = hasPermission('cash.adjust');
   const canConvertCurrency =
     hasPermission('cash.convert') || hasPermission('cash.adjust');
+  // Its own code, not folded into `cash.convert`: moving money between pockets and changing its
+  // currency are different acts, and the owner can grant them separately. See `rbac.py`.
+  const canTransferAccounts = hasPermission('cash.transfer');
   const [balances, setBalances] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdjustForm, setShowAdjustForm] = useState(false);
   const [showConversionForm, setShowConversionForm] = useState(false);
+  const [showTransferForm, setShowTransferForm] = useState(false);
   // Closed by default, deliberately. The two Jami cards are what most people come to this page
   // for; the per-account split matters only to whoever is reconciling the bank, so it costs a
   // click to those who want it and nothing at all to everyone else.
@@ -349,7 +354,7 @@ const MoneyBalance = () => {
     <div className="page-container">
       <div className="page-header">
         <PageTitle ns="moneyBalance" />
-        {(canAdjustBalance || canConvertCurrency) && (
+        {(canAdjustBalance || canConvertCurrency || canTransferAccounts) && (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             {canAdjustBalance && (
               <button
@@ -374,6 +379,20 @@ const MoneyBalance = () => {
                 }}
               >
                 {t('currencyConversion')}
+              </button>
+            )}
+            {canTransferAccounts && (
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ background: '#6f42c1' }}
+                onClick={() => {
+                  setShowAdjustForm(false);
+                  setShowConversionForm(false);
+                  setShowTransferForm(true);
+                }}
+              >
+                {t('transfer.button')}
               </button>
             )}
           </div>
@@ -476,6 +495,22 @@ const MoneyBalance = () => {
             await Promise.all([fetchBalances(), fetchTransactions()]);
           }}
           onCancel={() => setShowConversionForm(false)}
+        />
+      </Modal>
+
+      <Modal
+        open={showTransferForm && canTransferAccounts}
+        onClose={() => setShowTransferForm(false)}
+        title={t('transfer.title')}
+        closeLabel={t('actions.close', { ns: 'common' })}
+        closeOnBackdrop={false}
+      >
+        <AccountTransferForm
+          onSuccess={async () => {
+            setShowTransferForm(false);
+            await Promise.all([fetchBalances(), fetchTransactions()]);
+          }}
+          onCancel={() => setShowTransferForm(false)}
         />
       </Modal>
 

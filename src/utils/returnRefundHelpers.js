@@ -184,6 +184,16 @@ export function buildReturnRefundRequest(refundFormData, exchangeRate, options =
     uzs: parseFloat(refundFormData.uzs) || 0,
     usd: parseFloat(refundFormData.usd) || 0,
   };
+  // Phase 2 slice 7: which account the refund is paid out of. A sale settled by perechisleniye
+  // was paid into the bank, so giving the money back out of the drawer is the lie this feature
+  // exists to stop. One key per currency, because an account is currency-specific and a refund
+  // can carry both legs. Sent only when chosen, so a cash refund posts the body it always did.
+  if (refundFormData.uzs_account) {
+    requestData.uzs_account = refundFormData.uzs_account;
+  }
+  if (refundFormData.usd_account) {
+    requestData.usd_account = refundFormData.usd_account;
+  }
   if (exchangeRate?.rate && requestData.uzs > 0 && requestData.usd > 0) {
     requestData.exchange_rate = exchangeRate.rate;
   } else if (exchangeRate?.rate) {
